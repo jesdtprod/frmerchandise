@@ -4,6 +4,7 @@ const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyyYPXS315h-QMn
 let products = [];
 let cart = [];
 let activeForm = '';
+let activeView = 'pos';
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,7 +25,14 @@ function renderInventory() {
   const term = $('#searchInput').value.trim().toLowerCase();
   const rows = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
   const table = $('#inventoryTable');
-  table.innerHTML = `<div class="table-row table-header"><span>Product</span><span>Category</span><span>Selling price</span><span>Stock</span><span></span></div>${rows.length ? rows.map((product) => `<div class="table-row"><span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span class="${product.qty <= 5 ? 'stock-low' : ''}">${product.qty}</span><span><button class="button add-item" data-add="${product.id}" ${product.qty <= 0 ? 'disabled' : ''}>Add</button></span></div>`).join('') : '<div class="empty-state">No products found.</div>'}`;
+  const headers = activeView === 'products' ? ['Product', 'Category', 'Cost price', 'Selling price', ''] : activeView === 'inventory' ? ['Product', 'Category', 'Current stock', '', ''] : ['Product', 'Category', 'Selling price', 'Stock', ''];
+  const content = rows.map((product) => {
+    const productRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.costPrice || 0)}</span><span>${money(product.price)}</span><span></span>`;
+    const stockRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span class="${product.qty <= 5 ? 'stock-low' : ''}">${product.qty}</span><span></span><span></span>`;
+    const posRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span class="${product.qty <= 5 ? 'stock-low' : ''}">${product.qty}</span><span><button class="button add-item" data-add="${product.id}" ${product.qty <= 0 ? 'disabled' : ''}>Add</button></span>`;
+    return `<div class="table-row">${activeView === 'products' ? productRow : activeView === 'inventory' ? stockRow : posRow}</div>`;
+  }).join('');
+  table.innerHTML = `<div class="table-row table-header">${headers.map((header) => `<span>${header}</span>`).join('')}</div>${content || '<div class="empty-state">No products found.</div>'}`;
   table.querySelectorAll('[data-add]').forEach((button) => button.addEventListener('click', () => addToCart(button.dataset.add)));
 }
 function renderCart() {
@@ -49,18 +57,30 @@ function openForm(type) {
   $('#formDialog').showModal();
 }
 
+function setView(view) {
+  activeView = view;
+  const details = {
+    pos: ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available products'],
+    products: ['CATALOG', 'Product Registration', 'PRODUCT CATALOG', 'Registered products'],
+    inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch stock'],
+  }[view];
+  $('#pageEyebrow').textContent = details[0]; $('#pageTitle').textContent = details[1];
+  $('#catalogEyebrow').textContent = details[2]; $('#catalogTitle').textContent = details[3];
+  $('#addProductButton').hidden = view !== 'products'; $('#stockInButton').hidden = view !== 'inventory';
+  $('#pos').dataset.view = view;
+  document.querySelectorAll('[data-view]').forEach((item) => item.classList.toggle('active', item.dataset.view === view));
+  $('#sidebar').classList.remove('open');
+  renderInventory();
+}
+
 $('#settingsButton').addEventListener('click', () => { $('#apiUrlInput').value = localStorage.getItem(endpointKey) || DEFAULT_API_URL; $('#settingsDialog').showModal(); });
 $('#menuToggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
-document.querySelectorAll('[data-scroll]').forEach((link) => link.addEventListener('click', () => {
-  document.querySelectorAll('[data-scroll]').forEach((item) => item.classList.remove('active'));
-  link.classList.add('active');
-  $(`#${link.dataset.scroll}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
-  $('#sidebar').classList.remove('open');
-}));
+document.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', () => setView(link.dataset.view)));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
 $('#settingsForm').addEventListener('submit', async (event) => { event.preventDefault(); const url = $('#apiUrlInput').value.trim(); if (!url) return; localStorage.setItem(endpointKey, url); $('#settingsDialog').close(); try { await refresh(); showToast('API connected.'); } catch (error) { showToast(error.message); } });
 $('#addProductButton').addEventListener('click', () => openForm('product')); $('#stockInButton').addEventListener('click', () => openForm('stock'));
 $('#modalForm').addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { if (activeForm === 'product') await api('createProduct', Object.fromEntries(form)); else await api('stockIn', { ...Object.fromEntries(form), branchId: BRANCH_ID }); $('#formDialog').close(); await refresh(); showToast(activeForm === 'product' ? 'Product added.' : 'Stock updated.'); } catch (error) { $('#formError').textContent = error.message; } });
 $('#searchInput').addEventListener('input', renderInventory); $('#clearCartButton').addEventListener('click', () => { cart = []; renderCart(); });
 $('#checkoutButton').addEventListener('click', async () => { if (!cart.length) return showToast('Add an item before checkout.'); try { const sale = await api('recordSale', { branchId: BRANCH_ID, items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })) }); cart = []; await refresh(); showToast(`Sale ${sale.saleId} recorded: ${money(sale.total)}`); } catch (error) { showToast(error.message); } });
+setView('pos');
 refresh().catch((error) => showToast(error.message));

@@ -13,10 +13,10 @@
         <nav class="side-nav" aria-label="Primary navigation">
           <p class="nav-label">WORKSPACE</p>
           <span class="nav-item disabled"><span>D</span>Dashboard</span>
-          <a class="nav-item active" href="#pos" data-scroll="pos"><span>P</span>Point of Sale</a>
+          <button class="nav-item active" type="button" data-view="pos"><span>P</span>Point of Sale</button>
           <p class="nav-label">CATALOG AND STOCK</p>
-          <a class="nav-item" href="#products" data-scroll="products"><span>R</span>Product registration</a>
-          <a class="nav-item" href="#inventory" data-scroll="inventory"><span>I</span>Inventory stock</a>
+          <button class="nav-item" type="button" data-view="products"><span>R</span>Product registration</button>
+          <button class="nav-item" type="button" data-view="inventory"><span>I</span>Inventory stock</button>
           <p class="nav-label">BRANCH OPERATIONS</p>
           <span class="nav-item disabled"><span>B</span>Branches</span>
           <span class="nav-item disabled"><span>T</span>Stock transfers</span>
@@ -35,12 +35,12 @@
       <div class="app-content">
         <header class="topbar">
           <button class="icon-button menu-toggle" id="menuToggle" aria-label="Open navigation" title="Navigation">&#9776;</button>
-          <div><p class="eyebrow">WORKSPACE</p><h1>Point of Sale</h1></div>
+          <div><p class="eyebrow" id="pageEyebrow">WORKSPACE</p><h1 id="pageTitle">Point of Sale</h1></div>
           <div class="branch-label"><span></span>Main Branch</div>
           <button class="icon-button" id="settingsButton" aria-label="API settings" title="API settings">&#9881;</button>
         </header>
         <main class="workspace" id="pos">
-      <section class="catalog" id="products"><div class="section-head"><div><p class="eyebrow" id="inventory">INVENTORY</p><h2>Available products</h2></div><button class="button" id="addProductButton">Add product</button></div>
+      <section class="catalog" id="products"><div class="section-head"><div><p class="eyebrow" id="catalogEyebrow">INVENTORY</p><h2 id="catalogTitle">Available products</h2></div><button class="button" id="addProductButton">Add product</button></div>
         <div class="toolbar"><input id="searchInput" type="search" placeholder="Search products" /><button class="button button-secondary" id="stockInButton">Stock in</button></div>
         <div class="grid-table" id="inventoryTable"><div class="table-row table-header"><span>Product</span><span>Category</span><span>Price</span><span>Stock</span><span></span></div><div class="empty-state">Connect the API to load inventory.</div></div>
       </section>
