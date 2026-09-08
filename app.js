@@ -5,6 +5,8 @@ let products = [];
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
+const PRODUCT_CATEGORIES = ['LPG', 'Softdrinks', 'Others'];
+const PRODUCT_UNITS = ['pc', 'kg', 'g', 'L', 'mL', 'bottle', 'can', 'case', 'pack', 'box', 'bag', 'sack', 'tray', 'gallon', 'drum'];
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -53,7 +55,7 @@ function openForm(type) {
   activeForm = type; $('#formError').textContent = '';
   $('#dialogTitle').textContent = type === 'product' ? 'Add product' : 'Stock in';
   $('#formSubmit').textContent = type === 'product' ? 'Add product' : 'Save stock';
-  $('#formFields').innerHTML = type === 'product' ? '<label>Product name<input name="name" required></label><label>Category<input name="category"></label><label>Unit<select name="unit"><option value="pc">pc</option><option value="kg">kg</option></select></label><label>Cost price<input name="costPrice" type="number" min="0" step="0.01" required></label><label>Selling price<input name="price" type="number" min="0" step="0.01" required></label>' : `<label>Product<select name="productId" required>${products.map((product) => `<option value="${product.id}">${escapeHtml(product.name)}</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="0.01" step="0.01" required></label>`;
+  $('#formFields').innerHTML = type === 'product' ? `<label>Product name<input name="name" required></label><label>Category<select name="category" required>${PRODUCT_CATEGORIES.map((category) => `<option value="${category}">${category}</option>`).join('')}</select></label><label>Unit<select name="unit" required>${PRODUCT_UNITS.map((unit) => `<option value="${unit}">${unit}</option>`).join('')}</select></label><label>Cost price<input name="costPrice" type="number" min="0" step="0.01" required></label><label>Selling price<input name="price" type="number" min="0" step="0.01" required></label>` : `<label>Product<select name="productId" required>${products.map((product) => `<option value="${product.id}">${escapeHtml(product.name)}</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="0.01" step="0.01" required></label>`;
   $('#formDialog').showModal();
 }
 
