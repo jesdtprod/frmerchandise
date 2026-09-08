@@ -50,6 +50,13 @@ function openForm(type) {
 }
 
 $('#settingsButton').addEventListener('click', () => { $('#apiUrlInput').value = localStorage.getItem(endpointKey) || DEFAULT_API_URL; $('#settingsDialog').showModal(); });
+$('#menuToggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+document.querySelectorAll('[data-scroll]').forEach((link) => link.addEventListener('click', () => {
+  document.querySelectorAll('[data-scroll]').forEach((item) => item.classList.remove('active'));
+  link.classList.add('active');
+  $(`#${link.dataset.scroll}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#sidebar').classList.remove('open');
+}));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
 $('#settingsForm').addEventListener('submit', async (event) => { event.preventDefault(); const url = $('#apiUrlInput').value.trim(); if (!url) return; localStorage.setItem(endpointKey, url); $('#settingsDialog').close(); try { await refresh(); showToast('API connected.'); } catch (error) { showToast(error.message); } });
 $('#addProductButton').addEventListener('click', () => openForm('product')); $('#stockInButton').addEventListener('click', () => openForm('stock'));
