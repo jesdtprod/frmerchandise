@@ -1,4 +1,4 @@
-const SPREADSHEET_ID = 'PASTE_YOUR_GOOGLE_SHEET_ID_HERE';
+const SPREADSHEET_ID = '1HYt8MOZJ0JchXLCpAp5V5ypQ3-MRUMpmKlPWMlVVvPg';
 
 const SHEETS = {
   Branches: ['branch_id', 'name', 'type', 'address'],
@@ -123,7 +123,6 @@ function rows_(sheetName) {
 }
 
 function getSpreadsheet_() {
-  if (SPREADSHEET_ID === 'PASTE_YOUR_GOOGLE_SHEET_ID_HERE') throw new Error('Set SPREADSHEET_ID in Code.gs first.');
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
