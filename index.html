@@ -4,57 +4,304 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FR Merchandise POS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app-shell">
+      <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
       <aside class="sidebar" id="sidebar">
-        <div class="brand"><p class="eyebrow">FR MERCHANDISE</p><strong>Operations</strong></div>
+        <div class="brand">
+          <div class="brand-logo" aria-hidden="true">
+            <svg viewBox="0 0 36 36" class="pepsi-badge" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="18" cy="18" r="17" fill="#081326" stroke="rgba(0, 102, 245, 0.4)" stroke-width="2"/>
+              <path d="M4 14C8 10 14 8 20 8C27 8 31 11 32 14C28 17 22 17 17 19C11 21 7 24 4 28C3.5 24 3.5 18 4 14Z" fill="#E32934"/>
+              <path d="M4 28C8 23 13 21 18 19C24 17 29 17 32 14C32.5 18 32.5 24 32 28C27 32 21 34 16 34C10 34 6 32 4 28Z" fill="#0066F5"/>
+              <path d="M4 28C7 24 11 21 17 19C22 17 28 17 32 14C32.3 14.5 32 15 31.7 15.5C28 18.5 23 18.5 18 20.5C12 22.5 8 25.5 4 28Z" fill="#FFFFFF"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <p class="eyebrow">FR MERCHANDISE</p>
+            <strong>Operations POS</strong>
+          </div>
+        </div>
         <nav class="side-nav" aria-label="Primary navigation">
           <p class="nav-label">WORKSPACE</p>
-          <span class="nav-item disabled"><span>D</span>Dashboard</span>
-          <button class="nav-item active" type="button" data-view="pos"><span>P</span>Point of Sale</button>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+            Dashboard
+          </span>
+          <button class="nav-item active" type="button" data-view="pos">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M6 8h8M6 12h4"/><circle cx="15" cy="12" r="1" fill="currentColor"/></svg>
+            Point of Sale
+          </button>
           <p class="nav-label">CATALOG AND STOCK</p>
-          <button class="nav-item" type="button" data-view="products"><span>R</span>Product registration</button>
-          <button class="nav-item" type="button" data-view="inventory"><span>I</span>Inventory stock</button>
+          <button class="nav-item" type="button" data-view="products">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2L3 6v8l7 4 7-4V6l-7-4z"/><path d="M10 10l7-4M10 10v8M10 10L3 6"/></svg>
+            Product registration
+          </button>
+          <button class="nav-item" type="button" data-view="inventory">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 5h14M3 10h14M3 15h14"/><rect x="2" y="3" width="16" height="14" rx="2"/></svg>
+            Inventory stock
+          </button>
           <p class="nav-label">BRANCH OPERATIONS</p>
-          <span class="nav-item disabled"><span>B</span>Branches</span>
-          <span class="nav-item disabled"><span>T</span>Stock transfers</span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17V7l7-4 7 4v10H3z"/><path d="M8 17v-5h4v5"/></svg>
+            Branches
+          </span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 6H4M4 6l4-4M4 6l4 4M4 14h12m0 0l-4-4m4 4l-4 4"/></svg>
+            Stock transfers
+          </span>
           <p class="nav-label">CUSTOMER ACCOUNTS</p>
-          <span class="nav-item disabled"><span>C</span>Customers</span>
-          <span class="nav-item disabled"><span>P</span>Credit payments</span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="7" r="4"/><path d="M3 17a7 7 0 0114 0"/></svg>
+            Customers
+          </span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="5" width="16" height="11" rx="2"/><path d="M2 9h16"/></svg>
+            Credit payments
+          </span>
           <p class="nav-label">ADMINISTRATION</p>
-          <span class="nav-item disabled"><span>S</span>Staff accounts</span>
-          <span class="nav-item disabled"><span>A</span>Admin account</span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 17v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="3.5"/></svg>
+            Staff accounts
+          </span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2l6 3v5c0 4.5-3 8-6 9-3-1-6-4.5-6-9V5l6-3z"/></svg>
+            Admin account
+          </span>
           <p class="nav-label">REPORTING</p>
-          <span class="nav-item disabled"><span>R</span>Sales reports</span>
-          <span class="nav-item disabled"><span>I</span>Inventory reports</span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V9M9 16V4M14 16v-6M19 16H1"/></svg>
+            Sales reports
+          </span>
+          <span class="nav-item disabled">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="12" height="15" rx="2"/><path d="M8 7h4M8 11h4M8 15h2"/></svg>
+            Inventory reports
+          </span>
         </nav>
-        <div class="sidebar-foot"><span class="branch-dot"></span>Main Branch</div>
+        <div class="sidebar-foot">
+          <span class="branch-dot"></span>
+          <span>Main Branch &bull; <small>Online</small></span>
+        </div>
       </aside>
+
       <div class="app-content">
         <header class="topbar">
-          <button class="icon-button menu-toggle" id="menuToggle" aria-label="Open navigation" title="Navigation">&#9776;</button>
-          <div><p class="eyebrow" id="pageEyebrow">WORKSPACE</p><h1 id="pageTitle">Point of Sale</h1></div>
-          <div class="branch-label"><span></span>Main Branch</div>
-          <button class="icon-button" id="settingsButton" aria-label="API settings" title="API settings">&#9881;</button>
+          <button class="icon-button menu-toggle" id="menuToggle" aria-label="Open navigation" title="Toggle Navigation">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+          </button>
+          <div class="page-title-group">
+            <p class="eyebrow" id="pageEyebrow">WORKSPACE</p>
+            <h1 id="pageTitle">Point of Sale</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="branch-label">
+              <span class="status-pulse"></span>
+              Main Branch
+            </div>
+            <button class="button button-cart-toggle" id="mobileCartToggle" aria-label="Toggle Cart View">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h2l2 10h9l2-7H6"/><circle cx="8" cy="16" r="1.5"/><circle cx="15" cy="16" r="1.5"/></svg>
+              <span class="cart-badge" id="mobileCartBadge">0</span>
+            </button>
+            <button class="icon-button settings-btn" id="settingsButton" aria-label="API settings" title="API connection settings">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="3"/><path d="M16.5 10c0-.3-.02-.6-.06-.9l1.6-1.2-1.5-2.6-1.9.7c-.5-.4-1.1-.7-1.7-.9L12.7 3h-3l-.2 2.1c-.6.2-1.2.5-1.7.9l-1.9-.7-1.5 2.6 1.6 1.2c-.04.3-.06.6-.06.9s.02.6.06.9l-1.6 1.2 1.5 2.6 1.9-.7c.5.4 1.1.7 1.7.9l.2 2.1h3l.2-2.1c.6-.2 1.2-.5 1.7-.9l1.9.7 1.5-2.6-1.6-1.2c.04-.3.06-.6.06-.9z"/></svg>
+            </button>
+          </div>
         </header>
+
         <main class="workspace" id="pos">
-      <section class="catalog" id="products"><div class="section-head"><div><p class="eyebrow" id="catalogEyebrow">INVENTORY</p><h2 id="catalogTitle">Available products</h2></div><button class="button" id="addProductButton">Add product</button></div>
-        <div class="toolbar"><input id="searchInput" type="search" placeholder="Search products" /><button class="button button-secondary" id="stockInButton">Stock in</button></div>
-        <div class="grid-table" id="inventoryTable"><div class="table-row table-header"><span>Product</span><span>Category</span><span>Price</span><span>Stock</span><span></span></div><div class="empty-state">Connect the API to load inventory.</div></div>
-      </section>
-      <aside class="cart"><div class="section-head"><div><p class="eyebrow">CURRENT SALE</p><h2>Cash checkout</h2></div><button class="text-button" id="clearCartButton">Clear</button></div>
-        <div class="cart-items" id="cartItems"><div class="empty-state">Select items from inventory.</div></div>
-        <div class="total"><span>Total</span><strong id="cartTotal">PHP 0.00</strong></div>
-        <button class="button checkout" id="checkoutButton">Complete cash sale</button>
-      </aside>
+          <section class="catalog" id="products">
+            <div class="section-head">
+              <div class="section-title-wrap">
+                <div class="section-icon-wrap" id="catalogIconWrap" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2L3 6v8l7 4 7-4V6l-7-4z"/><path d="M10 10l7-4M10 10v8M10 10L3 6"/></svg>
+                </div>
+                <div>
+                  <p class="eyebrow" id="catalogEyebrow">INVENTORY</p>
+                  <h2 id="catalogTitle">Available products</h2>
+                </div>
+              </div>
+              <div class="section-actions" id="sectionActions" style="display: none;">
+                <button class="button button-primary" id="addProductButton" hidden>
+                  <svg class="btn-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4v12M4 10h12"/></svg>
+                  <span>Add product</span>
+                </button>
+                <button class="button button-secondary" id="stockInButton" hidden>
+                  <svg class="btn-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v10M5 8l5 5 5-5M3 17h14"/></svg>
+                  <span>Stock in</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="toolbar">
+              <div class="search-wrap">
+                <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5L17 17"/></svg>
+                <input id="searchInput" type="search" placeholder="Search product name, SKU, or category..." />
+              </div>
+            </div>
+
+            <div class="table-container">
+              <div class="grid-table" id="inventoryTable">
+                <div class="table-row table-header">
+                  <span>Product</span>
+                  <span>Category</span>
+                  <span>Price</span>
+                  <span>Stock</span>
+                  <span class="th-action">Action</span>
+                </div>
+                <div class="empty-state">Loading inventory...</div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="cart" id="cartSection">
+            <div class="section-head">
+              <div class="cart-head-title">
+                <div class="cart-icon-wrap">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h2l2 10h9l2-7H6"/><circle cx="8" cy="16" r="1.5"/><circle cx="15" cy="16" r="1.5"/></svg>
+                </div>
+                <div>
+                  <p class="eyebrow">CURRENT SALE</p>
+                  <h2>Cash checkout</h2>
+                </div>
+              </div>
+              <button class="text-button clear-btn" id="clearCartButton">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h10M6 5V3h4v2M5 5v8h6V5"/></svg>
+                Clear
+              </button>
+            </div>
+
+            <div class="cart-items" id="cartItems">
+              <div class="empty-state">
+                <svg class="empty-cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/><path d="M3 4h2l2.6 11h10.8l2-8H6.5"/></svg>
+                <p>Cart is empty</p>
+                <small>Select items from the catalog</small>
+              </div>
+            </div>
+
+            <div class="cart-summary">
+              <div class="total-row">
+                <span class="total-label">Total Amount</span>
+                <strong class="total-amount" id="cartTotal">PHP 0.00</strong>
+              </div>
+              <button class="button checkout-btn" id="checkoutButton">
+                <svg class="btn-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10l4 4 8-8"/></svg>
+                <span>Complete cash sale</span>
+              </button>
+            </div>
+          </aside>
         </main>
       </div>
     </div>
-    <dialog id="formDialog"><form method="dialog" id="modalForm"><div class="modal-head"><h2 id="dialogTitle">Add product</h2><button class="icon-button" type="button" data-close="formDialog" aria-label="Close">&times;</button></div><div id="formFields"></div><p class="form-error" id="formError"></p><div class="modal-actions"><button class="button button-secondary" type="button" data-close="formDialog">Cancel</button><button class="button" type="submit" id="formSubmit">Save</button></div></form></dialog>
-    <dialog id="settingsDialog"><form method="dialog" id="settingsForm"><div class="modal-head"><h2>API connection</h2><button class="icon-button" type="button" data-close="settingsDialog" aria-label="Close">&times;</button></div><label>Apps Script Web App URL<input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec" /></label><p class="hint">Your API URL is stored only in this browser.</p><div class="modal-actions"><button class="button button-secondary" type="button" data-close="settingsDialog">Cancel</button><button class="button" type="submit">Save and connect</button></div></form></dialog>
-    <div class="toast" id="toast" role="status"></div>
+
+    <!-- Add/Edit Product & Stock Dialog -->
+    <dialog id="formDialog" class="pepsi-dialog">
+      <form method="dialog" id="modalForm" novalidate>
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge" id="modalIconWrap">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2L3 6v8l7 4 7-4V6l-7-4z"/><path d="M10 10l7-4M10 10v8M10 10L3 6"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow" id="modalEyebrow">CATALOG & INVENTORY</span>
+              <h2 id="dialogTitle">Add product</h2>
+              <p class="modal-subtitle" id="modalSubtitle">Configure product details, pricing, and stock alert levels.</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="formDialog" aria-label="Close dialog" title="Close dialog">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
+          </button>
+        </div>
+        <div id="formFields" class="form-grid"></div>
+        <p class="form-error" id="formError" role="alert"></p>
+        <div class="modal-actions">
+          <button class="button modal-cancel-btn" type="button" data-close="formDialog">Cancel</button>
+          <button class="button modal-save-btn" type="submit" id="formSubmit">
+            <span class="button-text">Save changes</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Settings Dialog -->
+    <dialog id="settingsDialog" class="pepsi-dialog">
+      <form method="dialog" id="settingsForm" novalidate>
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="3"/><path d="M16.5 10c0-.3-.02-.6-.06-.9l1.6-1.2-1.5-2.6-1.9.7c-.5-.4-1.1-.7-1.7-.9L12.7 3h-3l-.2 2.1c-.6.2-1.2.5-1.7.9l-1.9-.7-1.5 2.6 1.6 1.2c-.04.3-.06.6-.06.9s.02.6.06.9l-1.6 1.2 1.5 2.6 1.9-.7c.5.4 1.1.7 1.7.9l.2 2.1h3l.2-2.1c.6-.2 1.2-.5 1.7-.9l1.9.7 1.5-2.6-1.6-1.2c.04-.3.06-.6.06-.9z"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow">SYSTEM CONFIGURATION</span>
+              <h2>API Connection</h2>
+              <p class="modal-subtitle">Connect to your Google Apps Script backend deployment.</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="settingsDialog" aria-label="Close dialog" title="Close dialog">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
+          </button>
+        </div>
+        <div class="settings-body">
+          <label class="field-label">
+            <span>Apps Script Web App URL <span class="required">*</span></span>
+            <input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec" required />
+          </label>
+          <p class="hint">Your API URL is stored securely only in your local browser storage.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close="settingsDialog">Cancel</button>
+          <button class="button button-primary" type="submit" id="settingsSubmit">
+            <span class="button-text">Save and connect</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Delete Product Confirmation Dialog -->
+    <dialog id="confirmDialog" class="pepsi-dialog confirm-dialog">
+      <div class="confirm-modal-wrap">
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge confirm-danger-badge">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 17h16L10 3zM10 8v4M10 14h.01"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow confirm-eyebrow">CONFIRM ACTION</span>
+              <h2>Delete product</h2>
+              <p class="modal-subtitle">Permanent action &bull; please confirm</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="confirmDialog" aria-label="Close dialog" title="Close dialog">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
+          </button>
+        </div>
+        <div class="confirm-body">
+          <p class="confirm-text">Are you sure you want to delete <strong id="confirmProductName" class="confirm-highlight-name"></strong>?</p>
+          <div class="confirm-warning-box">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v6M8 12h.01"/><path d="M14.5 13.5L8 2.5 1.5 13.5h13z"/></svg>
+            <span>This product will be permanently removed from your catalog and inventory records.</span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="button modal-cancel-btn" type="button" data-close="confirmDialog">Cancel</button>
+          <button class="button modal-delete-btn" type="button" id="confirmDeleteButton">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:16px;height:16px;margin-right:2px;"><path d="M3 5h14M8 5V3h4v2M5 5v11a2 2 0 002 2h6a2 2 0 002-2V5M8 9v6M12 9v6"/></svg>
+            <span class="button-text">Delete product</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Centralized Floating Toast Notification -->
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <div class="toast-icon-wrap" id="toastIconWrap"></div>
+      <span class="toast-message" id="toastMessage"></span>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

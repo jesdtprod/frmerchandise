@@ -69,11 +69,12 @@ function createProduct_(data) {
   require_(data.category, 'Category is required.');
   require_(data.unit, 'Unit of measure is required.');
   const price = Number(data.price);
-  const beginningStock = Number(data.beginningStock);
+  const beginningStock = Number(data.beginningStock || 0);
   const lowStockLevel = Number(data.lowStockLevel);
   const status = data.status || 'Active';
   if (!Number.isFinite(price) || price < 0) throw new Error('Enter a valid selling price.');
-  if (!Number.isFinite(beginningStock) || beginningStock < 0 || !Number.isFinite(lowStockLevel) || lowStockLevel < 0) throw new Error('Enter valid beginning stock and low-stock level.');
+  if (!Number.isFinite(lowStockLevel) || lowStockLevel < 0) throw new Error('Enter valid low-stock level.');
+  if (!Number.isFinite(beginningStock) || beginningStock < 0) throw new Error('Enter valid beginning stock.');
   if (!['Active', 'Inactive'].includes(status)) throw new Error('Choose a valid product status.');
   const product = { id: id_('PRD'), sku: sku_(), name: data.name.trim(), unit: data.unit, price, category: data.category, lowStockLevel, status };
   getSpreadsheet_().getSheetByName('Products').appendRow([product.id, product.name, product.unit, product.price, product.category, product.sku, product.lowStockLevel, product.status]);
