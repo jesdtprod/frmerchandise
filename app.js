@@ -1,5 +1,6 @@
 const BRANCH_ID = 'MAIN';
 const endpointKey = 'fr-pos-api-url';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyyYPXS315h-QMn1WRCAbbDh2BirtPyiF1729_k1reR3SSWLknom-cKPJQuMMsA_gfF/exec';
 let products = [];
 let cart = [];
 let activeForm = '';
@@ -8,7 +9,7 @@ const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function api(action, payload = {}, method = 'POST') {
-  const url = localStorage.getItem(endpointKey);
+  const url = localStorage.getItem(endpointKey) || DEFAULT_API_URL;
   if (!url) throw new Error('Add your Apps Script Web App URL in settings first.');
   const options = method === 'GET' ? {} : { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, ...payload }) };
   const target = method === 'GET' ? `${url}?${new URLSearchParams({ action, ...payload })}` : url;
@@ -46,11 +47,11 @@ function openForm(type) {
   $('#formDialog').showModal();
 }
 
-$('#settingsButton').addEventListener('click', () => { $('#apiUrlInput').value = localStorage.getItem(endpointKey) || ''; $('#settingsDialog').showModal(); });
+$('#settingsButton').addEventListener('click', () => { $('#apiUrlInput').value = localStorage.getItem(endpointKey) || DEFAULT_API_URL; $('#settingsDialog').showModal(); });
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
 $('#settingsForm').addEventListener('submit', async (event) => { event.preventDefault(); const url = $('#apiUrlInput').value.trim(); if (!url) return; localStorage.setItem(endpointKey, url); $('#settingsDialog').close(); try { await refresh(); showToast('API connected.'); } catch (error) { showToast(error.message); } });
 $('#addProductButton').addEventListener('click', () => openForm('product')); $('#stockInButton').addEventListener('click', () => openForm('stock'));
 $('#modalForm').addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { if (activeForm === 'product') await api('createProduct', Object.fromEntries(form)); else await api('stockIn', { ...Object.fromEntries(form), branchId: BRANCH_ID }); $('#formDialog').close(); await refresh(); showToast(activeForm === 'product' ? 'Product added.' : 'Stock updated.'); } catch (error) { $('#formError').textContent = error.message; } });
 $('#searchInput').addEventListener('input', renderInventory); $('#clearCartButton').addEventListener('click', () => { cart = []; renderCart(); });
 $('#checkoutButton').addEventListener('click', async () => { if (!cart.length) return showToast('Add an item before checkout.'); try { const sale = await api('recordSale', { branchId: BRANCH_ID, items: cart.map((item) => ({ productId: item.id, qty: item.qty })) }); cart = []; await refresh(); showToast(`Sale ${sale.saleId} recorded: ${money(sale.total)}`); } catch (error) { showToast(error.message); } });
-if (localStorage.getItem(endpointKey)) refresh().catch((error) => showToast(error.message));
+refresh().catch((error) => showToast(error.message));
