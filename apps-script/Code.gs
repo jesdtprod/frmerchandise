@@ -37,6 +37,8 @@ function route_(action, data) {
       case 'getProducts': return { ok: true, data: getProducts_() };
       case 'getInventory': return { ok: true, data: getInventory_(data.branchId || 'MAIN') };
       case 'createProduct': return { ok: true, data: createProduct_(data) };
+      case 'updateProduct': return { ok: true, data: updateProduct_(data) };
+      case 'deleteProduct': return { ok: true, data: deleteProduct_(data) };
       case 'stockIn': return { ok: true, data: stockIn_(data) };
       case 'recordSale': return { ok: true, data: recordSale_(data) };
       default: throw new Error('Unknown action.');
@@ -85,6 +87,45 @@ function stockIn_(data) {
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than zero.');
   adjustInventory_(data.branchId || 'MAIN', data.productId, qty);
   return { productId: data.productId, qty };
+}
+
+function updateProduct_(data) {
+  require_(data.productId, 'Product is required.');
+  require_(data.name, 'Product name is required.');
+  require_(data.category, 'Category is required.');
+  require_(data.unit, 'Unit of measure is required.');
+  const price = Number(data.price);
+  const lowStockLevel = Number(data.lowStockLevel);
+  const status = data.status || 'Active';
+  if (!Number.isFinite(price) || price < 0 || !Number.isFinite(lowStockLevel) || lowStockLevel < 0) throw new Error('Enter valid product values.');
+  if (!['Active', 'Inactive'].includes(status)) throw new Error('Choose a valid product status.');
+
+  const sheet = getSpreadsheet_().getSheetByName('Products');
+  const values = sheet.getDataRange().getValues();
+  const [headers] = values;
+  const row = values.findIndex((record, index) => index > 0 && record[headers.indexOf('product_id')] === data.productId);
+  if (row === -1) throw new Error('Product not found.');
+  const updates = { name: data.name.trim(), category: data.category, unit: data.unit, price, low_stock_level: lowStockLevel, status };
+  Object.keys(updates).forEach((header) => sheet.getRange(row + 1, headers.indexOf(header) + 1).setValue(updates[header]));
+  return { id: data.productId, ...updates };
+}
+
+function deleteProduct_(data) {
+  require_(data.productId, 'Product is required.');
+  if (rows_('SaleItems').some((item) => item.product_id === data.productId)) throw new Error('Products with recorded sales cannot be deleted.');
+  const spreadsheet = getSpreadsheet_();
+  const products = spreadsheet.getSheetByName('Products');
+  const productValues = products.getDataRange().getValues();
+  const productRow = productValues.findIndex((record, index) => index > 0 && record[0] === data.productId);
+  if (productRow === -1) throw new Error('Product not found.');
+
+  const inventory = spreadsheet.getSheetByName('Inventory');
+  const inventoryValues = inventory.getDataRange().getValues();
+  for (let row = inventoryValues.length - 1; row > 0; row -= 1) {
+    if (inventoryValues[row][1] === data.productId) inventory.deleteRow(row + 1);
+  }
+  products.deleteRow(productRow + 1);
+  return { productId: data.productId };
 }
 
 function recordSale_(data) {

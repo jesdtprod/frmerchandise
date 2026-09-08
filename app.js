@@ -5,6 +5,7 @@ let products = [];
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
+let editingProductId = '';
 const PRODUCT_CATEGORIES = ['LPG', 'Softdrinks', 'Others'];
 const PRODUCT_UNITS = ['pc', 'kg', 'g', 'L', 'mL', 'bottle', 'can', 'case', 'pack', 'box', 'bag', 'sack', 'tray', 'gallon', 'drum'];
 
@@ -27,16 +28,18 @@ function renderInventory() {
   const term = $('#searchInput').value.trim().toLowerCase();
   const rows = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
   const table = $('#inventoryTable');
-  const headers = activeView === 'products' ? ['Product', 'Category', 'Selling price', '', ''] : activeView === 'inventory' ? ['Product', 'Category', 'Current stock', '', ''] : ['Product', 'Category', 'Selling price', 'Stock', ''];
+  const headers = activeView === 'products' ? ['Product', 'Category', 'Selling price', '', 'Action'] : activeView === 'inventory' ? ['Product', 'Category', 'Current stock', '', ''] : ['Product', 'Category', 'Selling price', 'Stock', ''];
   const content = rows.map((product) => {
     const lowStock = product.qty <= product.lowStockLevel;
-    const productRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.sku || product.id)} | ${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span></span><span></span>`;
+    const productRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.sku || product.id)} | ${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span></span><span class="table-actions"><button class="icon-button" data-edit="${product.id}" aria-label="Edit ${escapeHtml(product.name)}" title="Edit product">&#9998;</button><button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product">&#128465;</button></span>`;
     const stockRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.sku || product.id)} | ${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span class="${lowStock ? 'stock-low' : ''}">${product.qty}</span><span></span><span></span>`;
     const posRow = `<span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span class="${lowStock ? 'stock-low' : ''}">${product.qty}</span><span><button class="button add-item" data-add="${product.id}" ${product.qty <= 0 || product.status !== 'Active' ? 'disabled' : ''}>Add</button></span>`;
     return `<div class="table-row">${activeView === 'products' ? productRow : activeView === 'inventory' ? stockRow : posRow}</div>`;
   }).join('');
   table.innerHTML = `<div class="table-row table-header">${headers.map((header) => `<span>${header}</span>`).join('')}</div>${content || '<div class="empty-state">No products found.</div>'}`;
   table.querySelectorAll('[data-add]').forEach((button) => button.addEventListener('click', () => addToCart(button.dataset.add)));
+  table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => openForm('edit', button.dataset.edit)));
+  table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
 }
 function renderCart() {
   const container = $('#cartItems');
@@ -52,12 +55,22 @@ function updatePrice(id, value) { const item = cart.find((entry) => entry.id ===
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]); }
 async function refresh() { products = await api('getInventory', { branchId: BRANCH_ID }, 'GET'); renderInventory(); renderCart(); }
 
-function openForm(type) {
+function openForm(type, productId = '') {
   activeForm = type; $('#formError').textContent = '';
-  $('#dialogTitle').textContent = type === 'product' ? 'Add product' : 'Stock in';
-  $('#formSubmit').textContent = type === 'product' ? 'Add product' : 'Save stock';
-  $('#formFields').innerHTML = type === 'product' ? `<label class="full-field">Product Name <span class="required">*</span><input name="name" placeholder="e.g. Premium White Rice" required></label><label>Category <span class="required">*</span><select name="category" required><option value="" selected disabled>Select category</option>${PRODUCT_CATEGORIES.map((category) => `<option value="${category}">${category}</option>`).join('')}</select></label><label>Unit of Measure <span class="required">*</span><select name="unit" required><option value="" selected disabled>Select unit</option>${PRODUCT_UNITS.map((unit) => `<option value="${unit}">${unit}</option>`).join('')}</select></label><label>Selling Price (P) <span class="required">*</span><input name="price" type="number" min="0" step="0.01" placeholder="0.00" required></label><label>Beginning Stock <span class="required">*</span><input name="beginningStock" type="number" min="0" step="0.01" value="0" required></label><label>Low Stock Warning Level <span class="required">*</span><input name="lowStockLevel" type="number" min="0" step="0.01" value="5" required></label><label>Status<select name="status"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></label>` : `<label>Product<select name="productId" required>${products.map((product) => `<option value="${product.id}">${escapeHtml(product.name)}</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="0.01" step="0.01" required></label>`;
+  const product = products.find((item) => item.id === productId);
+  editingProductId = productId;
+  $('#dialogTitle').textContent = type === 'product' ? 'Add product' : type === 'edit' ? 'Edit product' : 'Stock in';
+  $('#formSubmit').textContent = type === 'product' ? 'Add product' : type === 'edit' ? 'Save changes' : 'Save stock';
+  const selected = (value, expected) => value === expected ? ' selected' : '';
+  const productFields = `<label class="full-field">Product Name <span class="required">*</span><input name="name" placeholder="e.g. Premium White Rice" value="${escapeHtml(product?.name || '')}" required></label><label>Category <span class="required">*</span><select name="category" required><option value="" disabled${product ? '' : ' selected'}>Select category</option>${PRODUCT_CATEGORIES.map((category) => `<option value="${category}"${selected(product?.category, category)}>${category}</option>`).join('')}</select></label><label>Unit of Measure <span class="required">*</span><select name="unit" required><option value="" disabled${product ? '' : ' selected'}>Select unit</option>${PRODUCT_UNITS.map((unit) => `<option value="${unit}"${selected(product?.unit, unit)}>${unit}</option>`).join('')}</select></label><label>Selling Price (P) <span class="required">*</span><input name="price" type="number" min="0" step="0.01" placeholder="0.00" value="${product?.price ?? ''}" required></label>${type === 'product' ? '<label>Beginning Stock <span class="required">*</span><input name="beginningStock" type="number" min="0" step="0.01" value="0" required></label>' : ''}<label>Low Stock Warning Level <span class="required">*</span><input name="lowStockLevel" type="number" min="0" step="0.01" value="${product?.lowStockLevel ?? 5}" required></label><label>Status<select name="status"><option value="Active"${selected(product?.status || 'Active', 'Active')}>Active</option><option value="Inactive"${selected(product?.status, 'Inactive')}>Inactive</option></select></label>`;
+  $('#formFields').innerHTML = type === 'product' || type === 'edit' ? productFields : `<label>Product<select name="productId" required>${products.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="0.01" step="0.01" required></label>`;
   $('#formDialog').showModal();
+}
+
+async function deleteProduct(productId) {
+  const product = products.find((item) => item.id === productId);
+  if (!window.confirm(`Delete ${product.name}?`)) return;
+  try { await api('deleteProduct', { productId }); await refresh(); showToast('Product deleted.'); } catch (error) { showToast(error.message); }
 }
 
 function setView(view) {
@@ -82,7 +95,7 @@ document.querySelectorAll('[data-view]').forEach((link) => link.addEventListener
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
 $('#settingsForm').addEventListener('submit', async (event) => { event.preventDefault(); const url = $('#apiUrlInput').value.trim(); if (!url) return; localStorage.setItem(endpointKey, url); $('#settingsDialog').close(); try { await refresh(); showToast('API connected.'); } catch (error) { showToast(error.message); } });
 $('#addProductButton').addEventListener('click', () => openForm('product')); $('#stockInButton').addEventListener('click', () => openForm('stock'));
-$('#modalForm').addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { if (activeForm === 'product') await api('createProduct', Object.fromEntries(form)); else await api('stockIn', { ...Object.fromEntries(form), branchId: BRANCH_ID }); $('#formDialog').close(); await refresh(); showToast(activeForm === 'product' ? 'Product added.' : 'Stock updated.'); } catch (error) { $('#formError').textContent = error.message; } });
+$('#modalForm').addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { if (activeForm === 'product') await api('createProduct', Object.fromEntries(form)); else if (activeForm === 'edit') await api('updateProduct', { ...Object.fromEntries(form), productId: editingProductId }); else await api('stockIn', { ...Object.fromEntries(form), branchId: BRANCH_ID }); $('#formDialog').close(); await refresh(); showToast(activeForm === 'product' ? 'Product added.' : activeForm === 'edit' ? 'Product updated.' : 'Stock updated.'); } catch (error) { $('#formError').textContent = error.message; } });
 $('#searchInput').addEventListener('input', renderInventory); $('#clearCartButton').addEventListener('click', () => { cart = []; renderCart(); });
 $('#checkoutButton').addEventListener('click', async () => { if (!cart.length) return showToast('Add an item before checkout.'); try { const sale = await api('recordSale', { branchId: BRANCH_ID, items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })) }); cart = []; await refresh(); showToast(`Sale ${sale.saleId} recorded: ${money(sale.total)}`); } catch (error) { showToast(error.message); } });
 setView('pos');
