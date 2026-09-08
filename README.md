@@ -14,7 +14,7 @@ Apps Script does not handle browser CORS preflight requests. The frontend sends 
 ## Sheets Created
 
 - `Branches`: branch ID, branch name, branch type, address
-- `Products`: product ID, product name, unit, default selling price, category, cost price
+- `Products`: product ID, product name, unit, default selling price, category, cost price, auto-generated SKU, low-stock level, status
 - `Inventory`: branch ID, product ID, quantity
 - `Sales`: sale ID, branch ID, sale date, customer ID, total, payment type, status
 - `SaleItems`: sale ID, product ID, quantity, unit price
