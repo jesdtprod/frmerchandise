@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1HYt8MOZJ0JchXLCpAp5V5ypQ3-MRUMpmKlPWMlVVvPg';
 
 const SHEETS = {
   Branches: ['branch_id', 'name', 'type', 'address'],
-  Products: ['product_id', 'name', 'unit', 'price', 'category'],
+  Products: ['product_id', 'name', 'unit', 'price', 'category', 'cost_price'],
   Inventory: ['branch_id', 'product_id', 'qty'],
   Sales: ['sale_id', 'branch_id', 'date', 'customer_id', 'total', 'payment_type', 'status'],
   SaleItems: ['sale_id', 'product_id', 'qty', 'price'],
@@ -22,7 +22,7 @@ function setupSheets() {
   Object.keys(SHEETS).forEach((name) => {
     let sheet = spreadsheet.getSheetByName(name);
     if (!sheet) sheet = spreadsheet.insertSheet(name);
-    if (sheet.getLastRow() === 0) sheet.appendRow(SHEETS[name]);
+    ensureHeaders_(sheet, SHEETS[name]);
   });
 
   const branches = spreadsheet.getSheetByName('Branches');
@@ -47,7 +47,7 @@ function route_(action, data) {
 
 function getProducts_() {
   return rows_('Products').map((row) => ({
-    id: row.product_id, name: row.name, unit: row.unit, price: Number(row.price), category: row.category,
+    id: row.product_id, name: row.name, unit: row.unit, price: Number(row.price), category: row.category, costPrice: Number(row.cost_price || 0),
   }));
 }
 
@@ -63,9 +63,10 @@ function getInventory_(branchId) {
 function createProduct_(data) {
   require_(data.name, 'Product name is required.');
   const price = Number(data.price);
-  if (!Number.isFinite(price) || price < 0) throw new Error('Enter a valid price.');
-  const product = { id: id_('PRD'), name: data.name.trim(), unit: data.unit || 'pc', price, category: (data.category || '').trim() };
-  getSpreadsheet_().getSheetByName('Products').appendRow([product.id, product.name, product.unit, product.price, product.category]);
+  const costPrice = Number(data.costPrice);
+  if (!Number.isFinite(price) || price < 0 || !Number.isFinite(costPrice) || costPrice < 0) throw new Error('Enter valid cost and selling prices.');
+  const product = { id: id_('PRD'), name: data.name.trim(), unit: data.unit || 'pc', price, category: (data.category || '').trim(), costPrice };
+  getSpreadsheet_().getSheetByName('Products').appendRow([product.id, product.name, product.unit, product.price, product.category, product.costPrice]);
   return product;
 }
 
@@ -95,7 +96,11 @@ function recordSale_(data) {
     });
 
     const saleId = id_('SAL');
-    const saleItems = items.map((item) => ({ ...byId[item.productId], qty: Number(item.qty) }));
+    const saleItems = items.map((item) => {
+      const price = item.price === undefined ? byId[item.productId].price : Number(item.price);
+      if (!Number.isFinite(price) || price < 0) throw new Error('Enter a valid selling price for every item.');
+      return { ...byId[item.productId], qty: Number(item.qty), price };
+    });
     const total = saleItems.reduce((sum, item) => sum + item.qty * item.price, 0);
     const now = new Date();
     getSpreadsheet_().getSheetByName('Sales').appendRow([saleId, branchId, now, '', total, 'cash', 'completed']);
@@ -120,6 +125,16 @@ function rows_(sheetName) {
   const values = getSpreadsheet_().getSheetByName(sheetName).getDataRange().getValues();
   const [headers, ...records] = values;
   return records.filter((record) => record[0] !== '').map((record) => Object.fromEntries(headers.map((header, index) => [header, record[index]])));
+}
+
+function ensureHeaders_(sheet, headers) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+    return;
+  }
+  const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const missing = headers.filter((header) => !currentHeaders.includes(header));
+  if (missing.length) sheet.getRange(1, currentHeaders.length + 1, 1, missing.length).setValues([missing]);
 }
 
 function getSpreadsheet_() {

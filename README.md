@@ -14,9 +14,9 @@ Apps Script does not handle browser CORS preflight requests. The frontend sends 
 ## Sheets Created
 
 - `Branches`: branch ID, branch name, branch type, address
-- `Products`: product ID, product name, unit, price, category
+- `Products`: product ID, product name, unit, default selling price, category, cost price
 - `Inventory`: branch ID, product ID, quantity
 - `Sales`: sale ID, branch ID, sale date, customer ID, total, payment type, status
 - `SaleItems`: sale ID, product ID, quantity, unit price
 
-The initial branch is `MAIN`. Add products through the web app, record stock-in, and complete cash sales from the POS panel.
+The initial branch is `MAIN`. Add products through the web app, record stock-in, and complete cash sales from the POS panel. The cashier can override the selling price for each cart item; the exact sale price is saved in `SaleItems`.
