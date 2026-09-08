@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FR Merchandise POS</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div><p class="eyebrow">FR MERCHANDISE</p><h1>Point of Sale</h1></div>
+      <div class="branch-label"><span></span>Main Branch</div>
+      <button class="icon-button" id="settingsButton" aria-label="API settings" title="API settings">&#9881;</button>
+    </header>
+    <main class="workspace">
+      <section class="catalog"><div class="section-head"><div><p class="eyebrow">INVENTORY</p><h2>Available products</h2></div><button class="button" id="addProductButton">Add product</button></div>
+        <div class="toolbar"><input id="searchInput" type="search" placeholder="Search products" /><button class="button button-secondary" id="stockInButton">Stock in</button></div>
+        <div class="grid-table" id="inventoryTable"><div class="table-row table-header"><span>Product</span><span>Category</span><span>Price</span><span>Stock</span><span></span></div><div class="empty-state">Connect the API to load inventory.</div></div>
+      </section>
+      <aside class="cart"><div class="section-head"><div><p class="eyebrow">CURRENT SALE</p><h2>Cash checkout</h2></div><button class="text-button" id="clearCartButton">Clear</button></div>
+        <div class="cart-items" id="cartItems"><div class="empty-state">Select items from inventory.</div></div>
+        <div class="total"><span>Total</span><strong id="cartTotal">PHP 0.00</strong></div>
+        <button class="button checkout" id="checkoutButton">Complete cash sale</button>
+      </aside>
+    </main>
+    <dialog id="formDialog"><form method="dialog" id="modalForm"><div class="modal-head"><h2 id="dialogTitle">Add product</h2><button class="icon-button" type="button" data-close="formDialog" aria-label="Close">&times;</button></div><div id="formFields"></div><p class="form-error" id="formError"></p><div class="modal-actions"><button class="button button-secondary" type="button" data-close="formDialog">Cancel</button><button class="button" type="submit" id="formSubmit">Save</button></div></form></dialog>
+    <dialog id="settingsDialog"><form method="dialog" id="settingsForm"><div class="modal-head"><h2>API connection</h2><button class="icon-button" type="button" data-close="settingsDialog" aria-label="Close">&times;</button></div><label>Apps Script Web App URL<input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec" /></label><p class="hint">Your API URL is stored only in this browser.</p><div class="modal-actions"><button class="button button-secondary" type="button" data-close="settingsDialog">Cancel</button><button class="button" type="submit">Save and connect</button></div></form></dialog>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

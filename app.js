@@ -1,0 +1,56 @@
+const BRANCH_ID = 'MAIN';
+const endpointKey = 'fr-pos-api-url';
+let products = [];
+let cart = [];
+let activeForm = '';
+
+const $ = (selector) => document.querySelector(selector);
+const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+async function api(action, payload = {}, method = 'POST') {
+  const url = localStorage.getItem(endpointKey);
+  if (!url) throw new Error('Add your Apps Script Web App URL in settings first.');
+  const options = method === 'GET' ? {} : { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, ...payload }) };
+  const target = method === 'GET' ? `${url}?${new URLSearchParams({ action, ...payload })}` : url;
+  const response = await fetch(target, options);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || 'The API request failed.');
+  return result.data;
+}
+
+function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+function renderInventory() {
+  const term = $('#searchInput').value.trim().toLowerCase();
+  const rows = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
+  const table = $('#inventoryTable');
+  table.innerHTML = `<div class="table-row table-header"><span>Product</span><span>Category</span><span>Price</span><span>Stock</span><span></span></div>${rows.length ? rows.map((product) => `<div class="table-row"><span><strong>${escapeHtml(product.name)}</strong><br><small>${escapeHtml(product.unit)}</small></span><span>${escapeHtml(product.category || '-')}</span><span>${money(product.price)}</span><span class="${product.qty <= 5 ? 'stock-low' : ''}">${product.qty}</span><span><button class="button add-item" data-add="${product.id}" ${product.qty <= 0 ? 'disabled' : ''}>Add</button></span></div>`).join('') : '<div class="empty-state">No products found.</div>'}`;
+  table.querySelectorAll('[data-add]').forEach((button) => button.addEventListener('click', () => addToCart(button.dataset.add)));
+}
+function renderCart() {
+  const container = $('#cartItems');
+  container.innerHTML = cart.length ? cart.map((item) => `<div class="cart-row"><span><strong>${escapeHtml(item.name)}</strong><br><small>${money(item.price)} each</small></span><input aria-label="Quantity for ${escapeHtml(item.name)}" type="number" min="1" max="${item.stock}" value="${item.qty}" data-qty="${item.id}"><strong>${money(item.qty * item.price)}</strong><button class="text-button remove" aria-label="Remove ${escapeHtml(item.name)}" data-remove="${item.id}">&times;</button></div>`).join('') : '<div class="empty-state">Select items from inventory.</div>';
+  $('#cartTotal').textContent = money(cart.reduce((total, item) => total + item.qty * item.price, 0));
+  container.querySelectorAll('[data-qty]').forEach((input) => input.addEventListener('change', () => updateQty(input.dataset.qty, input.value)));
+  container.querySelectorAll('[data-remove]').forEach((button) => button.addEventListener('click', () => { cart = cart.filter((item) => item.id !== button.dataset.remove); renderCart(); }));
+}
+function addToCart(id) { const product = products.find((item) => item.id === id); const existing = cart.find((item) => item.id === id); if (existing) { if (existing.qty < product.qty) existing.qty += 1; } else cart.push({ ...product, stock: product.qty, qty: 1 }); renderCart(); }
+function updateQty(id, value) { const item = cart.find((entry) => entry.id === id); item.qty = Math.min(item.stock, Math.max(1, Number(value) || 1)); renderCart(); }
+function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]); }
+async function refresh() { products = await api('getInventory', { branchId: BRANCH_ID }, 'GET'); renderInventory(); renderCart(); }
+
+function openForm(type) {
+  activeForm = type; $('#formError').textContent = '';
+  $('#dialogTitle').textContent = type === 'product' ? 'Add product' : 'Stock in';
+  $('#formSubmit').textContent = type === 'product' ? 'Add product' : 'Save stock';
+  $('#formFields').innerHTML = type === 'product' ? '<label>Product name<input name="name" required></label><label>Category<input name="category"></label><label>Unit<select name="unit"><option value="pc">pc</option><option value="kg">kg</option></select></label><label>Price<input name="price" type="number" min="0" step="0.01" required></label>' : `<label>Product<select name="productId" required>${products.map((product) => `<option value="${product.id}">${escapeHtml(product.name)}</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="0.01" step="0.01" required></label>`;
+  $('#formDialog').showModal();
+}
+
+$('#settingsButton').addEventListener('click', () => { $('#apiUrlInput').value = localStorage.getItem(endpointKey) || ''; $('#settingsDialog').showModal(); });
+document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
+$('#settingsForm').addEventListener('submit', async (event) => { event.preventDefault(); const url = $('#apiUrlInput').value.trim(); if (!url) return; localStorage.setItem(endpointKey, url); $('#settingsDialog').close(); try { await refresh(); showToast('API connected.'); } catch (error) { showToast(error.message); } });
+$('#addProductButton').addEventListener('click', () => openForm('product')); $('#stockInButton').addEventListener('click', () => openForm('stock'));
+$('#modalForm').addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { if (activeForm === 'product') await api('createProduct', Object.fromEntries(form)); else await api('stockIn', { ...Object.fromEntries(form), branchId: BRANCH_ID }); $('#formDialog').close(); await refresh(); showToast(activeForm === 'product' ? 'Product added.' : 'Stock updated.'); } catch (error) { $('#formError').textContent = error.message; } });
+$('#searchInput').addEventListener('input', renderInventory); $('#clearCartButton').addEventListener('click', () => { cart = []; renderCart(); });
+$('#checkoutButton').addEventListener('click', async () => { if (!cart.length) return showToast('Add an item before checkout.'); try { const sale = await api('recordSale', { branchId: BRANCH_ID, items: cart.map((item) => ({ productId: item.id, qty: item.qty })) }); cart = []; await refresh(); showToast(`Sale ${sale.saleId} recorded: ${money(sale.total)}`); } catch (error) { showToast(error.message); } });
+if (localStorage.getItem(endpointKey)) refresh().catch((error) => showToast(error.message));
