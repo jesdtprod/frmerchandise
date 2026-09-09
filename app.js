@@ -12,6 +12,7 @@ let creditAccounts = [];
 let creditPayments = [];
 let pendingCreditAccount = null;
 let salesHistory = [];
+let inventoryReportData = {};
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
@@ -24,6 +25,40 @@ const PRODUCT_UNITS = ['pc', 'kg', 'g', 'L', 'mL', 'bottle', 'can', 'case', 'pac
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+let badgeAlignmentFrame = 0;
+function alignTableBadges() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const badges = [...table.querySelectorAll('.stock-pill, .low-stock-pill, .category-badge, .transfer-quantity, .credit-sale-badge, .payment-collected-badge')]
+    .filter((badge) => badge.getBoundingClientRect().width > 0);
+
+  badges.forEach((badge) => {
+    badge.style.width = '';
+    badge.style.justifyContent = '';
+  });
+  if (window.matchMedia('(max-width: 640px)').matches) return;
+
+  const columns = new Map();
+  badges.forEach((badge) => {
+    const rect = badge.getBoundingClientRect();
+    const key = Math.round(rect.left / 4) * 4;
+    const column = columns.get(key) || { width: 0, badges: [] };
+    column.width = Math.max(column.width, rect.width);
+    column.badges.push(badge);
+    columns.set(key, column);
+  });
+  columns.forEach((column) => column.badges.forEach((badge) => {
+    badge.style.width = `${Math.ceil(column.width)}px`;
+    badge.style.justifyContent = 'center';
+  }));
+}
+
+function scheduleBadgeAlignment() {
+  cancelAnimationFrame(badgeAlignmentFrame);
+  badgeAlignmentFrame = requestAnimationFrame(alignTableBadges);
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 }
@@ -321,6 +356,75 @@ function generateSalesPdf() {
   window.print();
 }
 
+function generateInventoryReportPdf() {
+  const printDoc = $('#salesPrintDocument');
+  if (!printDoc) return;
+
+  const branch = branches.find((item) => item.id === activeBranchId) || { name: 'Main Branch' };
+  const rows = getInventoryReportRows();
+  const generatedTime = new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+
+  printDoc.innerHTML = `
+    <div class="report-page inventory-print-page">
+      <header class="report-header">
+        <div class="report-brand-wrap">
+          <svg viewBox="0 0 36 36" class="report-badge-svg" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="16.5" fill="#081326"/>
+            <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
+            <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
+            <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
+          </svg>
+          <div>
+            <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
+            <h1 class="report-title">Branch Inventory Report</h1>
+            <p class="report-subtitle">Stock movement and remaining inventory by product</p>
+          </div>
+        </div>
+        <div class="report-meta-box">
+          <div class="report-meta-row"><span class="meta-label">Branch:</span><strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong></div>
+          <div class="report-meta-row"><span class="meta-label">Scope:</span><strong class="meta-val">Active Branch Inventory</strong></div>
+          <div class="report-meta-row"><span class="meta-label">Generated:</span><span class="meta-val">${escapeHtml(generatedTime)}</span></div>
+        </div>
+      </header>
+
+      <section class="report-ledger-body">
+        <div class="report-section-title-wrap"><h2 class="report-section-title">Inventory Movement by Product</h2><span class="report-count-badge">${rows.length} Products</span></div>
+        <div class="report-tx-card">
+          <div class="report-tx-items-wrap">
+            <table class="report-items-table inventory-report-table">
+              <thead><tr><th>Product</th><th style="text-align:center;">Qty Sold</th><th style="text-align:center;">Qty Stock In</th><th style="text-align:center;">Qty Transfer</th><th style="text-align:center;">Qty Remaining</th><th style="text-align:right;">Status</th></tr></thead>
+              <tbody>
+                ${rows.map((product) => {
+                  const qty = Math.max(Number(product.qty) || 0, 0);
+                  const status = getInventoryReportStatus(product);
+                  const movement = getInventoryReportMovement(product.id);
+                  return `<tr><td class="col-name"><strong class="item-name">${escapeHtml(product.name)}</strong><br><span>${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit || 'unit')}</span></td><td style="text-align:center;">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${formatTransferQuantity(movement)}</td><td style="text-align:center;"><strong>${qty.toLocaleString('en-PH')}</strong></td><td style="text-align:right;">${escapeHtml(status.label)}</td></tr>`;
+                }).join('') || '<tr><td colspan="6" style="text-align:center; padding:12px;">No inventory records found.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="report-document-footer">
+        <div class="report-sign-block"><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Prepared By (Cashier / Staff)</span><span class="sign-sub">Signature over printed name</span></div><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Audited & Verified By</span><span class="sign-sub">Branch Manager / Operations</span></div></div>
+        <div class="report-disclaimer"><p>FR MERCHANDISE SYSTEM-GENERATED INVENTORY REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p></div>
+      </footer>
+    </div>
+  `;
+
+  document.body.dataset.printMode = 'sales';
+  const clearPrintMode = () => {
+    delete document.body.dataset.printMode;
+    printDoc.hidden = true;
+    printDoc.innerHTML = '';
+    window.removeEventListener('afterprint', clearPrintMode);
+  };
+  window.addEventListener('afterprint', clearPrintMode);
+  printDoc.hidden = false;
+  window.print();
+}
+
 function askConfirmation({
   title = 'Confirm Action',
   eyebrow = 'CONFIRM ACTION',
@@ -455,7 +559,7 @@ function renderSkeletonTable() {
     : activeView === 'inventory'
     ? ['Product', 'Category', 'Current stock', 'Stock warning', 'Status']
     : activeView === 'inventoryReports'
-    ? ['Product', 'Category', 'Quantity in stock', 'Selling price', 'Stock value', 'Status']
+    ? ['Product', 'Qty sold', 'Qty stock in', 'Qty transfer', 'Qty remaining', 'Status']
     : activeView === 'branches'
     ? ['Branch', 'Type', 'Address', 'Status', 'Action']
     : activeView === 'customers'
@@ -489,9 +593,9 @@ function renderSkeletonTable() {
     if (activeView === 'inventoryReports') {
       return `
         <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line qty"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line price"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line price"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
         <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
       `;
     }
@@ -1229,38 +1333,46 @@ function getInventoryReportStatus(product) {
   return { label: 'In stock', className: 'stock-normal' };
 }
 
+function getInventoryReportMovement(productId) {
+  return inventoryReportData[productId] || { qtySold: 0, qtyStockIn: 0, qtyTransferIn: 0, qtyTransferOut: 0 };
+}
+
+function formatTransferQuantity(movement) {
+  const incoming = Number(movement.qtyTransferIn) || 0;
+  const outgoing = Number(movement.qtyTransferOut) || 0;
+  if (!incoming && !outgoing) return 'None';
+  return `+${incoming.toLocaleString('en-PH')} / -${outgoing.toLocaleString('en-PH')}`;
+}
+
+function renderTransferQuantity(movement) {
+  const incoming = Number(movement.qtyTransferIn) || 0;
+  const outgoing = Number(movement.qtyTransferOut) || 0;
+  const badges = [];
+  if (incoming) badges.push(`<span class="transfer-badge report-transfer-badge transfer-in">+${incoming.toLocaleString('en-PH')}</span>`);
+  if (outgoing) badges.push(`<span class="transfer-badge report-transfer-badge transfer-out">-${outgoing.toLocaleString('en-PH')}</span>`);
+  return badges.join('') || '<span class="transfer-badge report-transfer-badge transfer-none">None</span>';
+}
+
 function renderInventoryReports() {
   const table = $('#inventoryTable');
-  const summary = $('#inventoryReportSummary');
-  if (!table || !summary) return;
+  if (!table) return;
 
   const rows = getInventoryReportRows();
-  const activeProducts = products.filter((product) => product.status === 'Active');
-  const totalUnits = products.reduce((sum, product) => sum + Math.max(Number(product.qty) || 0, 0), 0);
-  const lowStockCount = activeProducts.filter((product) => (Number(product.qty) || 0) <= Number(product.lowStockLevel || 0)).length;
-  const stockValue = products.reduce((sum, product) => sum + (Math.max(Number(product.qty) || 0, 0) * (Number(product.price) || 0)), 0);
-
-  summary.hidden = false;
-  summary.innerHTML = `
-    <div class="inventory-report-stat"><span>Registered Products</span><strong>${products.length}</strong><small>In the active branch</small></div>
-    <div class="inventory-report-stat"><span>Units on Hand</span><strong>${totalUnits.toLocaleString('en-PH')}</strong><small>Across all products</small></div>
-    <div class="inventory-report-stat ${lowStockCount ? 'warning-stat' : ''}"><span>Low or Out of Stock</span><strong>${lowStockCount}</strong><small>Needs stock attention</small></div>
-    <div class="inventory-report-stat value-stat"><span>Estimated Selling Value</span><strong>${money(stockValue)}</strong><small>Based on branch prices</small></div>
-  `;
 
   table.innerHTML = `
-    <div class="table-row table-header"><span>Product</span><span>Category</span><span>Quantity in Stock</span><span>Selling Price</span><span>Stock Value</span><span>Status</span></div>
+    <div class="table-row table-header"><span>Product</span><span>Qty Sold</span><span>Qty Stock In</span><span>Qty Transfer</span><span>Qty Remaining</span><span>Status</span></div>
     ${rows.map((product) => {
       const qty = Math.max(Number(product.qty) || 0, 0);
       const status = getInventoryReportStatus(product);
+      const movement = getInventoryReportMovement(product.id);
       return `<div class="table-row">
         <div class="product-cell"><strong class="product-name">${escapeHtml(product.name)}</strong><span class="product-meta">${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit || 'unit')}</span></div>
         <div class="row-middle-cells">
-          <span class="category-badge">${escapeHtml(product.category || 'General')}</span>
-          <span class="stock-pill stock-quantity">${qty.toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
-          <span class="price-text">${money(product.price)}</span>
-          <span class="price-text">${money(qty * (Number(product.price) || 0))}</span>
-          <span class="stock-pill ${status.className}">${status.label}</span>
+          <span class="stock-pill stock-quantity report-qty-sold">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="stock-pill stock-quantity report-qty-stock-in">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="transfer-quantity">${renderTransferQuantity(movement)}</span>
+          <span class="stock-pill stock-quantity report-qty-remaining">${qty.toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="stock-pill report-stock-status ${status.className}">${status.label}</span>
         </div>
       </div>`;
     }).join('') || '<div class="empty-state"><p>No products found</p><small>Try adjusting your search query.</small></div>'}
@@ -2079,6 +2191,7 @@ async function refresh(showSkeleton = true) {
     creditAccounts = data.creditAccounts || [];
     creditPayments = data.creditPayments || [];
     salesHistory = data.salesHistory || [];
+    inventoryReportData = data.inventoryReport || {};
     allProducts = data.products;
     renderInventory();
     renderCart();
@@ -2398,7 +2511,7 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales'];
+  const validViews = ['pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports'];
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
   localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
@@ -2410,6 +2523,7 @@ function setView(view, preserveSidebarOpen = false) {
     customers: ['CUSTOMER ACCOUNTS', 'Customers', 'CUSTOMER DIRECTORY', 'Customers in the Selected Branch'],
     credits: ['CUSTOMER ACCOUNTS', 'Credit Payments', 'ACCOUNT RECEIVABLES', 'Outstanding Customer Credit'],
     sales: ['REPORTING', 'Sales History', 'SALES LEDGER', 'Branch Sales History'],
+    inventoryReports: ['REPORTING', 'Inventory Reports', 'INVENTORY REPORT', 'Active Branch Stock Report'],
     transfers: ['BRANCH OPERATIONS', 'Stock Transfers', 'TRANSFER TRACKING', 'Outgoing and Incoming Branch Stock'],
   }[view] || ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'];
 
@@ -2429,6 +2543,8 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search customer, credit sale, or payment note...'
       : view === 'sales'
       ? 'Search receipt, customer, or payment type...'
+      : view === 'inventoryReports'
+      ? 'Search product name, SKU, or category...'
       : 'Search product name, SKU, or category...';
   }
 
@@ -2440,6 +2556,7 @@ function setView(view, preserveSidebarOpen = false) {
     customers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>`,
     credits: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
     sales: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
+    inventoryReports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="M9 12h6M9 16h6M9 20h4"/></svg>`,
     transfers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
   };
 
@@ -2450,7 +2567,7 @@ function setView(view, preserveSidebarOpen = false) {
 
   const isPos = view === 'pos';
   const sectionActions = $('#sectionActions');
-  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' ? 'none' : 'flex';
+  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' ? 'none' : 'flex';
   const addBtn = $('#addProductButton');
   if (addBtn) addBtn.hidden = view !== 'products';
   const addExistingProductBtn = $('#addExistingProductButton');
@@ -2463,6 +2580,8 @@ function setView(view, preserveSidebarOpen = false) {
   if (customerBtn) customerBtn.hidden = view !== 'customers';
   const transferBtn = $('#addTransferButton');
   if (transferBtn) transferBtn.hidden = view !== 'transfers';
+  const inventoryPdfBtn = $('#generateInventoryPdfButton');
+  if (inventoryPdfBtn) inventoryPdfBtn.hidden = view !== 'inventoryReports';
   $('#pos').dataset.view = view;
 
   // Mobile cart button only visible on POS view
@@ -2598,6 +2717,14 @@ if (receiptScrollContainer) {
 }
 window.addEventListener('resize', updateCartScrollFade, { passive: true });
 window.addEventListener('resize', updateReceiptScrollFade, { passive: true });
+window.addEventListener('resize', scheduleBadgeAlignment, { passive: true });
+
+const inventoryTableElement = $('#inventoryTable');
+if (inventoryTableElement) {
+  const inventoryTableObserver = new MutationObserver(scheduleBadgeAlignment);
+  inventoryTableObserver.observe(inventoryTableElement, { childList: true, subtree: true });
+  scheduleBadgeAlignment();
+}
 
 document.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', () => setView(link.dataset.view)));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => {
@@ -2659,6 +2786,7 @@ $('#stockInButton').addEventListener('click', () => openForm('stock'));
 $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
+$('#generateInventoryPdfButton').addEventListener('click', generateInventoryReportPdf);
 
 $('#modalForm').addEventListener('submit', async (event) => {
   event.preventDefault();

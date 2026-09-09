@@ -149,6 +149,7 @@ function getAppData_(branchId) {
     creditAccounts: creditData.accounts,
     creditPayments: creditData.payments,
     salesHistory: getSalesHistory_(branchId),
+    inventoryReport: getInventoryReportData_(branchId),
   };
   const serialized = JSON.stringify(data);
   if (serialized.length < 90000) cache.put(cacheKey, serialized, 30);
@@ -366,6 +367,37 @@ function createTransfer_(data) {
   getSpreadsheet_().getSheetByName('StockTransfers').appendRow([transfer.id, transfer.sourceBranchId, transfer.destinationBranchId, transfer.productId, transfer.qty, transfer.status, transfer.createdAt, '', '', '', transfer.notes]);
   invalidateAppData_();
   return transfer;
+}
+
+function getInventoryReportData_(branchId) {
+  requireBranch_(branchId);
+  const totals = {};
+  const getTotal = (productId) => totals[productId] || (totals[productId] = { qtySold: 0, qtyStockIn: 0, qtyTransferIn: 0, qtyTransferOut: 0 });
+
+  const completedSaleIds = new Set(rows_('Sales')
+    .filter((row) => row.branch_id === branchId && String(row.status || '').toLowerCase() === 'completed')
+    .map((row) => row.sale_id));
+  rows_('SaleItems').forEach((row) => {
+    if (completedSaleIds.has(row.sale_id)) getTotal(row.product_id).qtySold += Number(row.qty) || 0;
+  });
+
+  rows_('StockIns').forEach((row) => {
+    if (row.branch_id === branchId && String(row.status || '').toLowerCase() === 'completed') {
+      getTotal(row.product_id).qtyStockIn += Number(row.qty) || 0;
+    }
+  });
+
+  rows_('StockTransfers').forEach((row) => {
+    const qty = Number(row.qty) || 0;
+    if (row.source_branch_id === branchId && ['In Transit', 'Received'].includes(row.status)) {
+      getTotal(row.product_id).qtyTransferOut += qty;
+    }
+    if (row.destination_branch_id === branchId && row.status === 'Received') {
+      getTotal(row.product_id).qtyTransferIn += qty;
+    }
+  });
+
+  return totals;
 }
 
 function getTransferProducts_(sourceBranchId, destinationBranchId) {
