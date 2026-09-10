@@ -65,7 +65,15 @@
 }
 
 html, body {
-  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 body {
@@ -75,6 +83,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
   overflow-x: hidden;
+  position: relative;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -689,6 +698,9 @@ body::after {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   background-color: var(--bg-midnight);
@@ -708,6 +720,9 @@ body::after {
 
 .app-content {
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
 }
@@ -1293,6 +1308,8 @@ body::after {
 .workspace {
   max-width: 1680px;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 24px clamp(16px, 2.5vw, 36px);
   display: grid;
@@ -2873,6 +2890,10 @@ body::after {
 
 .catalog {
   padding: 24px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .cart {
@@ -3154,6 +3175,10 @@ body::after {
   background: var(--bg-obsidian);
   scrollbar-width: none;
   -ms-overflow-style: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .table-container::-webkit-scrollbar {
@@ -3165,6 +3190,8 @@ body::after {
 .grid-table {
   min-width: 0;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .table-row {
@@ -3360,27 +3387,50 @@ body::after {
 
 @media (max-width: 640px) {
   .workspace[data-view="sales"] .toolbar {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    gap: 10px;
+    box-sizing: border-box;
+  }
+
+  .workspace[data-view="sales"] .search-wrap {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .workspace[data-view="sales"] .sales-date-range {
     width: 100%;
-    margin-top: 10px;
-  }
-
-  .sales-date-range {
+    max-width: 100%;
+    margin-top: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    box-sizing: border-box;
+  }
+
+  .sales-date-control {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .sales-date-control input,
   .sales-date-control .datepicker-trigger {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .sales-pdf-button {
     grid-column: 1 / -1;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
 
@@ -7921,8 +7971,34 @@ dialog.confirm-dialog {
 
 /* Mobile & Small Tablet Breakpoint (<= 860px) */
 @media (max-width: 860px) {
+  body::before {
+    right: 0;
+    width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+  }
+
+  body::after {
+    left: 0;
+    width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+  }
+
   .app-shell {
     display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .app-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
   }
 
   .sidebar-backdrop {
@@ -7990,9 +8066,43 @@ dialog.confirm-dialog {
 
 
   .workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     padding: 18px 14px;
     gap: 20px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .workspace[data-view="sales"] {
+    grid-template-columns: 1fr !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .workspace[data-view="sales"] .toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .workspace[data-view="sales"] .sales-date-range {
+    max-width: 100%;
+  }
+
+  .catalog {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .table-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .button-cart-toggle {
@@ -8265,11 +8375,44 @@ dialog.confirm-dialog {
     gap: 7px 12px;
     padding: 12px 14px;
     min-height: auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
-  .workspace[data-view="sales"] .table-row .product-cell { grid-area: prod; }
-  .workspace[data-view="sales"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
-  .workspace[data-view="sales"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
+  .workspace[data-view="sales"] .table-row .product-cell {
+    grid-area: prod;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .workspace[data-view="sales"] .table-row .row-middle-cells {
+    grid-area: details;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace[data-view="sales"] .table-row .row-middle-cells .product-cell {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace[data-view="sales"] .table-row .product-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .workspace[data-view="sales"] .table-row .row-action-cell {
+    grid-area: action;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
 
   .workspace[data-view="transfers"] .table-row:not(.table-header) {
     display: grid;
@@ -8647,11 +8790,12 @@ dialog.confirm-dialog {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 260px;
+  max-width: 100%;
   font-size: 11px;
   color: #60a5fa;
   margin-top: 2px;
   line-height: 1.35;
+  word-break: break-word;
 }
 
 /* ==========================================================================
