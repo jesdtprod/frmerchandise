@@ -23,6 +23,21 @@ let adminAccounts = [];
 let editingProductId = '';
 let pendingActionConfirmResolver = null;
 let toastTimer = null;
+let refreshInFlight = false;
+
+// Utility: debounce — delays fn execution until after `wait` ms of silence
+function debounce(fn, wait = 150) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// Fire a silent background refresh (no skeleton, non-blocking)
+function backgroundRefresh() {
+  refresh(false).catch(() => {});
+}
 
 const PRODUCT_CATEGORIES = ['LPG', 'Softdrinks', 'Others'];
 const PRODUCT_UNITS = ['pc', 'kg', 'g', 'L', 'mL', 'bottle', 'can', 'case', 'pack', 'box', 'bag', 'sack', 'tray', 'gallon', 'drum'];
@@ -1560,7 +1575,14 @@ async function toggleStaffStatus(staffId) {
   const activating = staff.status !== 'Active';
   const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Staff`, eyebrow: 'STAFF ACCOUNTS', subtitle: 'Confirm account access change', message: `${activating ? 'Restore' : 'Remove'} sign-in access for <strong class="confirm-highlight-name">${escapeHtml(staff.fullName)}</strong>?`, warning: activating ? 'The staff member can sign in again.' : 'All active sessions for this staff member will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
   if (!confirmed) return;
-  await api('setStaffAccountStatus', { staffId, status: activating ? 'Active' : 'Inactive' }); await refresh(); showToast(`Staff account ${activating ? 'reactivated' : 'deactivated'}.`, 'success');
+  try {
+    await api('setStaffAccountStatus', { staffId, status: activating ? 'Active' : 'Inactive' });
+    // Optimistic: flip status in local staffAccounts and re-render
+    staffAccounts = staffAccounts.map((s) => s.id === staffId ? { ...s, status: activating ? 'Active' : 'Inactive' } : s);
+    renderInventory();
+    showToast(`Staff account ${activating ? 'reactivated' : 'deactivated'}.`, 'success');
+    backgroundRefresh();
+  } catch (error) { showToast(error.message, 'error'); }
 }
 
 function resetStaffPassword(staffId) {
@@ -1585,7 +1607,14 @@ async function toggleAdminStatus(adminId) {
   const activating = account.status !== 'Active';
   const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Administrator`, eyebrow: 'ADMINISTRATION', subtitle: 'Confirm administrator access', message: `${activating ? 'Restore' : 'Remove'} full system access for <strong class="confirm-highlight-name">${escapeHtml(account.fullName)}</strong>?`, warning: activating ? 'This administrator can sign in again.' : 'Their active sessions will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
   if (!confirmed) return;
-  try { await api('setAdminAccountStatus', { adminId, status: activating ? 'Active' : 'Inactive' }); await refresh(); showToast(`Administrator ${activating ? 'reactivated' : 'deactivated'}.`, 'success'); } catch (error) { showToast(error.message, 'error'); }
+  try {
+    await api('setAdminAccountStatus', { adminId, status: activating ? 'Active' : 'Inactive' });
+    // Optimistic: flip status in local adminAccounts and re-render
+    adminAccounts = adminAccounts.map((a) => a.id === adminId ? { ...a, status: activating ? 'Active' : 'Inactive' } : a);
+    renderInventory();
+    showToast(`Administrator ${activating ? 'reactivated' : 'deactivated'}.`, 'success');
+    backgroundRefresh();
+  } catch (error) { showToast(error.message, 'error'); }
 }
 
 function renderDashboard() {
@@ -2479,8 +2508,12 @@ async function deleteCreditPayment(paymentId) {
   if (!confirmed) return;
   try {
     await api('deleteCreditPayment', { paymentId, branchId: activeBranchId });
-    await refresh();
+    // Optimistic: remove payment from local array and recalculate credit accounts
+    creditPayments = creditPayments.filter((p) => p.id !== paymentId);
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    renderInventory();
     showToast('Credit payment deleted. Balance updated.', 'success');
+    backgroundRefresh();
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -2597,9 +2630,14 @@ async function handleTransferAction(button) {
 
   const endpoint = { dispatch: 'dispatchTransfer', receive: 'receiveTransfer', cancel: 'cancelTransfer' }[action];
   try {
-    await api(endpoint, { transferId: transfer.id, branchId: activeBranchId });
-    await refresh();
+    const result = await api(endpoint, { transferId: transfer.id, branchId: activeBranchId });
+    // Optimistic: update transfer status locally and re-render immediately
+    const statusMap = { dispatch: 'In Transit', receive: 'Received', cancel: 'Cancelled' };
+    const newStatus = statusMap[action];
+    transfers = transfers.map((t) => t.id === transfer.id ? { ...t, status: newStatus } : t);
+    renderInventory();
     showToast(`Transfer ${action === 'receive' ? 'received' : action === 'dispatch' ? 'dispatched' : 'cancelled'}.`, 'success');
+    backgroundRefresh();
   } catch (error) {
     showToast(error.message || 'Failed to process transfer.', 'error');
   }
@@ -2868,6 +2906,9 @@ function updatePrice(id, value) {
    ========================================================================== */
 async function refresh(showSkeleton = true) {
   if (!currentSession?.token) return;
+  // Deduplication guard: if a refresh is already in flight, skip to prevent double-fetching
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   if (showSkeleton) activeView === 'dashboard' ? renderDashboardSkeleton() : renderSkeletonTable();
   try {
     const data = await api('getAppData', { branchId: activeBranchId }, 'GET');
@@ -2883,11 +2924,18 @@ async function refresh(showSkeleton = true) {
     allProducts = data.products;
     if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
     if (activeView === 'adminAccount') { adminAccount = await api('getAdminAccount', {}, 'GET'); adminAccounts = await api('getAdminAccounts', {}, 'GET'); }
-    renderInventory();
-    renderCart();
+    // Smart render: only update what's actually visible
+    if (activeView === 'dashboard') {
+      renderDashboard();
+    } else {
+      renderInventory();
+      if (activeView === 'pos') renderCart();
+    }
   } catch (error) {
-    renderInventory();
+    if (activeView !== 'dashboard') renderInventory();
     showToast(error.message, 'error');
+  } finally {
+    refreshInFlight = false;
   }
 }
 
@@ -3421,8 +3469,12 @@ async function deleteProduct(productId) {
 
   try {
     await api('deleteProduct', { productId });
-    await refresh();
+    // Optimistic: remove from local array and re-render immediately
+    products = products.filter((item) => item.id !== productId);
+    allProducts = allProducts.filter((item) => item.id !== productId);
+    renderInventory();
     showToast('Product deleted successfully.', 'success');
+    backgroundRefresh();
   } catch (error) {
     showToast(error.message || 'Failed to delete product.', 'error');
   }
@@ -3890,31 +3942,44 @@ $('#modalForm').addEventListener('submit', async (event) => {
   $('#formError').textContent = '';
 
   try {
+    $('#formError').textContent = '';
+    // Optimistic local update per form type, then background sync
     if (activeForm === 'product') {
       const payload = Object.fromEntries(form);
       if (!payload.status) payload.status = 'Active';
-      await api('createProduct', { ...payload, branchId: activeBranchId });
+      const result = await api('createProduct', { ...payload, branchId: activeBranchId });
+      const qty = Number(payload.beginningStock || 0);
+      products = [{ ...result, qty, sku: result.sku || '' }, ...products];
+      allProducts = [{ ...result }, ...allProducts];
       showToast('Product added successfully.', 'success');
     } else if (activeForm === 'edit') {
       const current = products.find((p) => p.id === editingProductId);
       const payload = { ...Object.fromEntries(form), productId: editingProductId };
       if (!payload.status) payload.status = current?.status || 'Active';
-      await api('updateProduct', { ...payload, branchId: activeBranchId });
+      const result = await api('updateProduct', { ...payload, branchId: activeBranchId });
+      products = products.map((p) => p.id === editingProductId ? { ...p, ...result } : p);
       showToast('Product updated successfully.', 'success');
     } else if (activeForm === 'linkProduct') {
-      await api('addProductToBranch', { ...Object.fromEntries(form), branchId: activeBranchId });
+      const result = await api('addProductToBranch', { ...Object.fromEntries(form), branchId: activeBranchId });
+      products = [...products, { ...result, qty: 0 }];
       showToast('Product added to this branch.', 'success');
     } else if (activeForm === 'branch') {
-      await api('createBranch', Object.fromEntries(form));
+      const result = await api('createBranch', Object.fromEntries(form));
+      branches = [...branches, result];
+      renderBranchSelector();
       showToast('Branch added successfully.', 'success');
     } else if (activeForm === 'editBranch') {
-      await api('updateBranch', { ...Object.fromEntries(form), branchId: editingProductId });
+      const result = await api('updateBranch', { ...Object.fromEntries(form), branchId: editingProductId });
+      branches = branches.map((b) => b.id === editingProductId ? { ...b, ...result } : b);
+      renderBranchSelector();
       showToast('Branch updated successfully.', 'success');
     } else if (activeForm === 'customer') {
-      await api('createCustomer', { ...Object.fromEntries(form), branchId: activeBranchId });
+      const result = await api('createCustomer', { ...Object.fromEntries(form), branchId: activeBranchId });
+      customers = [...customers, result];
       showToast('Customer added successfully.', 'success');
     } else if (activeForm === 'editCustomer') {
-      await api('updateCustomer', { ...Object.fromEntries(form), customerId: editingProductId, branchId: activeBranchId });
+      const result = await api('updateCustomer', { ...Object.fromEntries(form), customerId: editingProductId, branchId: activeBranchId });
+      customers = customers.map((c) => c.id === editingProductId ? { ...c, ...result } : c);
       showToast('Customer updated successfully.', 'success');
     } else if (activeForm === 'staff' || activeForm === 'editStaff') {
       const payload = Object.fromEntries(form);
@@ -3940,14 +4005,20 @@ $('#modalForm').addEventListener('submit', async (event) => {
       }
       showToast('Administrator profile updated.', 'success');
     } else if (activeForm === 'transfer') {
-      await api('createTransfer', { ...Object.fromEntries(form), sourceBranchId: activeBranchId });
+      const result = await api('createTransfer', { ...Object.fromEntries(form), sourceBranchId: activeBranchId });
+      if (result) transfers = [result, ...transfers];
       showToast('Stock transfer draft created.', 'success');
     } else {
-      await api('stockIn', { ...Object.fromEntries(form), branchId: activeBranchId });
+      // stockIn
+      const result = await api('stockIn', { ...Object.fromEntries(form), branchId: activeBranchId });
+      if (result?.productId) products = products.map((p) => p.id === result.productId ? { ...p, qty: (Number(p.qty) || 0) + Number(result.qty || 0) } : p);
       showToast('Stock updated successfully.', 'success');
     }
     $('#formDialog').close();
-    await refresh();
+    renderInventory();
+    if (activeView === 'pos') renderCart();
+    backgroundRefresh();
+
   } catch (error) {
     const isDuplicateUsername = /username is already in use/i.test(error.message || '');
     $('#formError').textContent = isDuplicateUsername ? '' : error.message;
@@ -3958,7 +4029,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
   }
 });
 
-$('#searchInput').addEventListener('input', renderInventory);
+$('#searchInput').addEventListener('input', debounce(renderInventory, 150));
 $('#salesDateFrom').addEventListener('change', () => {
   const dateFrom = $('#salesDateFrom');
   const dateTo = $('#salesDateTo');
@@ -4042,8 +4113,12 @@ $('#creditPaymentForm').addEventListener('submit', async (event) => {
       notes: $('#creditNotes').value.trim(),
     });
     $('#creditPaymentDialog').close();
-    await refresh();
+    // Optimistic: add the payment locally and recalculate balances
+    creditPayments = [{ id: `CPY-OPT-${Date.now()}`, saleId: pendingCreditAccount.saleId, customerId: pendingCreditAccount.customerId, customerName: pendingCreditAccount.customerName, amount, date: new Date().toISOString(), notes: $('#creditNotes').value.trim() }, ...creditPayments];
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    renderInventory();
     showToast(`Payment recorded. Remaining balance: ${money(payment.balance)}.`, 'success');
+    backgroundRefresh();
   } catch (requestError) {
     error.textContent = requestError.message;
   } finally {
@@ -4279,16 +4354,29 @@ $('#saleForm').addEventListener('submit', async (event) => {
       items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })),
     });
     $('#saleDialog').close();
+    // Optimistic: deduct sold quantities from local products and add sale to history
+    const soldItems = cart.slice();
     cart = [];
+    products = products.map((p) => {
+      const soldItem = soldItems.find((item) => item.id === p.id);
+      return soldItem ? { ...p, qty: Math.max((Number(p.qty) || 0) - soldItem.qty, 0) } : p;
+    });
+    salesHistory = [{ ...sale, customerName, customerId, items: receiptItems, status: 'completed' }, ...salesHistory];
+    if (values.paymentType === 'credit') {
+      creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    }
+    renderInventory();
+    renderCart();
     showSaleReceipt({ sale, items: receiptItems, customerName });
-    await refresh();
     showToast(`Sale #${sale.saleId || 'Completed'} recorded: ${money(sale.total)}`, 'success');
+    backgroundRefresh();
   } catch (error) {
     $('#saleFormError').textContent = error.message;
   } finally {
     submitBtn.disabled = false;
     submitBtn.innerHTML = originalContent;
   }
+
 });
 
 const ADMIN_SESSION_KEY = 'fr-pos-admin-session';

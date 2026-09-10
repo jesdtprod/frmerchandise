@@ -339,23 +339,53 @@ function getAppData_(branchId) {
   const version = PropertiesService.getScriptProperties().getProperty(APP_DATA_VERSION_KEY) || '1';
   const cache = CacheService.getScriptCache();
   const cacheKey = `app-data:${version}:${branchId}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
 
-  const creditData = getCreditData_(branchId);
+  // Chunked cache read — reassemble pieces stored as cacheKey:chunk:0, :1, etc.
+  const countStr = cache.get(`${cacheKey}:count`);
+  if (countStr) {
+    const count = Number(countStr);
+    const pieces = [];
+    let allHit = true;
+    for (let i = 0; i < count; i++) {
+      const piece = cache.get(`${cacheKey}:chunk:${i}`);
+      if (!piece) { allHit = false; break; }
+      pieces.push(piece);
+    }
+    if (allHit) return JSON.parse(pieces.join(''));
+  }
+
+  // Pre-load shared data once to avoid redundant sheet reads
+  const allCustomers = getCustomers_(branchId);
+  const allProductsList = getProducts_();
+  const customerMap = Object.fromEntries(allCustomers.map((c) => [c.id, c]));
+  const productMap = Object.fromEntries(allProductsList.map((p) => [p.id, p]));
+
+  const creditData = getCreditData_(branchId, customerMap);
   const data = {
     branches: getBranches_(),
     inventory: getInventory_(branchId),
-    customers: getCustomers_(branchId),
+    customers: allCustomers,
     transfers: getTransfers_(branchId),
-    products: getProducts_(),
+    products: allProductsList,
     creditAccounts: creditData.accounts,
     creditPayments: creditData.payments,
-    salesHistory: getSalesHistory_(branchId),
+    salesHistory: getSalesHistory_(branchId, customerMap, productMap),
     inventoryReport: getInventoryReportData_(branchId),
   };
+
+  // Chunked cache write — split into <=85 KB pieces (safe under 100 KB limit)
   const serialized = JSON.stringify(data);
-  if (serialized.length < 90000) cache.put(cacheKey, serialized, 30);
+  const CHUNK_SIZE = 85000;
+  const chunks = [];
+  for (let i = 0; i < serialized.length; i += CHUNK_SIZE) {
+    chunks.push(serialized.slice(i, i + CHUNK_SIZE));
+  }
+  // Only cache if reasonable number of chunks (Apps Script cache allows up to ~20 keys per put)
+  if (chunks.length <= 15) {
+    const entries = { [`${cacheKey}:count`]: String(chunks.length) };
+    chunks.forEach((chunk, i) => { entries[`${cacheKey}:chunk:${i}`] = chunk; });
+    cache.putAll(entries, 30);
+  }
   return data;
 }
 
@@ -440,9 +470,10 @@ function updateCustomer_(data) {
   return { id: data.customerId, branchId, ...updates };
 }
 
-function getCreditData_(branchId) {
+function getCreditData_(branchId, customerMap) {
   requireBranch_(branchId);
-  const customers = Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
+  // Accept pre-loaded customer map from getAppData_ to avoid redundant sheet reads
+  const customers = customerMap || Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
   const payments = rows_('CreditPayments').filter((payment) => payment.branch_id === branchId);
   const paidBySale = creditPaidBySale_(payments);
   const accounts = rows_('Sales')
@@ -517,10 +548,11 @@ function deleteCreditPayment_(data) {
   }
 }
 
-function getSalesHistory_(branchId) {
+function getSalesHistory_(branchId, customerMap, productMap) {
   requireBranch_(branchId);
-  const customers = Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
-  const products = Object.fromEntries(getProducts_().map((product) => [product.id, product]));
+  // Accept pre-loaded maps from getAppData_ to avoid redundant sheet reads
+  const customers = customerMap || Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
+  const products = productMap || Object.fromEntries(getProducts_().map((product) => [product.id, product]));
   const saleItems = rows_('SaleItems');
   const paidBySale = creditPaidBySale_(rows_('CreditPayments').filter((payment) => payment.branch_id === branchId));
   return rows_('Sales').filter((sale) => sale.branch_id === branchId).map((sale) => {
