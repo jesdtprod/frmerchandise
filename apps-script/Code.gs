@@ -444,10 +444,7 @@ function getCreditData_(branchId) {
   requireBranch_(branchId);
   const customers = Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
   const payments = rows_('CreditPayments').filter((payment) => payment.branch_id === branchId);
-  const paidBySale = payments.reduce((totals, payment) => {
-    totals[payment.sale_id] = (totals[payment.sale_id] || 0) + Number(payment.amount || 0);
-    return totals;
-  }, {});
+  const paidBySale = creditPaidBySale_(payments);
   const accounts = rows_('Sales')
     .filter((sale) => sale.branch_id === branchId && String(sale.payment_type).toLowerCase() === 'credit')
     .map((sale) => {
@@ -467,6 +464,13 @@ function getCreditData_(branchId) {
       amount: Number(payment.amount || 0), date: payment.date, notes: payment.notes || '',
     })).sort((a, b) => new Date(b.date) - new Date(a.date)),
   };
+}
+
+function creditPaidBySale_(payments) {
+  return payments.reduce((totals, payment) => {
+    totals[payment.sale_id] = (totals[payment.sale_id] || 0) + Number(payment.amount || 0);
+    return totals;
+  }, {});
 }
 
 function recordCreditPayment_(data) {
@@ -518,10 +522,7 @@ function getSalesHistory_(branchId) {
   const customers = Object.fromEntries(getCustomers_(branchId).map((customer) => [customer.id, customer]));
   const products = Object.fromEntries(getProducts_().map((product) => [product.id, product]));
   const saleItems = rows_('SaleItems');
-  const paidBySale = rows_('CreditPayments').filter((payment) => payment.branch_id === branchId).reduce((totals, payment) => {
-    totals[payment.sale_id] = (totals[payment.sale_id] || 0) + Number(payment.amount || 0);
-    return totals;
-  }, {});
+  const paidBySale = creditPaidBySale_(rows_('CreditPayments').filter((payment) => payment.branch_id === branchId));
   return rows_('Sales').filter((sale) => sale.branch_id === branchId).map((sale) => {
     const paymentType = String(sale.payment_type || 'cash').toLowerCase();
     const total = Number(sale.total || 0);

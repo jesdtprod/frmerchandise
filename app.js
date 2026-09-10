@@ -95,6 +95,22 @@ function saleDateKey(value) {
   return Number.isNaN(date.getTime()) ? '' : formatDateInput(date);
 }
 
+function calculateOutstandingCreditAccounts(sales, payments) {
+  const paidBySale = payments.reduce((totals, payment) => {
+    totals[payment.saleId] = (totals[payment.saleId] || 0) + Number(payment.amount || 0);
+    return totals;
+  }, {});
+  return sales
+    .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
+    .map((sale) => {
+      const total = Number(sale.total || 0);
+      const paid = paidBySale[sale.saleId] || 0;
+      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance: Math.max(total - paid, 0) };
+    })
+    .filter((account) => account.balance > 0.00001)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
 function updateSalesPrintPeriod() {
   const period = $('#salesPrintPeriod');
   const dateFrom = $('#salesDateFrom')?.value || '';
@@ -2840,9 +2856,9 @@ async function refresh(showSkeleton = true) {
     products = data.inventory;
     customers = data.customers;
     transfers = data.transfers || [];
-    creditAccounts = data.creditAccounts || [];
     creditPayments = data.creditPayments || [];
     salesHistory = data.salesHistory || [];
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
     inventoryReportData = data.inventoryReport || {};
     allProducts = data.products;
     if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
