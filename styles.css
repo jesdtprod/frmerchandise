@@ -449,10 +449,13 @@ body {
   transition: color var(--transition-fast);
 }
 
-.auth-fields input {
+.auth-fields input,
+.auth-input-wrap input {
   width: 100%;
+  height: 44px;
   min-height: 44px;
-  padding: 10px 14px 10px 42px;
+  box-sizing: border-box;
+  padding: 10px 14px 10px 42px !important;
   color: var(--text-pure);
   background: rgba(7, 14, 28, 0.85);
   border: 1px solid rgba(30, 58, 102, 0.7);
@@ -464,9 +467,14 @@ body {
   transition: all var(--transition-fast);
 }
 
+.auth-input-wrap:has(.auth-toggle-pwd) input,
+.auth-input-wrap.password-input-wrap input {
+  padding-right: 44px !important;
+}
+
 label:not(:has(.auth-input-icon)) > input,
 .auth-fields input:not(.auth-input-wrap input) {
-  padding-left: 14px;
+  padding-left: 14px !important;
 }
 
 .auth-fields input::placeholder {
@@ -1300,7 +1308,9 @@ body::after {
 .workspace[data-view="transfers"],
 .workspace[data-view="credits"],
 .workspace[data-view="sales"],
-.workspace[data-view="inventoryReports"] {
+.workspace[data-view="inventoryReports"],
+.workspace[data-view="staffAccounts"],
+.workspace[data-view="adminAccount"] {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -1311,7 +1321,9 @@ body::after {
 .workspace[data-view="transfers"] .cart,
 .workspace[data-view="credits"] .cart,
 .workspace[data-view="sales"] .cart,
-.workspace[data-view="inventoryReports"] .cart {
+.workspace[data-view="inventoryReports"] .cart,
+.workspace[data-view="staffAccounts"] .cart,
+.workspace[data-view="adminAccount"] .cart {
   display: none;
 }
 
@@ -1679,6 +1691,14 @@ body::after {
 
 .workspace[data-view="inventoryReports"] .table-row {
   grid-template-columns: minmax(220px, 2fr) 110px 130px 145px 140px 110px;
+}
+
+.workspace[data-view="staffAccounts"] .table-row {
+  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.9fr) minmax(150px, 1.5fr) 78px 116px;
+}
+
+.workspace[data-view="adminAccount"] .table-row {
+  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.9fr) minmax(140px, 1.2fr) 78px 80px;
 }
 
 .workspace[data-view="inventoryReports"] .toolbar {
@@ -2225,6 +2245,8 @@ dialog.credit-history-dialog {
   font-weight: 600;
   color: var(--text-secondary);
   width: fit-content;
+  max-width: fit-content;
+  justify-self: flex-start;
 }
 
 .price-text {
@@ -2242,6 +2264,8 @@ dialog.credit-history-dialog {
   font-size: 12px;
   font-weight: 700;
   width: fit-content;
+  max-width: fit-content;
+  justify-self: flex-start;
 }
 
 .low-stock-pill {
@@ -2256,6 +2280,8 @@ dialog.credit-history-dialog {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.32);
   width: fit-content;
+  max-width: fit-content;
+  justify-self: flex-start;
   font-feature-settings: "tnum";
 }
 
@@ -2425,6 +2451,14 @@ dialog.credit-history-dialog {
 
 .workspace[data-view="sales"] .skeleton-row {
   grid-template-columns: minmax(170px, 1.1fr) minmax(170px, 1.25fr) minmax(180px, 1.4fr) 100px 130px 64px;
+}
+
+.workspace[data-view="staffAccounts"] .skeleton-row {
+  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.9fr) minmax(150px, 1.5fr) 78px 116px;
+}
+
+.workspace[data-view="adminAccount"] .skeleton-row {
+  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.9fr) minmax(140px, 1.2fr) 78px 80px;
 }
 
 .skeleton-col {
@@ -3473,7 +3507,29 @@ dialog.pepsi-dialog {
   transition: opacity 0.28s var(--ease-inertia), transform 0.28s var(--ease-inertia), display 0.28s allow-discrete;
 }
 
-dialog.pepsi-dialog::-webkit-scrollbar {
+/* Universal scrollbar removal for all modals while preserving full scroll functionality */
+dialog,
+dialog *,
+dialog .form-grid,
+dialog form,
+dialog .sale-form-content,
+dialog .receipt-body,
+dialog .credit-history-modal-list,
+dialog .settings-body,
+dialog .confirm-body {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+dialog::-webkit-scrollbar,
+dialog *::-webkit-scrollbar,
+dialog .form-grid::-webkit-scrollbar,
+dialog form::-webkit-scrollbar,
+dialog .sale-form-content::-webkit-scrollbar,
+dialog .receipt-body::-webkit-scrollbar,
+dialog .credit-history-modal-list::-webkit-scrollbar,
+dialog .settings-body::-webkit-scrollbar,
+dialog .confirm-body::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -3599,6 +3655,345 @@ dialog form {
 .form-grid .full-field {
   grid-column: 1 / -1;
 }
+
+/* Base safety rule for native checkboxes and radios */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  min-height: auto;
+  accent-color: var(--pepsi-blue);
+  cursor: pointer;
+}
+
+.staff-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.staff-permission-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 13px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: rgba(8, 16, 32, 0.65);
+  border: 1.5px solid rgba(30, 58, 102, 0.65);
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.22s var(--ease-inertia);
+}
+
+.staff-permission-option:hover {
+  background: rgba(14, 27, 52, 0.85);
+  border-color: rgba(59, 130, 246, 0.5);
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.staff-permission-option:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* Checked state for card (via class and :has) */
+.staff-permission-option.is-checked,
+.staff-permission-option:has(input:checked) {
+  background: linear-gradient(135deg, rgba(0, 102, 245, 0.16) 0%, rgba(10, 24, 52, 0.9) 100%);
+  border-color: rgba(0, 102, 245, 0.75);
+  box-shadow: 0 2px 14px rgba(0, 102, 245, 0.2), inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+/* Visually hidden native checkbox with accessibility preserved */
+.staff-permission-option input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+/* Custom Checkbox Container */
+.custom-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 6px;
+  background: rgba(6, 13, 26, 0.92);
+  border: 1.5px solid rgba(59, 130, 246, 0.45);
+  box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-sizing: border-box;
+}
+
+.staff-permission-option:hover .custom-checkbox {
+  border-color: rgba(59, 130, 246, 0.75);
+  box-shadow: 0 0 8px rgba(0, 102, 245, 0.3), inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  transform: scale(1.05);
+}
+
+.staff-permission-option input[type="checkbox"]:focus-visible + .custom-checkbox {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.staff-permission-option.is-checked .custom-checkbox,
+.staff-permission-option input[type="checkbox"]:checked + .custom-checkbox {
+  background: linear-gradient(135deg, #0066f5 0%, #0046b8 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 0 12px rgba(0, 102, 245, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
+  transform: scale(1);
+}
+
+/* Checkmark SVG with inertial spring animation */
+.custom-checkbox-icon {
+  width: 12px;
+  height: 10px;
+  color: #ffffff;
+  transform: scale(0) rotate(-14deg);
+  opacity: 0;
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.staff-permission-option.is-checked .custom-checkbox-icon,
+.staff-permission-option input[type="checkbox"]:checked + .custom-checkbox .custom-checkbox-icon {
+  transform: scale(1) rotate(0deg);
+  opacity: 1;
+}
+
+/* Icon Wrap inside permission option card */
+.staff-permission-icon-wrap {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 7px;
+  background: rgba(15, 30, 58, 0.6);
+  border: 1px solid rgba(45, 78, 135, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  flex-shrink: 0;
+  transition: all 0.22s var(--ease-inertia);
+}
+
+.staff-permission-icon-wrap svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.staff-permission-option:hover .staff-permission-icon-wrap {
+  color: #cbd5e1;
+  background: rgba(20, 40, 76, 0.75);
+}
+
+.staff-permission-option.is-checked .staff-permission-icon-wrap,
+.staff-permission-option:has(input:checked) .staff-permission-icon-wrap {
+  background: rgba(0, 102, 245, 0.22);
+  border-color: rgba(0, 102, 245, 0.6);
+  color: #60a5fa;
+}
+
+/* Label text */
+.staff-permission-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+  line-height: 1.25;
+  flex: 1;
+  transition: color 0.18s ease;
+}
+
+.staff-permission-option:hover .staff-permission-label {
+  color: #f1f5f9;
+}
+
+.staff-permission-option.is-checked .staff-permission-label,
+.staff-permission-option:has(input:checked) .staff-permission-label {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.account-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+  max-width: 100%;
+  width: fit-content;
+  justify-self: flex-start;
+}
+
+.menu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  transition: all var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  user-select: none;
+  width: fit-content;
+  max-width: fit-content;
+  justify-self: flex-start;
+}
+
+.menu-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.menu-chip-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Category-Tailored Badges */
+.menu-chip-pos {
+  background: rgba(14, 165, 233, 0.09);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #7dd3fc;
+}
+.menu-chip-pos .menu-chip-icon { color: #38bdf8; }
+.menu-chip-pos:hover { background: rgba(14, 165, 233, 0.2); border-color: rgba(56, 189, 248, 0.55); color: #ffffff; }
+
+.menu-chip-products {
+  background: rgba(99, 102, 241, 0.09);
+  border-color: rgba(129, 140, 248, 0.3);
+  color: #a5b4fc;
+}
+.menu-chip-products .menu-chip-icon { color: #818cf8; }
+.menu-chip-products:hover { background: rgba(99, 102, 241, 0.2); border-color: rgba(129, 140, 248, 0.55); color: #ffffff; }
+
+.menu-chip-inventory {
+  background: rgba(16, 185, 129, 0.09);
+  border-color: rgba(52, 211, 153, 0.3);
+  color: #6ee7b7;
+}
+.menu-chip-inventory .menu-chip-icon { color: #34d399; }
+.menu-chip-inventory:hover { background: rgba(16, 185, 129, 0.2); border-color: rgba(52, 211, 153, 0.55); color: #ffffff; }
+
+.menu-chip-transfers {
+  background: rgba(245, 158, 11, 0.09);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: #fde68a;
+}
+.menu-chip-transfers .menu-chip-icon { color: #fbbf24; }
+.menu-chip-transfers:hover { background: rgba(245, 158, 11, 0.2); border-color: rgba(251, 191, 36, 0.55); color: #ffffff; }
+
+.menu-chip-customers {
+  background: rgba(168, 85, 247, 0.09);
+  border-color: rgba(192, 132, 252, 0.3);
+  color: #d8b4fe;
+}
+.menu-chip-customers .menu-chip-icon { color: #c084fc; }
+.menu-chip-customers:hover { background: rgba(168, 85, 247, 0.2); border-color: rgba(192, 132, 252, 0.55); color: #ffffff; }
+
+.menu-chip-credits {
+  background: rgba(244, 63, 94, 0.09);
+  border-color: rgba(251, 113, 133, 0.3);
+  color: #fecdd3;
+}
+.menu-chip-credits .menu-chip-icon { color: #fb7185; }
+.menu-chip-credits:hover { background: rgba(244, 63, 94, 0.2); border-color: rgba(251, 113, 133, 0.55); color: #ffffff; }
+
+.menu-chip-sales {
+  background: rgba(20, 184, 166, 0.09);
+  border-color: rgba(45, 212, 191, 0.3);
+  color: #99f6e4;
+}
+.menu-chip-sales .menu-chip-icon { color: #2dd4bf; }
+.menu-chip-sales:hover { background: rgba(20, 184, 166, 0.2); border-color: rgba(45, 212, 191, 0.55); color: #ffffff; }
+
+.menu-chip-inventoryReports {
+  background: rgba(236, 72, 153, 0.09);
+  border-color: rgba(244, 114, 182, 0.3);
+  color: #fbcfe8;
+}
+.menu-chip-inventoryReports .menu-chip-icon { color: #f472b6; }
+.menu-chip-inventoryReports:hover { background: rgba(236, 72, 153, 0.2); border-color: rgba(244, 114, 182, 0.55); color: #ffffff; }
+
+/* Special All Menus Badge */
+.menu-chip-all {
+  background: linear-gradient(135deg, rgba(0, 102, 245, 0.16), rgba(56, 189, 248, 0.1));
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+  font-weight: 700;
+  padding: 3px 9px;
+  box-shadow: 0 2px 10px rgba(0, 102, 245, 0.2);
+  width: fit-content;
+  max-width: fit-content;
+  justify-self: flex-start;
+}
+.menu-chip-all .menu-chip-icon {
+  color: #38bdf8;
+  width: 13px;
+  height: 13px;
+}
+.menu-chip-all-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  height: 15px;
+  min-width: 15px;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.22);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* Empty State */
+.menu-chip-none {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.account-profile-panel {
+  padding: 20px;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.account-profile-form { display: grid; gap: 20px; }
+.account-profile-section + .account-profile-section { padding-top: 20px; border-top: 1px solid var(--border-card); }
+.account-profile-section h3 { margin: 4px 0; font-size: 16px; }
+.account-profile-section > p:not(.eyebrow) { margin: 0 0 16px; color: var(--text-muted); font-size: 12px; }
+.account-profile-section .button { margin-top: 16px; }
+.admin-account-list { display: grid; gap: 8px; }
+.admin-account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-card); border-radius: 6px; }
+.admin-account-row > div:first-child { display: grid; gap: 3px; }
+.admin-account-row strong { font-size: 13px; }
+.admin-account-row span:not(.stock-pill) { color: var(--text-muted); font-size: 11px; }
 
 .payment-method-fieldset {
   margin: 0;
@@ -4284,7 +4679,7 @@ dialog.receipt-dialog {
   height: 38px;
   min-height: 38px;
   box-sizing: border-box;
-  padding: 8px 12px 8px 38px !important;
+  padding: 8px 14px 8px 40px !important;
   color: var(--text-pure);
   background: #070e1c;
   border: 1px solid rgba(30, 58, 102, 0.7);
@@ -4356,6 +4751,164 @@ dialog.receipt-dialog {
   background: #091224;
 }
 
+/* Password Input with Show/Hide Toggle Button */
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrap input {
+  padding-right: 40px !important;
+}
+
+.input-with-icon.password-input-wrap input {
+  padding-left: 38px !important;
+  padding-right: 40px !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+  z-index: 2;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-pure);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid var(--pepsi-blue);
+  outline-offset: 1px;
+}
+
+.password-toggle-btn svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* Modal Form Section Divider (e.g. Change Password in Edit Admin) */
+.form-section-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 14px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.form-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.form-section-icon {
+  width: 16px;
+  height: 16px;
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.form-section-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+}
+
+.form-section-subtitle {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Staff Reset Password Modal Card */
+.staff-reset-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.staff-reset-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #38bdf8;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.staff-reset-avatar svg {
+  width: 20px;
+  height: 20px;
+}
+
+.staff-reset-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.staff-reset-name {
+  color: var(--text-pure);
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-reset-meta {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .field-hint {
   font-size: 11px;
   color: var(--text-muted);
@@ -4387,12 +4940,10 @@ dialog.receipt-dialog {
   flex-shrink: 0;
 }
 
-.form-field-group input,
+.form-field-group input:not([type="checkbox"]):not([type="radio"]),
 .form-field-group select,
-dialog form input,
-dialog form select,
-label input,
-label select {
+dialog form input:not([type="checkbox"]):not([type="radio"]),
+dialog form select {
   width: 100%;
   height: 38px;
   min-height: 38px;
@@ -4426,43 +4977,37 @@ dialog form textarea {
   transition: all var(--transition-fast);
 }
 
-.form-field-group input:hover,
+.form-field-group input:not([type="checkbox"]):not([type="radio"]):hover,
 .form-field-group select:hover,
 .form-field-group textarea:hover,
-dialog form input:hover,
+dialog form input:not([type="checkbox"]):not([type="radio"]):hover,
 dialog form select:hover,
-dialog form textarea:hover,
-label input:hover,
-label select:hover {
+dialog form textarea:hover {
   border-color: rgba(0, 102, 245, 0.4);
   background: #091224;
 }
 
-.form-field-group input:focus,
+.form-field-group input:not([type="checkbox"]):not([type="radio"]):focus,
 .form-field-group select:focus,
 .form-field-group textarea:focus,
-dialog form input:focus,
+dialog form input:not([type="checkbox"]):not([type="radio"]):focus,
 dialog form select:focus,
-dialog form textarea:focus,
-label input:focus,
-label select:focus {
+dialog form textarea:focus {
   border-color: var(--pepsi-blue);
   box-shadow: 0 0 0 3px var(--pepsi-blue-glow);
   background: #091224;
 }
 
-.form-field-group input:disabled,
-dialog form input:disabled,
-label input:disabled {
+.form-field-group input:not([type="checkbox"]):not([type="radio"]):disabled,
+dialog form input:not([type="checkbox"]):not([type="radio"]):disabled {
   color: var(--text-muted);
   background: #060c18;
   border-color: rgba(255, 255, 255, 0.06);
   cursor: not-allowed;
 }
 
-.form-field-group input::placeholder,
-dialog form input::placeholder,
-label input::placeholder {
+.form-field-group input:not([type="checkbox"]):not([type="radio"])::placeholder,
+dialog form input:not([type="checkbox"]):not([type="radio"])::placeholder {
   color: var(--text-muted);
   opacity: 0.7;
 }
@@ -4482,6 +5027,9 @@ input:-webkit-autofill:active {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  box-sizing: border-box;
 }
 
 .hint {
@@ -4691,37 +5239,41 @@ dialog.sale-dialog {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(56, 189, 248, 0.35) transparent;
-  padding-right: 4px;
-  margin-right: -4px;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  padding: 6px 8px !important;
+  margin: -6px -8px !important;
+  box-sizing: border-box;
 }
 
 .sale-form-content::-webkit-scrollbar {
-  width: 5px;
-}
-
-.sale-form-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sale-form-content::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.35);
-  border-radius: 999px;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 dialog#formDialog #formFields,
-dialog#creditPaymentDialog .form-grid {
+dialog#creditPaymentDialog .form-grid,
+dialog .form-grid {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(56, 189, 248, 0.35) transparent;
-  padding-right: 4px;
-  margin-right: -4px;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  padding: 6px 8px !important;
+  margin: -6px -8px !important;
+  box-sizing: border-box;
+}
+
+dialog#formDialog #formFields::-webkit-scrollbar,
+dialog#creditPaymentDialog .form-grid::-webkit-scrollbar,
+dialog .form-grid::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Hero Order Summary Card */
@@ -5738,6 +6290,52 @@ dialog.confirm-dialog {
     min-height: 38px;
   }
 
+  .workspace[data-view="staffAccounts"] .table-row,
+  .workspace[data-view="staffAccounts"] .skeleton-row {
+    grid-template-columns: minmax(130px, 1.1fr) minmax(95px, 0.8fr) minmax(130px, 1.4fr) 72px 114px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .workspace[data-view="staffAccounts"] .table-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  .workspace[data-view="staffAccounts"] .table-actions .icon-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+  }
+
+  .workspace[data-view="adminAccount"] .table-row,
+  .workspace[data-view="adminAccount"] .skeleton-row {
+    grid-template-columns: minmax(130px, 1.2fr) minmax(95px, 0.9fr) minmax(120px, 1.2fr) 72px 80px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .workspace[data-view="adminAccount"] .table-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  .workspace[data-view="adminAccount"] .table-actions .icon-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+  }
+
   .cart-step-btn {
     width: 34px;
     height: 36px;
@@ -6159,6 +6757,25 @@ dialog.confirm-dialog {
   .workspace[data-view="transfers"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
   .workspace[data-view="transfers"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
+  .workspace[data-view="staffAccounts"] .table-row:not(.table-header),
+  .workspace[data-view="adminAccount"] .table-row:not(.table-header) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "prod action"
+      "details action";
+    gap: 7px 12px;
+    padding: 12px 14px;
+    min-height: auto;
+  }
+
+  .workspace[data-view="staffAccounts"] .table-row .product-cell,
+  .workspace[data-view="adminAccount"] .table-row .product-cell { grid-area: prod; }
+  .workspace[data-view="staffAccounts"] .table-row .row-middle-cells,
+  .workspace[data-view="adminAccount"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .workspace[data-view="staffAccounts"] .table-row .row-action-cell,
+  .workspace[data-view="adminAccount"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
+
   /* Skeleton rows matching mobile layout */
   .workspace[data-view="pos"] .skeleton-row,
   .workspace[data-view="products"] .skeleton-row,
@@ -6166,7 +6783,9 @@ dialog.confirm-dialog {
   .workspace[data-view="customers"] .skeleton-row,
   .workspace[data-view="transfers"] .skeleton-row,
   .workspace[data-view="credits"] .skeleton-row,
-  .workspace[data-view="sales"] .skeleton-row {
+  .workspace[data-view="sales"] .skeleton-row,
+  .workspace[data-view="staffAccounts"] .skeleton-row,
+  .workspace[data-view="adminAccount"] .skeleton-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -6302,6 +6921,8 @@ dialog.confirm-dialog {
   .form-grid {
     grid-template-columns: 1fr;
   }
+
+  .staff-permission-grid { grid-template-columns: 1fr; }
 
   .form-grid .full-field {
     grid-column: auto;
@@ -6448,19 +7069,28 @@ dialog.confirm-dialog {
     box-sizing: border-box;
   }
 
-  .form-field-group input,
+  .form-field-group input:not([type="checkbox"]):not([type="radio"]),
   .form-field-group select,
-  dialog form input,
+  dialog form input:not([type="checkbox"]):not([type="radio"]),
   dialog form select,
-  label input,
-  label select,
-  .input-with-icon input,
-  .input-with-prefix input,
-  .number-stepper input {
+  .input-with-icon input:not([type="checkbox"]):not([type="radio"]),
+  .input-with-prefix input:not([type="checkbox"]):not([type="radio"]),
+  .number-stepper input:not([type="checkbox"]):not([type="radio"]) {
     height: 44px;
     min-height: 44px;
     font-size: 14px;
     box-sizing: border-box;
+  }
+
+  .input-with-icon.password-input-wrap input {
+    padding-left: 40px !important;
+    padding-right: 44px !important;
+  }
+
+  .password-toggle-btn {
+    width: 32px;
+    height: 32px;
+    right: 8px;
   }
 
   .stepper-buttons {

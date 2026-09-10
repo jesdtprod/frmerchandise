@@ -4,7 +4,9 @@ const APP_DATA_VERSION_KEY = 'fr_pos_app_data_version';
 const SHEETS = {
   Branches: ['branch_id', 'name', 'type', 'address', 'status'],
   Admins: ['admin_id', 'full_name', 'username', 'password_hash', 'status'],
+  StaffAccounts: ['staff_id', 'full_name', 'username', 'password_hash', 'branch_id', 'permissions', 'status', 'must_change_password', 'last_login', 'password_reset_at'],
   Sessions: ['session_token', 'account_id', 'role', 'expires_at', 'status'],
+  AccountAudit: ['audit_id', 'actor_id', 'action', 'target_id', 'details', 'date'],
   Products: ['product_id', 'name', 'unit', 'price', 'category', 'sku', 'low_stock_level', 'status'],
   BranchProducts: ['branch_id', 'product_id', 'price_override', 'low_stock_level', 'status'],
   Customers: ['customer_id', 'branch_id', 'name', 'phone', 'address', 'status'],
@@ -17,7 +19,8 @@ const SHEETS = {
 };
 
 function doGet(e) {
-  return respond_(route_(e.parameter.action, e.parameter));
+  const data = e && e.parameter ? e.parameter : {};
+  return respond_(route_(data.action, data));
 }
 
 function doPost(e) {
@@ -43,6 +46,7 @@ function setupSheets() {
 
 function route_(action, data) {
   try {
+    if (!['getSetupStatus', 'createFirstAdmin', 'login', 'restoreSession', 'logout'].includes(action)) authorize_(data, action);
     switch (action) {
       case 'getProducts': return { ok: true, data: getProducts_() };
       case 'getAppData': return { ok: true, data: getAppData_(data.branchId || 'MAIN') };
@@ -51,6 +55,17 @@ function route_(action, data) {
       case 'login': return { ok: true, data: login_(data) };
       case 'restoreSession': return { ok: true, data: restoreSession_(data) };
       case 'logout': return { ok: true, data: logout_(data) };
+      case 'getStaffAccounts': return { ok: true, data: getStaffAccounts_(data) };
+      case 'createStaffAccount': return { ok: true, data: createStaffAccount_(data) };
+      case 'updateStaffAccount': return { ok: true, data: updateStaffAccount_(data) };
+      case 'setStaffAccountStatus': return { ok: true, data: setStaffAccountStatus_(data) };
+      case 'resetStaffPassword': return { ok: true, data: resetStaffPassword_(data) };
+      case 'getAdminAccount': return { ok: true, data: getAdminAccount_(data) };
+      case 'getAdminAccounts': return { ok: true, data: getAdminAccounts_(data) };
+      case 'createAdminAccount': return { ok: true, data: createAdminAccount_(data) };
+      case 'setAdminAccountStatus': return { ok: true, data: setAdminAccountStatus_(data) };
+      case 'updateAdminAccount': return { ok: true, data: updateAdminAccount_(data) };
+      case 'changeOwnPassword': return { ok: true, data: changeOwnPassword_(data) };
       case 'getBranches': return { ok: true, data: getBranches_() };
       case 'createBranch': return { ok: true, data: createBranch_(data) };
       case 'updateBranch': return { ok: true, data: updateBranch_(data) };
@@ -95,25 +110,30 @@ function createFirstAdmin_(data) {
 function login_(data) {
   require_(data.username, 'Username is required.');
   require_(data.password, 'Password is required.');
-  const admin = rows_('Admins').find((row) => row.username === data.username.trim().toLowerCase() && row.status === 'Active');
-  if (!admin || admin.password_hash !== hash_(data.password)) throw new Error('Invalid username or password.');
-  return createSession_({ id: admin.admin_id, fullName: admin.full_name, username: admin.username, status: admin.status });
+  const username = data.username.trim().toLowerCase();
+  const admin = rows_('Admins').find((row) => row.username === username && row.status === 'Active');
+  if (admin && admin.password_hash === hash_(data.password)) return createSession_({ id: admin.admin_id, fullName: admin.full_name, username: admin.username, role: 'admin' });
+  const staff = rows_('StaffAccounts').find((row) => row.username === username && row.status === 'Active');
+  if (!staff || staff.password_hash !== hash_(data.password)) throw new Error('Invalid username or password.');
+  updateSheetRow_('StaffAccounts', 'staff_id', staff.staff_id, { last_login: new Date() });
+  return createSession_({ id: staff.staff_id, fullName: staff.full_name, username: staff.username, role: 'staff', branchId: staff.branch_id, permissions: parsePermissions_(staff.permissions), mustChangePassword: String(staff.must_change_password) === 'TRUE' });
 }
 
 function createSession_(account) {
   const token = Utilities.getUuid();
   const expiresAt = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
-  getSpreadsheet_().getSheetByName('Sessions').appendRow([token, account.id, 'admin', expiresAt, 'Active']);
-  return { token, account: { id: account.id, fullName: account.fullName, username: account.username, role: 'admin', permissions: ['*'] } };
+  const role = account.role || 'admin';
+  getSpreadsheet_().getSheetByName('Sessions').appendRow([token, account.id, role, expiresAt, 'Active']);
+  return { token, account: { id: account.id, fullName: account.fullName, username: account.username, role, branchId: account.branchId || '', permissions: account.permissions || ['*'], mustChangePassword: !!account.mustChangePassword } };
 }
 
 function restoreSession_(data) {
   require_(data.token, 'Session is required.');
   const session = rows_('Sessions').find((row) => row.session_token === data.token && row.status === 'Active' && new Date(row.expires_at) > new Date());
   if (!session) throw new Error('Your session has expired.');
-  const admin = rows_('Admins').find((row) => row.admin_id === session.account_id && row.status === 'Active');
-  if (!admin) throw new Error('Account is unavailable.');
-  return { token: data.token, account: { id: admin.admin_id, fullName: admin.full_name, username: admin.username, role: 'admin', permissions: ['*'] } };
+  const account = sessionAccount_(session);
+  if (!account) throw new Error('Account is unavailable.');
+  return { token: data.token, account };
 }
 
 function logout_(data) {
@@ -124,6 +144,189 @@ function logout_(data) {
   if (row !== -1) sheet.getRange(row + 1, 5).setValue('Logged out');
   return { loggedOut: true };
 }
+
+function sessionAccount_(session) {
+  if (session.role === 'admin') {
+    const admin = rows_('Admins').find((row) => row.admin_id === session.account_id && row.status === 'Active');
+    return admin ? { id: admin.admin_id, fullName: admin.full_name, username: admin.username, role: 'admin', branchId: '', permissions: ['*'], mustChangePassword: false } : null;
+  }
+  const staff = rows_('StaffAccounts').find((row) => row.staff_id === session.account_id && row.status === 'Active');
+  return staff ? { id: staff.staff_id, fullName: staff.full_name, username: staff.username, role: 'staff', branchId: staff.branch_id, permissions: parsePermissions_(staff.permissions), mustChangePassword: String(staff.must_change_password) === 'TRUE' } : null;
+}
+
+function authorize_(data, action) {
+  require_(data.token, 'Sign in is required.');
+  const session = rows_('Sessions').find((row) => row.session_token === data.token && row.status === 'Active' && new Date(row.expires_at) > new Date());
+  if (!session) throw new Error('Your session has expired.');
+  const account = sessionAccount_(session);
+  if (!account) throw new Error('Account is unavailable.');
+  data._account = account;
+  if (account.mustChangePassword && action !== 'changeOwnPassword') throw new Error('Change your temporary password before continuing.');
+  if (account.role === 'admin') return account;
+  const permissionMap = {
+    createProduct: 'products', updateProduct: 'products', deleteProduct: 'products', addProductToBranch: 'products',
+    stockIn: 'inventory', createTransfer: 'transfers', dispatchTransfer: 'transfers', receiveTransfer: 'transfers', cancelTransfer: 'transfers',
+    createCustomer: 'customers', updateCustomer: 'customers', recordCreditPayment: 'credits', deleteCreditPayment: 'credits', recordSale: 'pos',
+  };
+  const requiredPermission = permissionMap[action];
+  if (requiredPermission && !account.permissions.includes(requiredPermission)) throw new Error('Your account does not have access to this action.');
+  ['getBranches', 'createBranch', 'updateBranch', 'deleteProduct', 'getStaffAccounts', 'createStaffAccount', 'updateStaffAccount', 'setStaffAccountStatus', 'resetStaffPassword', 'getAdminAccount', 'getAdminAccounts', 'createAdminAccount', 'setAdminAccountStatus', 'updateAdminAccount'].forEach((adminAction) => {
+    if (action === adminAction) throw new Error('Administrator access is required.');
+  });
+  const branchIds = [data.branchId, data.sourceBranchId, data.destinationBranchId].filter(Boolean);
+  if (branchIds.some((branchId) => branchId !== account.branchId)) throw new Error('Your account is limited to its assigned branch.');
+  if (['dispatchTransfer', 'receiveTransfer', 'cancelTransfer'].includes(action)) {
+    const transfer = getTransferRecord_(data.transferId);
+    const allowedBranch = action === 'receiveTransfer' ? transfer.destination_branch_id : transfer.source_branch_id;
+    if (allowedBranch !== account.branchId) throw new Error('Your account is limited to its assigned branch.');
+  }
+  return account;
+}
+
+function getStaffAccounts_(data) {
+  return rows_('StaffAccounts').map((row) => ({
+    id: row.staff_id, fullName: row.full_name, username: row.username, branchId: row.branch_id,
+    permissions: parsePermissions_(row.permissions), status: row.status || 'Active',
+    mustChangePassword: String(row.must_change_password) === 'TRUE', lastLogin: row.last_login || '', passwordResetAt: row.password_reset_at || '',
+  }));
+}
+
+function createStaffAccount_(data) {
+  require_(data.fullName, 'Full name is required.');
+  require_(data.username, 'Username is required.');
+  require_(data.password, 'Temporary password is required.');
+  require_(data.branchId, 'Assigned branch is required.');
+  if (String(data.password).length < 8) throw new Error('Password must have at least 8 characters.');
+  requireBranch_(data.branchId);
+  const username = data.username.trim().toLowerCase();
+  if (rows_('Admins').some((row) => row.username === username) || rows_('StaffAccounts').some((row) => row.username === username)) throw new Error('That username is already in use.');
+  const permissions = normalizePermissions_(data.permissions);
+  if (!permissions.length) throw new Error('Select at least one allowed sidebar menu.');
+  const staff = { id: id_('STF'), fullName: data.fullName.trim(), username, branchId: data.branchId, permissions, status: 'Active' };
+  getSpreadsheet_().getSheetByName('StaffAccounts').appendRow([staff.id, staff.fullName, staff.username, hash_(data.password), staff.branchId, staff.permissions.join(','), staff.status, true, '', new Date()]);
+  auditAccount_(data._account.id, 'Created staff account', staff.id, staff.fullName);
+  return { ...staff, mustChangePassword: true };
+}
+
+function updateStaffAccount_(data) {
+  require_(data.staffId, 'Staff account is required.');
+  require_(data.fullName, 'Full name is required.');
+  require_(data.branchId, 'Assigned branch is required.');
+  requireBranch_(data.branchId);
+  const staff = rows_('StaffAccounts').find((row) => row.staff_id === data.staffId);
+  if (!staff) throw new Error('Staff account not found.');
+  const permissions = normalizePermissions_(data.permissions);
+  if (!permissions.length) throw new Error('Select at least one allowed sidebar menu.');
+  updateSheetRow_('StaffAccounts', 'staff_id', data.staffId, { full_name: data.fullName.trim(), branch_id: data.branchId, permissions: permissions.join(',') });
+  auditAccount_(data._account.id, 'Updated staff account', data.staffId, data.fullName.trim());
+  return { id: data.staffId, fullName: data.fullName.trim(), username: staff.username, branchId: data.branchId, permissions, status: staff.status };
+}
+
+function setStaffAccountStatus_(data) {
+  require_(data.staffId, 'Staff account is required.');
+  const status = data.status === 'Inactive' ? 'Inactive' : 'Active';
+  const staff = rows_('StaffAccounts').find((row) => row.staff_id === data.staffId);
+  if (!staff) throw new Error('Staff account not found.');
+  updateSheetRow_('StaffAccounts', 'staff_id', data.staffId, { status });
+  if (status === 'Inactive') deactivateSessions_(data.staffId);
+  auditAccount_(data._account.id, status === 'Active' ? 'Reactivated staff account' : 'Deactivated staff account', data.staffId, staff.full_name);
+  return { id: data.staffId, status };
+}
+
+function resetStaffPassword_(data) {
+  require_(data.staffId, 'Staff account is required.');
+  require_(data.temporaryPassword, 'Temporary password is required.');
+  if (String(data.temporaryPassword).length < 8) throw new Error('Password must have at least 8 characters.');
+  const staff = rows_('StaffAccounts').find((row) => row.staff_id === data.staffId);
+  if (!staff) throw new Error('Staff account not found.');
+  updateSheetRow_('StaffAccounts', 'staff_id', data.staffId, { password_hash: hash_(data.temporaryPassword), must_change_password: true, password_reset_at: new Date() });
+  deactivateSessions_(data.staffId);
+  auditAccount_(data._account.id, 'Reset staff password', data.staffId, staff.full_name);
+  return { reset: true };
+}
+
+function getAdminAccount_(data) {
+  const admin = rows_('Admins').find((row) => row.admin_id === data._account.id);
+  return { id: admin.admin_id, fullName: admin.full_name, username: admin.username };
+}
+
+function getAdminAccounts_() {
+  return rows_('Admins').map((row) => ({ id: row.admin_id, fullName: row.full_name, username: row.username, status: row.status || 'Active' }));
+}
+
+function createAdminAccount_(data) {
+  require_(data.fullName, 'Full name is required.');
+  require_(data.username, 'Username is required.');
+  require_(data.password, 'Password is required.');
+  if (String(data.password).length < 8) throw new Error('Password must have at least 8 characters.');
+  const username = data.username.trim().toLowerCase();
+  if (rows_('Admins').some((row) => row.username === username) || rows_('StaffAccounts').some((row) => row.username === username)) throw new Error('That username is already in use.');
+  const admin = { id: id_('ADM'), fullName: data.fullName.trim(), username, status: 'Active' };
+  getSpreadsheet_().getSheetByName('Admins').appendRow([admin.id, admin.fullName, admin.username, hash_(data.password), admin.status]);
+  auditAccount_(data._account.id, 'Created administrator account', admin.id, admin.fullName);
+  return admin;
+}
+
+function setAdminAccountStatus_(data) {
+  require_(data.adminId, 'Administrator account is required.');
+  const admin = rows_('Admins').find((row) => row.admin_id === data.adminId);
+  if (!admin) throw new Error('Administrator account not found.');
+  if (admin.admin_id === data._account.id) throw new Error('You cannot deactivate your own account.');
+  const status = data.status === 'Inactive' ? 'Inactive' : 'Active';
+  if (status === 'Inactive' && rows_('Admins').filter((row) => row.status === 'Active').length <= 1) throw new Error('At least one administrator must remain active.');
+  updateSheetRow_('Admins', 'admin_id', data.adminId, { status });
+  if (status === 'Inactive') deactivateSessions_(data.adminId);
+  auditAccount_(data._account.id, status === 'Active' ? 'Reactivated administrator account' : 'Deactivated administrator account', data.adminId, admin.full_name);
+  return { id: data.adminId, status };
+}
+
+function updateAdminAccount_(data) {
+  require_(data.fullName, 'Full name is required.');
+  require_(data.username, 'Username is required.');
+  const adminId = data.adminId || data._account.id;
+  const target = rows_('Admins').find((row) => row.admin_id === adminId);
+  if (!target) throw new Error('Administrator account not found.');
+  const username = data.username.trim().toLowerCase();
+  const duplicate = rows_('Admins').some((row) => row.admin_id !== adminId && row.username === username) || rows_('StaffAccounts').some((row) => row.username === username);
+  if (duplicate) throw new Error('That username is already in use.');
+  if (data.newPassword && String(data.newPassword).length < 8) throw new Error('Password must have at least 8 characters.');
+  const updates = { full_name: data.fullName.trim(), username };
+  if (data.newPassword) {
+    updates.password_hash = hash_(data.newPassword);
+    if (adminId !== data._account.id) deactivateSessions_(adminId);
+  }
+  updateSheetRow_('Admins', 'admin_id', adminId, updates);
+  auditAccount_(data._account.id, 'Updated administrator account', adminId, data.fullName.trim());
+  return { id: adminId, fullName: data.fullName.trim(), username };
+}
+
+function changeOwnPassword_(data) {
+  require_(data.currentPassword, 'Current password is required.');
+  require_(data.newPassword, 'New password is required.');
+  if (String(data.newPassword).length < 8) throw new Error('Password must have at least 8 characters.');
+  const account = data._account;
+  const sheetName = account.role === 'admin' ? 'Admins' : 'StaffAccounts';
+  const idHeader = account.role === 'admin' ? 'admin_id' : 'staff_id';
+  const row = rows_(sheetName).find((record) => record[idHeader] === account.id);
+  if (!row || row.password_hash !== hash_(data.currentPassword)) throw new Error('Current password is incorrect.');
+  updateSheetRow_(sheetName, idHeader, account.id, { password_hash: hash_(data.newPassword), must_change_password: false });
+  auditAccount_(account.id, 'Changed own password', account.id, account.fullName);
+  return { changed: true };
+}
+
+function parsePermissions_(value) { return String(value || '').split(',').map((item) => item.trim()).filter(Boolean); }
+function normalizePermissions_(value) { return (Array.isArray(value) ? value : parsePermissions_(value)).filter((item) => ['pos', 'products', 'inventory', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports'].includes(item)); }
+function updateSheetRow_(sheetName, idHeader, id, updates) {
+  const sheet = getSpreadsheet_().getSheetByName(sheetName); const values = sheet.getDataRange().getValues(); const headers = values[0];
+  const row = values.findIndex((record, index) => index > 0 && record[headers.indexOf(idHeader)] === id);
+  if (row === -1) throw new Error('Account not found.');
+  Object.keys(updates).forEach((header) => sheet.getRange(row + 1, headers.indexOf(header) + 1).setValue(updates[header]));
+}
+function deactivateSessions_(accountId) {
+  const sheet = getSpreadsheet_().getSheetByName('Sessions'); const values = sheet.getDataRange().getValues();
+  values.forEach((record, index) => { if (index > 0 && record[1] === accountId && record[4] === 'Active') sheet.getRange(index + 1, 5).setValue('Revoked'); });
+}
+function auditAccount_(actorId, action, targetId, details) { getSpreadsheet_().getSheetByName('AccountAudit').appendRow([id_('AUD'), actorId, action, targetId, details, new Date()]); }
 
 function getProducts_() {
   return rows_('Products').map((row) => ({

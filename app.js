@@ -16,6 +16,10 @@ let inventoryReportData = {};
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
+let currentSession = null;
+let staffAccounts = [];
+let adminAccount = null;
+let adminAccounts = [];
 let editingProductId = '';
 let pendingActionConfirmResolver = null;
 let toastTimer = null;
@@ -50,7 +54,7 @@ function alignTableBadges() {
   });
   columns.forEach((column) => column.badges.forEach((badge) => {
     badge.style.width = `${Math.ceil(column.width)}px`;
-    badge.style.justifyContent = 'center';
+    badge.style.justifyContent = badge.classList.contains('transfer-quantity') ? 'flex-start' : 'center';
   }));
 }
 
@@ -509,12 +513,14 @@ function askConfirmation({
 async function api(action, payload = {}, method = 'POST') {
   const url = localStorage.getItem(endpointKey) || DEFAULT_API_URL;
   if (!url) throw new Error('Add your Apps Script Web App URL in settings first.');
+  const session = currentSession || JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
+  const securedPayload = ['getSetupStatus', 'createFirstAdmin', 'login', 'restoreSession', 'logout'].includes(action) ? payload : { ...payload, token: payload.token || session?.token };
   const options = method === 'GET' ? {} : {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, ...securedPayload }),
   };
-  const target = method === 'GET' ? `${url}?${new URLSearchParams({ action, ...payload })}` : url;
+  const target = method === 'GET' ? `${url}?${new URLSearchParams({ action, ...securedPayload })}` : url;
   const response = await fetch(target, options);
   const result = await response.json();
   if (!result.ok) throw new Error(result.error || 'The API request failed.');
@@ -540,10 +546,14 @@ function showToast(message, type = 'info') {
   iconWrap.innerHTML = icons[type] || icons.info;
   messageEl.textContent = message;
   toast.className = `toast show ${type}`;
+  if (typeof toast.showPopover === 'function' && !toast.matches(':popover-open')) toast.showPopover();
 
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toast.classList.remove('show');
+    setTimeout(() => {
+      if (typeof toast.hidePopover === 'function' && toast.matches(':popover-open')) toast.hidePopover();
+    }, 300);
   }, 3200);
 }
 
@@ -570,6 +580,10 @@ function renderSkeletonTable() {
     ? ['Customer', 'Credit Sale', 'Original Amount', 'Amount Due', 'Action']
     : activeView === 'sales'
     ? ['Receipt', 'Date and Time', 'Customer', 'Payment', 'Total', 'Action']
+    : activeView === 'staffAccounts'
+    ? ['Staff Account', 'Assigned Branch', 'Menu Access', 'Status', 'Action']
+    : activeView === 'adminAccount'
+    ? ['Administrator', 'Username', 'Access', 'Status', 'Action']
     : ['Product', 'Selling price', 'Stock', 'Action'];
 
   const getSkeletonMiddleCells = () => {
@@ -635,6 +649,26 @@ function renderSkeletonTable() {
         <div><div class="skeleton-shimmer skeleton-line price" style="width:90px;"></div></div>
       `;
     }
+    if (activeView === 'staffAccounts') {
+      return `
+        <div><div class="skeleton-shimmer skeleton-line pill" style="width:110px;"></div></div>
+        <div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+            <div class="skeleton-shimmer skeleton-line pill" style="width:55px;height:22px;border-radius:6px;"></div>
+            <div class="skeleton-shimmer skeleton-line pill" style="width:72px;height:22px;border-radius:6px;"></div>
+            <div class="skeleton-shimmer skeleton-line pill" style="width:68px;height:22px;border-radius:6px;"></div>
+          </div>
+        </div>
+        <div><div class="skeleton-shimmer skeleton-line pill" style="width:70px;"></div></div>
+      `;
+    }
+    if (activeView === 'adminAccount') {
+      return `
+        <div><div class="skeleton-shimmer skeleton-line text" style="width:110px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line pill" style="width:140px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line pill" style="width:70px;"></div></div>
+      `;
+    }
     // Default / POS view:
     return `
       <div><div class="skeleton-shimmer skeleton-line price"></div></div>
@@ -646,6 +680,17 @@ function renderSkeletonTable() {
 
   const getSkeletonActionCell = () => {
     if (!hasAction) return '';
+    if (activeView === 'staffAccounts') {
+      return `
+        <div class="row-action-cell skeleton-action-cell">
+          <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+          </span>
+        </div>
+      `;
+    }
     if (activeView === 'credits' || activeView === 'products') {
       return `
         <div class="row-action-cell skeleton-action-cell">
@@ -1379,6 +1424,154 @@ function renderInventoryReports() {
   `;
 }
 
+const STAFF_MENU_DEFS = {
+  pos: {
+    key: 'pos',
+    label: 'POS',
+    fullName: 'Point of Sale',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>'
+  },
+  products: {
+    key: 'products',
+    label: 'Products',
+    fullName: 'Product Registration',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>'
+  },
+  inventory: {
+    key: 'inventory',
+    label: 'Inventory',
+    fullName: 'Inventory Stock',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>'
+  },
+  transfers: {
+    key: 'transfers',
+    label: 'Transfers',
+    fullName: 'Stock Transfers',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>'
+  },
+  customers: {
+    key: 'customers',
+    label: 'Customers',
+    fullName: 'Customers',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>'
+  },
+  credits: {
+    key: 'credits',
+    label: 'Credits',
+    fullName: 'Credit Payments',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>'
+  },
+  sales: {
+    key: 'sales',
+    label: 'Sales',
+    fullName: 'Sales History',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>'
+  },
+  inventoryReports: {
+    key: 'inventoryReports',
+    label: 'Reports',
+    fullName: 'Inventory Reports',
+    icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>'
+  }
+};
+
+function renderStaffPermissions(permissions = []) {
+  if (!permissions || !permissions.length) {
+    return `<span class="menu-chip menu-chip-none"><svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>No menus</span>`;
+  }
+  const allKeys = Object.keys(STAFF_MENU_DEFS);
+  const isAll = permissions.includes('*') || allKeys.every((key) => permissions.includes(key));
+  if (isAll) {
+    return `<span class="menu-chip menu-chip-all" title="Full access: All 8 menus permitted"><svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>All Menus</span><span class="menu-chip-all-count">8</span></span>`;
+  }
+  return permissions.map((perm) => {
+    const def = STAFF_MENU_DEFS[perm];
+    if (!def) return `<span class="menu-chip">${escapeHtml(perm)}</span>`;
+    return `<span class="menu-chip menu-chip-${def.key}" title="${escapeHtml(def.fullName)}">${def.icon}<span>${escapeHtml(def.label)}</span></span>`;
+  }).join('');
+}
+
+function renderStaffAccounts() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const rows = staffAccounts.filter((staff) => `${staff.fullName} ${staff.username}`.toLowerCase().includes(term));
+  table.innerHTML = `
+    <div class="table-row table-header"><span>Staff Account</span><span>Assigned Branch</span><span>Menu Access</span><span>Status</span><span>Action</span></div>
+    ${rows.map((staff) => {
+      const branch = branches.find((item) => item.id === staff.branchId);
+      return `<div class="table-row">
+        <div class="product-cell"><strong class="product-name">${escapeHtml(staff.fullName)}</strong><span class="product-meta">${escapeHtml(staff.username)}${staff.lastLogin ? ` • Last login ${formatDateTime(staff.lastLogin)}` : ' • Not yet signed in'}</span></div>
+        <div class="row-middle-cells">
+          <span class="category-badge">${escapeHtml(branch?.name || 'Unavailable branch')}</span>
+          <span class="account-permissions">${renderStaffPermissions(staff.permissions)}</span>
+          <span class="stock-pill ${staff.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(staff.status)}</span>
+        </div>
+        <div class="row-action-cell"><span class="table-actions">
+          <button class="icon-button" data-edit-staff="${staff.id}" aria-label="Edit ${escapeHtml(staff.fullName)}" title="Edit staff account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+          <button class="icon-button primary-icon" data-reset-staff="${staff.id}" aria-label="Reset password for ${escapeHtml(staff.fullName)}" title="Reset password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg></button>
+          <button class="icon-button ${staff.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-staff="${staff.id}" aria-label="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(staff.fullName)}" title="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></button>
+        </span></div></div>`;
+    }).join('') || '<div class="empty-state"><p>No staff accounts found</p><small>Add a staff account to assign a branch and allowed menus.</small></div>'}
+  `;
+  table.querySelectorAll('[data-edit-staff]').forEach((button) => button.addEventListener('click', () => openForm('editStaff', button.dataset.editStaff)));
+  table.querySelectorAll('[data-toggle-staff]').forEach((button) => button.addEventListener('click', () => toggleStaffStatus(button.dataset.toggleStaff)));
+  table.querySelectorAll('[data-reset-staff]').forEach((button) => button.addEventListener('click', () => resetStaffPassword(button.dataset.resetStaff)));
+}
+
+function renderAdminAccount() {
+  const panel = $('#accountProfilePanel');
+  const table = $('#inventoryTable');
+  if (!panel || !table) return;
+  panel.hidden = true;
+  table.innerHTML = `<div class="table-row table-header"><span>Administrator</span><span>Username</span><span>Access</span><span>Status</span><span>Action</span></div>${adminAccounts.map((account) => `<div class="table-row">
+    <div class="product-cell"><strong class="product-name">${escapeHtml(account.fullName)}</strong><span class="product-meta">Administrator account</span></div>
+    <div class="row-middle-cells">
+      <span>${escapeHtml(account.username)}</span>
+      <span class="account-permissions"><span class="menu-chip menu-chip-all" title="Full system access across all branches and menus"><svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>All branches &amp; menus</span></span></span>
+      <span class="stock-pill ${account.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(account.status)}</span>
+    </div>
+    <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-admin="${account.id}" aria-label="Edit ${escapeHtml(account.fullName)}" title="Edit administrator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${account.id !== currentSession?.account?.id ? `<button class="icon-button ${account.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-admin="${account.id}" aria-label="${account.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(account.fullName)}" title="${account.status === 'Active' ? 'Deactivate administrator' : 'Reactivate administrator'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg></button>` : ''}</span></div>
+  </div>`).join('') || '<div class="empty-state"><p>No administrator accounts found</p></div>'}`;
+  table.querySelectorAll('[data-edit-admin]').forEach((button) => button.addEventListener('click', () => openForm('editAdmin', button.dataset.editAdmin)));
+  table.querySelectorAll('[data-toggle-admin]').forEach((button) => button.addEventListener('click', () => toggleAdminStatus(button.dataset.toggleAdmin)));
+}
+
+function formatDateTime(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }); }
+
+async function toggleStaffStatus(staffId) {
+  const staff = staffAccounts.find((item) => item.id === staffId); if (!staff) return;
+  const activating = staff.status !== 'Active';
+  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Staff`, eyebrow: 'STAFF ACCOUNTS', subtitle: 'Confirm account access change', message: `${activating ? 'Restore' : 'Remove'} sign-in access for <strong class="confirm-highlight-name">${escapeHtml(staff.fullName)}</strong>?`, warning: activating ? 'The staff member can sign in again.' : 'All active sessions for this staff member will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
+  if (!confirmed) return;
+  await api('setStaffAccountStatus', { staffId, status: activating ? 'Active' : 'Inactive' }); await refresh(); showToast(`Staff account ${activating ? 'reactivated' : 'deactivated'}.`, 'success');
+}
+
+function resetStaffPassword(staffId) {
+  openForm('resetStaff', staffId);
+}
+
+async function saveAdminAccount(event) {
+  event.preventDefault(); const form = new FormData(event.currentTarget);
+  try { const account = await api('updateAdminAccount', Object.fromEntries(form)); currentSession.account = { ...currentSession.account, ...account }; localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(currentSession)); adminAccount = account; showToast('Administrator profile updated.', 'success'); } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function changeOwnPassword() {
+  const form = new FormData($('#adminAccountForm'));
+  if (!form.get('currentPassword') || !form.get('newPassword')) { showToast('Enter your current and new password.', 'error'); return; }
+  const confirmed = await askConfirmation({ title: 'Change Password', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm security update', message: 'Are you sure you want to change your administrator password?', confirmText: 'Change Password', confirmType: 'primary' });
+  if (!confirmed) return;
+  try { await api('changeOwnPassword', { currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') }); $('#adminAccountForm').querySelectorAll('[type="password"]').forEach((input) => { input.value = ''; }); showToast('Password changed successfully.', 'success'); } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function toggleAdminStatus(adminId) {
+  const account = adminAccounts.find((item) => item.id === adminId); if (!account) return;
+  const activating = account.status !== 'Active';
+  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Administrator`, eyebrow: 'ADMINISTRATION', subtitle: 'Confirm administrator access', message: `${activating ? 'Restore' : 'Remove'} full system access for <strong class="confirm-highlight-name">${escapeHtml(account.fullName)}</strong>?`, warning: activating ? 'This administrator can sign in again.' : 'Their active sessions will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
+  if (!confirmed) return;
+  try { await api('setAdminAccountStatus', { adminId, status: activating ? 'Active' : 'Inactive' }); await refresh(); showToast(`Administrator ${activating ? 'reactivated' : 'deactivated'}.`, 'success'); } catch (error) { showToast(error.message, 'error'); }
+}
+
 function renderInventory() {
   if (activeView === 'inventoryReports') {
     renderInventoryReports();
@@ -1404,6 +1597,8 @@ function renderInventory() {
     renderSalesHistory();
     return;
   }
+  if (activeView === 'staffAccounts') { renderStaffAccounts(); return; }
+  if (activeView === 'adminAccount') { renderAdminAccount(); return; }
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const rows = products.filter((product) => `${product.name} ${product.category} ${product.sku || ''}`.toLowerCase().includes(term));
   const table = $('#inventoryTable');
@@ -1460,9 +1655,9 @@ function renderInventory() {
           <button class="icon-button" data-edit="${product.id}" aria-label="Edit ${escapeHtml(product.name)}" title="Edit product">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
           </button>
-          <button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product">
+          ${currentSession?.account?.role !== 'staff' ? `<button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-          </button>
+          </button>` : ''}
         </span>
       </div>
     `;
@@ -1924,13 +2119,15 @@ async function handleTransferAction(button) {
 function renderBranchSelector() {
   const selector = $('#branchSelector');
   if (!selector) return;
-  const activeBranches = branches.filter((branch) => branch.status === 'Active');
+  const account = currentSession?.account;
+  const activeBranches = branches.filter((branch) => branch.status === 'Active' && (account?.role !== 'staff' || branch.id === account.branchId));
   if (activeBranches.length === 0) {
     activeBranches.push({ id: 'MAIN', name: 'Main Branch' });
   }
   if (!activeBranches.some((branch) => branch.id === activeBranchId)) activeBranchId = activeBranches[0]?.id || 'MAIN';
   selector.innerHTML = activeBranches.map((branch) => `<option value="${escapeHtml(branch.id)}">${escapeHtml(branch.name)}</option>`).join('');
   selector.value = activeBranchId;
+  selector.disabled = account?.role === 'staff';
   updateCustomDropdown(selector);
   updateActiveBranchLabels();
   renderSidebarBranchMenu();
@@ -1954,7 +2151,8 @@ function updateActiveBranchLabels() {
 function renderSidebarBranchMenu() {
   const menu = $('#sidebarBranchMenu');
   if (!menu) return;
-  const activeBranches = branches.filter((branch) => branch.status === 'Active');
+  const account = currentSession?.account;
+  const activeBranches = branches.filter((branch) => branch.status === 'Active' && (account?.role !== 'staff' || branch.id === account.branchId));
   if (activeBranches.length === 0) {
     activeBranches.push({ id: 'MAIN', name: 'Main Branch' });
   }
@@ -2180,6 +2378,7 @@ function updatePrice(id, value) {
    REFRESH DATA
    ========================================================================== */
 async function refresh(showSkeleton = true) {
+  if (!currentSession?.token) return;
   if (showSkeleton) renderSkeletonTable();
   try {
     const data = await api('getAppData', { branchId: activeBranchId }, 'GET');
@@ -2193,6 +2392,8 @@ async function refresh(showSkeleton = true) {
     salesHistory = data.salesHistory || [];
     inventoryReportData = data.inventoryReport || {};
     allProducts = data.products;
+    if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
+    if (activeView === 'adminAccount') { adminAccount = await api('getAdminAccount', {}, 'GET'); adminAccounts = await api('getAdminAccounts', {}, 'GET'); }
     renderInventory();
     renderCart();
   } catch (error) {
@@ -2255,6 +2456,26 @@ function openForm(type, productId = '') {
       title: 'Edit customer', eyebrow: 'CUSTOMER MANAGEMENT', subtitle: 'Update customer information for the selected branch.', submit: 'Save changes',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
     },
+    staff: {
+      title: 'Add staff account', eyebrow: 'STAFF ACCOUNTS', subtitle: 'Assign a branch and the menus this staff member may use.', submit: 'Create staff',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>`,
+    },
+    editStaff: {
+      title: 'Edit staff account', eyebrow: 'STAFF ACCOUNTS', subtitle: 'Update the branch assignment and allowed menus.', submit: 'Save changes',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+    },
+    resetStaff: {
+      title: 'Reset staff password', eyebrow: 'STAFF SECURITY', subtitle: 'Assign a new temporary password for this staff member.', submit: 'Reset password',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>`,
+    },
+    admin: {
+      title: 'Add administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Administrators receive full access to every branch and menu.', submit: 'Add administrator',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
+    },
+    editAdmin: {
+      title: 'Edit administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Update your administrator profile.', submit: 'Save changes',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+    },
     transfer: {
       title: 'New stock transfer', eyebrow: 'BRANCH OPERATIONS', subtitle: 'Create a draft transfer from the selected branch.', submit: 'Create draft',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
@@ -2278,6 +2499,7 @@ function openForm(type, productId = '') {
   $('#formSubmit').innerHTML = `<span class="button-text">${formMeta.submit}</span>`;
 
   const selected = (value, expected) => (value === expected ? ' selected' : '');
+  const staff = staffAccounts.find((item) => item.id === productId);
 
   const productFields = `
     <div class="form-field-group full-field">
@@ -2413,10 +2635,34 @@ function openForm(type, productId = '') {
   `;
 
   const customerFields = `
-    <div class="form-field-group full-field"><label for="modalCustomerName"><span class="label-text">Customer Name <span class="required">*</span></span></label><input id="modalCustomerName" name="name" placeholder="e.g. Juan Dela Cruz" value="${escapeHtml(customer?.name || '')}" required autocomplete="off" /></div>
-    <div class="form-field-group"><label for="modalCustomerPhone"><span class="label-text">Mobile Number</span></label><input id="modalCustomerPhone" name="phone" type="tel" placeholder="e.g. 0917 123 4567" value="${escapeHtml(customer?.phone || '')}" autocomplete="tel" /></div>
-    <div class="form-field-group"><label for="modalCustomerStatus"><span class="label-text">Status</span></label><select id="modalCustomerStatus" name="status"><option value="Active"${selected(customer?.status || 'Active', 'Active')}>Active</option><option value="Inactive"${selected(customer?.status, 'Inactive')}>Inactive</option></select></div>
-    <div class="form-field-group full-field"><label for="modalCustomerAddress"><span class="label-text">Address</span></label><input id="modalCustomerAddress" name="address" placeholder="Street, barangay, city" value="${escapeHtml(customer?.address || '')}" autocomplete="street-address" /></div>
+    <div class="form-field-group full-field">
+      <label for="modalCustomerName"><span class="label-text">Customer Name <span class="required">*</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input id="modalCustomerName" name="name" placeholder="e.g. Juan Dela Cruz" value="${escapeHtml(customer?.name || '')}" required autocomplete="off" />
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalCustomerPhone"><span class="label-text">Mobile Number</span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <input id="modalCustomerPhone" name="phone" type="tel" placeholder="e.g. 0917 123 4567" value="${escapeHtml(customer?.phone || '')}" autocomplete="tel" />
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalCustomerStatus"><span class="label-text">Status</span></label>
+      <select id="modalCustomerStatus" name="status">
+        <option value="Active"${selected(customer?.status || 'Active', 'Active')}>Active</option>
+        <option value="Inactive"${selected(customer?.status, 'Inactive')}>Inactive</option>
+      </select>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalCustomerAddress"><span class="label-text">Address</span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        <input id="modalCustomerAddress" name="address" placeholder="Street, barangay, city" value="${escapeHtml(customer?.address || '')}" autocomplete="street-address" />
+      </div>
+    </div>
   `;
 
   const destinationBranches = branches.filter((item) => item.id !== activeBranchId && item.status === 'Active');
@@ -2427,11 +2673,192 @@ function openForm(type, productId = '') {
     <div class="form-field-group"><label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label><input id="modalTransferNotes" name="notes" placeholder="Optional reference" autocomplete="off" /></div>
   `;
 
+  const menuOptions = [
+    ['pos', 'Point of Sale'],
+    ['products', 'Product Registration'],
+    ['inventory', 'Inventory Stock'],
+    ['transfers', 'Stock Transfers'],
+    ['customers', 'Customers'],
+    ['credits', 'Credit Payments'],
+    ['sales', 'Sales History'],
+    ['inventoryReports', 'Inventory Reports']
+  ];
+  const menuIcons = {
+    pos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+    products: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>',
+    inventory: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>',
+    transfers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>',
+    customers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    credits: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
+    sales: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
+    inventoryReports: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>'
+  };
+  const staffFields = `
+    <div class="form-field-group">
+      <label for="modalStaffName"><span class="label-text">Full Name <span class="required">*</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input id="modalStaffName" name="fullName" value="${escapeHtml(staff?.fullName || '')}" placeholder="e.g. Maria Santos" required autocomplete="name">
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalStaffUsername"><span class="label-text">Username <span class="required">*</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
+        <input id="modalStaffUsername" name="username" value="${escapeHtml(staff?.username || '')}" ${type === 'editStaff' ? 'readonly' : ''} placeholder="e.g. staff_maria" required autocapitalize="none">
+      </div>
+    </div>
+    ${type === 'staff' ? `
+      <div class="form-field-group full-field">
+        <label for="modalStaffPassword"><span class="label-text">Temporary Password <span class="required">*</span></span></label>
+        <div class="input-with-icon password-input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="modalStaffPassword" name="password" type="password" minlength="8" placeholder="Minimum 8 characters" required autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1">
+            <svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+          </button>
+        </div>
+      </div>
+    ` : ''}
+    <div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch <span class="required">*</span></span></label><select id="modalStaffBranch" name="branchId" required><option value="" disabled${staff ? '' : ' selected'}>Select branch</option>${branches.filter((item) => item.status === 'Active').map((item) => `<option value="${escapeHtml(item.id)}"${selected(staff?.branchId, item.id)}>${escapeHtml(item.name)}</option>`).join('')}</select></div>
+    <div class="form-field-group full-field">
+      <span class="label-text">Allowed Sidebar Menus <span class="required">*</span></span>
+      <div class="staff-permission-grid">
+        ${menuOptions.map(([value, label]) => {
+          const isChecked = Boolean(staff?.permissions?.includes(value));
+          return `
+            <label class="staff-permission-option${isChecked ? ' is-checked' : ''}">
+              <input type="checkbox" name="permissions" value="${value}"${isChecked ? ' checked' : ''}>
+              <span class="custom-checkbox" aria-hidden="true">
+                <svg class="custom-checkbox-icon" viewBox="0 0 12 10" fill="none">
+                  <path d="M1.5 5.2L4.2 8L10.5 1.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span class="staff-permission-icon-wrap" aria-hidden="true">${menuIcons[value] || ''}</span>
+              <span class="staff-permission-label">${label}</span>
+            </label>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  const currentAdmin = type === 'editAdmin' ? adminAccounts.find((account) => account.id === productId) : adminAccount || currentSession?.account;
+  const adminFields = `
+    <div class="form-field-group">
+      <label for="modalAdminName"><span class="label-text">Full Name <span class="required">*</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input id="modalAdminName" name="fullName" value="${type === 'editAdmin' ? escapeHtml(currentAdmin?.fullName || '') : ''}" placeholder="e.g. Administrator" required autocomplete="name">
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalAdminUsername"><span class="label-text">Username <span class="required">*</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
+        <input id="modalAdminUsername" name="username" value="${type === 'editAdmin' ? escapeHtml(currentAdmin?.username || '') : ''}" placeholder="e.g. admin" required autocapitalize="none">
+      </div>
+    </div>
+    ${type === 'admin' ? `
+      <div class="form-field-group full-field">
+        <label for="modalAdminPassword"><span class="label-text">Password <span class="required">*</span></span></label>
+        <div class="input-with-icon password-input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="modalAdminPassword" name="password" type="password" minlength="8" placeholder="Minimum 8 characters" required autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1">
+            <svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+          </button>
+        </div>
+      </div>
+    ` : ''}
+    ${type === 'admin' ? `
+      <div class="form-field-group full-field">
+        <label for="modalAdminConfirmPassword"><span class="label-text">Confirm Password <span class="required">*</span></span></label>
+        <div class="input-with-icon password-input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="modalAdminConfirmPassword" name="confirmPassword" type="password" minlength="8" placeholder="Confirm password" required autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1"><svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg></button>
+        </div>
+      </div>
+    ` : ''}
+    ${type === 'editAdmin' ? `
+      <div class="form-section-divider full-field">
+        <div class="form-section-header">
+          <div class="form-section-title-wrap">
+            <svg class="form-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Change Password</span>
+          </div>
+          <span class="form-section-badge">Optional</span>
+        </div>
+        <p class="form-section-subtitle">Leave blank to keep your current password</p>
+      </div>
+      <div class="form-field-group">
+        <label for="modalAdminNewPassword"><span class="label-text">New Password</span></label>
+        <div class="input-with-icon password-input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="modalAdminNewPassword" name="newPassword" type="password" minlength="8" placeholder="Min. 8 characters" autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1">
+            <svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="form-field-group">
+        <label for="modalAdminConfirmPassword"><span class="label-text">Confirm Password</span></label>
+        <div class="input-with-icon password-input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4a1 1 0 0 0-1.4 0l-2.1 2.1a1 1 0 0 0 0 1.4Z"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
+          <input id="modalAdminConfirmPassword" name="confirmPassword" type="password" minlength="8" placeholder="Confirm new password" autocomplete="new-password">
+          <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1">
+            <svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+          </button>
+        </div>
+      </div>
+    ` : ''}
+  `;
+
+  const resetStaffFields = `
+    <div class="form-field-group full-field">
+      <div class="staff-reset-summary-card">
+        <div class="staff-reset-avatar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M19 8v6M22 11h-6"/></svg>
+        </div>
+        <div class="staff-reset-info">
+          <strong class="staff-reset-name">${escapeHtml(staff?.fullName || 'Staff Member')}</strong>
+          <span class="staff-reset-meta">${escapeHtml(staff?.username ? `@${staff.username}` : '')}${staff?.branchId ? ` &bull; ${escapeHtml(branches.find((b) => b.id === staff.branchId)?.name || 'Assigned Branch')}` : ''}</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalResetStaffPassword"><span class="label-text">New Temporary Password <span class="required">*</span></span></label>
+      <div class="input-with-icon password-input-wrap">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <input id="modalResetStaffPassword" name="temporaryPassword" type="password" minlength="8" placeholder="Minimum 8 characters" required autocomplete="new-password">
+        <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide password" tabindex="-1">
+          <svg class="pwd-eye-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="pwd-eye-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="m9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
+      <p class="field-hint">All active sessions for this account will end immediately. The staff member must set a new permanent password after signing in.</p>
+    </div>
+  `;
+
   const container = $('#formFields');
-  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'transfer' ? transferFields : stockFields;
+  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : stockFields;
 
   // Initialize smooth dropdowns for newly injected selects
   initCustomDropdowns(container);
+
+  // Sync state for permission checkbox cards
+  container.querySelectorAll('.staff-permission-option input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const option = checkbox.closest('.staff-permission-option');
+      if (option) {
+        option.classList.toggle('is-checked', checkbox.checked);
+      }
+    });
+  });
 
   const linkedProductSelect = $('#modalLinkProduct');
   if (linkedProductSelect) {
@@ -2481,6 +2908,11 @@ function openForm(type, productId = '') {
   });
 
   $('#formDialog').showModal();
+  if (type === 'resetStaff') {
+    setTimeout(() => {
+      $('#modalResetStaffPassword')?.focus();
+    }, 60);
+  }
 }
 
 async function deleteProduct(productId) {
@@ -2511,7 +2943,9 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports'];
+  const validViews = ['pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const permissions = currentSession?.account?.permissions || ['*'];
+  if (!permissions.includes('*') && !permissions.includes(view)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
   localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
@@ -2525,6 +2959,8 @@ function setView(view, preserveSidebarOpen = false) {
     sales: ['REPORTING', 'Sales History', 'SALES LEDGER', 'Branch Sales History'],
     inventoryReports: ['REPORTING', 'Inventory Reports', 'INVENTORY REPORT', 'Active Branch Stock Report'],
     transfers: ['BRANCH OPERATIONS', 'Stock Transfers', 'TRANSFER TRACKING', 'Outgoing and Incoming Branch Stock'],
+    staffAccounts: ['ADMINISTRATION', 'Staff Accounts', 'STAFF ACCOUNTS', 'Manage Staff Access'],
+    adminAccount: ['ADMINISTRATION', 'Admin Account', 'ADMINISTRATION', 'Administrator Accounts'],
   }[view] || ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'];
 
   $('#pageEyebrow').textContent = details[0];
@@ -2545,6 +2981,8 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search receipt, customer, or payment type...'
       : view === 'inventoryReports'
       ? 'Search product name, SKU, or category...'
+      : view === 'staffAccounts'
+      ? 'Search staff name or username...'
       : 'Search product name, SKU, or category...';
   }
 
@@ -2558,6 +2996,8 @@ function setView(view, preserveSidebarOpen = false) {
     sales: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
     inventoryReports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="M9 12h6M9 16h6M9 20h4"/></svg>`,
     transfers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
+    staffAccounts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M19 8v6M22 11h-6"/></svg>`,
+    adminAccount: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
   };
 
   const catalogIconWrap = $('#catalogIconWrap');
@@ -2580,6 +3020,10 @@ function setView(view, preserveSidebarOpen = false) {
   if (customerBtn) customerBtn.hidden = view !== 'customers';
   const transferBtn = $('#addTransferButton');
   if (transferBtn) transferBtn.hidden = view !== 'transfers';
+  const staffBtn = $('#addStaffButton');
+  if (staffBtn) staffBtn.hidden = view !== 'staffAccounts';
+  const adminBtn = $('#addAdminButton');
+  if (adminBtn) adminBtn.hidden = view !== 'adminAccount';
   const inventoryPdfBtn = $('#generateInventoryPdfButton');
   if (inventoryPdfBtn) inventoryPdfBtn.hidden = view !== 'inventoryReports';
   $('#pos').dataset.view = view;
@@ -2591,6 +3035,8 @@ function setView(view, preserveSidebarOpen = false) {
   }
   const salesDateRange = $('#salesDateRange');
   if (salesDateRange) salesDateRange.hidden = view !== 'sales';
+  const profilePanel = $('#accountProfilePanel');
+  if (profilePanel && view !== 'adminAccount') profilePanel.hidden = true;
   if (view === 'sales') {
     ensureSalesDateDefaults();
     updateSalesPrintPeriod();
@@ -2609,6 +3055,7 @@ function setView(view, preserveSidebarOpen = false) {
     localStorage.setItem(SIDEBAR_OPEN_KEY, 'false');
   }
   renderInventory();
+  if (currentSession?.token && !currentSession.account?.mustChangePassword) refresh();
 }
 
 /* ==========================================================================
@@ -2786,6 +3233,8 @@ $('#stockInButton').addEventListener('click', () => openForm('stock'));
 $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
+$('#addStaffButton').addEventListener('click', () => openForm('staff'));
+$('#addAdminButton').addEventListener('click', () => openForm('admin'));
 $('#generateInventoryPdfButton').addEventListener('click', generateInventoryReportPdf);
 
 $('#modalForm').addEventListener('submit', async (event) => {
@@ -2796,6 +3245,10 @@ $('#modalForm').addEventListener('submit', async (event) => {
     return;
   }
   const form = new FormData(formEl);
+  if (activeForm === 'admin' && form.get('password') !== form.get('confirmPassword')) {
+    showToast('Password and confirmation do not match.', 'error');
+    return;
+  }
 
   let confirmConfig = {
     title: 'Confirm Changes',
@@ -2878,6 +3331,31 @@ $('#modalForm').addEventListener('submit', async (event) => {
       confirmText: 'Save Changes',
       confirmType: 'primary'
     };
+  } else if (activeForm === 'staff' || activeForm === 'editStaff') {
+    const name = form.get('fullName') || 'staff member';
+    confirmConfig = {
+      title: activeForm === 'staff' ? 'Create Staff Account' : 'Save Staff Changes',
+      eyebrow: 'STAFF ACCOUNTS', subtitle: 'Confirm account access',
+      message: `Are you sure you want to ${activeForm === 'staff' ? 'create an account for' : 'save changes for'} <strong class="confirm-highlight-name">${escapeHtml(name)}</strong>?`,
+      warning: activeForm === 'staff' ? 'The staff member must change the temporary password after signing in.' : 'The selected branch and menus take effect immediately.',
+      confirmText: activeForm === 'staff' ? 'Create Staff' : 'Save Changes', confirmType: 'primary'
+    };
+  } else if (activeForm === 'resetStaff') {
+    const staff = staffAccounts.find((item) => item.id === editingProductId);
+    confirmConfig = {
+      title: 'Reset Staff Password',
+      eyebrow: 'STAFF ACCOUNTS',
+      subtitle: 'Temporary password confirmation',
+      message: `Reset the temporary password for <strong class="confirm-highlight-name">${escapeHtml(staff?.fullName || 'this staff member')}</strong>?`,
+      warning: 'All active sessions for this account will end immediately.',
+      confirmText: 'Reset Password',
+      confirmType: 'primary'
+    };
+  } else if (activeForm === 'admin' || activeForm === 'editAdmin') {
+    const name = form.get('fullName') || 'administrator';
+    confirmConfig = activeForm === 'admin'
+      ? { title: 'Add Administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm full system access', message: `Are you sure you want to make <strong class="confirm-highlight-name">${escapeHtml(name)}</strong> an administrator?`, warning: 'This account will have access to all branches and all menus.', confirmText: 'Add Administrator', confirmType: 'primary' }
+      : { title: 'Save Administrator Changes', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm profile update', message: 'Are you sure you want to save your administrator profile changes?', confirmText: 'Save Changes', confirmType: 'primary' };
   } else if (activeForm === 'transfer') {
     const prodId = form.get('productId');
     const prod = products.find((p) => p.id === prodId);
@@ -2942,6 +3420,29 @@ $('#modalForm').addEventListener('submit', async (event) => {
     } else if (activeForm === 'editCustomer') {
       await api('updateCustomer', { ...Object.fromEntries(form), customerId: editingProductId, branchId: activeBranchId });
       showToast('Customer updated successfully.', 'success');
+    } else if (activeForm === 'staff' || activeForm === 'editStaff') {
+      const payload = Object.fromEntries(form);
+      payload.permissions = form.getAll('permissions');
+      if (!payload.permissions.length) throw new Error('Select at least one allowed sidebar menu.');
+      await api(activeForm === 'staff' ? 'createStaffAccount' : 'updateStaffAccount', activeForm === 'staff' ? payload : { ...payload, staffId: editingProductId });
+      showToast(activeForm === 'staff' ? 'Staff account created.' : 'Staff account updated.', 'success');
+    } else if (activeForm === 'resetStaff') {
+      const password = form.get('temporaryPassword');
+      if (!password || password.length < 8) throw new Error('Temporary password must be at least 8 characters.');
+      await api('resetStaffPassword', { staffId: editingProductId, temporaryPassword: password });
+      showToast('Temporary password saved.', 'success');
+    } else if (activeForm === 'admin') {
+      await api('createAdminAccount', Object.fromEntries(form));
+      showToast('Administrator account created.', 'success');
+    } else if (activeForm === 'editAdmin') {
+      const payload = Object.fromEntries(form);
+      if (payload.newPassword !== payload.confirmPassword) throw new Error('New password and confirmation do not match.');
+      const account = await api('updateAdminAccount', { adminId: editingProductId, fullName: payload.fullName, username: payload.username, newPassword: payload.newPassword });
+      if (account.id === currentSession.account.id) {
+        currentSession.account = { ...currentSession.account, ...account };
+        localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(currentSession));
+      }
+      showToast('Administrator profile updated.', 'success');
     } else if (activeForm === 'transfer') {
       await api('createTransfer', { ...Object.fromEntries(form), sourceBranchId: activeBranchId });
       showToast('Stock transfer draft created.', 'success');
@@ -2952,7 +3453,8 @@ $('#modalForm').addEventListener('submit', async (event) => {
     $('#formDialog').close();
     await refresh();
   } catch (error) {
-    $('#formError').textContent = error.message;
+    const isDuplicateUsername = /username is already in use/i.test(error.message || '');
+    $('#formError').textContent = isDuplicateUsername ? '' : error.message;
     showToast(error.message, 'error');
   } finally {
     submitBtn.disabled = false;
@@ -3310,18 +3812,81 @@ function renderAuthSkeletons() {
   `;
 }
 
+function applySession(session) {
+  currentSession = session;
+  const account = session.account;
+  const permittedViews = account.permissions || [];
+  document.querySelectorAll('[data-view]').forEach((item) => {
+    const allowed = permittedViews.includes('*') || permittedViews.includes(item.dataset.view);
+    item.hidden = !allowed;
+  });
+  document.querySelectorAll('.side-nav .nav-label').forEach((label) => {
+    let sibling = label.nextElementSibling;
+    let hasVisibleMenu = false;
+    while (sibling && !sibling.classList.contains('nav-label')) {
+      if (sibling.matches('[data-view]') && !sibling.hidden) hasVisibleMenu = true;
+      sibling = sibling.nextElementSibling;
+    }
+    label.hidden = !hasVisibleMenu;
+  });
+  if (account.role === 'staff') {
+    activeBranchId = account.branchId;
+    localStorage.setItem(ACTIVE_BRANCH_KEY, activeBranchId);
+  }
+  const requestedView = localStorage.getItem(ACTIVE_VIEW_KEY) || 'pos';
+  setView(requestedView, true);
+}
+
+async function completeRequiredPasswordChange() {
+  if (!currentSession?.account?.mustChangePassword) return true;
+  const currentPassword = window.prompt('Enter your temporary password to continue:');
+  const newPassword = window.prompt('Create a new password (minimum 8 characters):');
+  if (!currentPassword || !newPassword) throw new Error('You must change your temporary password before continuing.');
+  await api('changeOwnPassword', { currentPassword, newPassword });
+  currentSession.account.mustChangePassword = false;
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(currentSession));
+  showToast('Password updated. Your account is ready.', 'success');
+  return true;
+}
+
 async function initAuth() {
   const overlay = $('#authOverlay');
   overlay.classList.add('session-loading');
   const savedSession = JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
   if (savedSession?.token) {
+    let restoreError;
     try {
-      const session = await api('restoreSession', { token: savedSession.token }, 'GET');
+      let session;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          session = await api('restoreSession', { token: savedSession.token }, 'GET');
+          break;
+        } catch (error) {
+          restoreError = error;
+          if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+      if (!session) throw restoreError || new Error('Unable to restore session.');
       localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+      const requiresPasswordChange = session.account.mustChangePassword;
+      applySession(session);
+      await completeRequiredPasswordChange();
       overlay.hidden = true;
+      if (requiresPasswordChange) await refresh();
       return;
-    } catch (_) {
-      localStorage.removeItem(ADMIN_SESSION_KEY);
+    } catch (error) {
+      const message = String(error?.message || '');
+      const sessionInvalid = /session has expired|account is unavailable|sign in is required/i.test(message);
+      if (sessionInvalid) {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+      } else {
+        currentSession = savedSession;
+        applySession(savedSession);
+        overlay.hidden = true;
+        showToast('Connection is unstable. Your saved session is still active.', 'info');
+        refresh(false);
+        return;
+      }
     }
   }
   renderAuthSkeletons();
@@ -3330,7 +3895,7 @@ async function initAuth() {
     const setup = status.needsAdmin;
     $('#authEyebrow').textContent = setup ? 'FIRST-TIME SETUP' : 'ADMINISTRATION';
     $('#authTitle').textContent = setup ? 'Create administrator' : 'Sign in';
-    $('#authCopy').textContent = setup ? 'Create the first administrator account for this POS.' : 'Use your administrator account to continue.';
+    $('#authCopy').textContent = setup ? 'Create the first administrator account for this POS.' : 'Use your administrator or staff account to continue.';
     $('#authSubmit').textContent = setup ? 'Create administrator' : 'Sign in';
     $('#authSubmit').hidden = false;
     $('#authFields').innerHTML = `
@@ -3384,7 +3949,11 @@ $('#authForm').addEventListener('submit', async (event) => {
   try {
     const session = await api(setup ? 'createFirstAdmin' : 'login', payload);
     localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+    const requiresPasswordChange = session.account.mustChangePassword;
+    applySession(session);
+    await completeRequiredPasswordChange();
     $('#authOverlay').hidden = true;
+    if (requiresPasswordChange) await refresh();
     showToast(`Welcome, ${session.account.fullName}.`, 'success');
   } catch (error) {
     $('#authError').textContent = error.message;
@@ -3407,6 +3976,24 @@ $('#authForm').addEventListener('click', (event) => {
   if (hideIcon) hideIcon.style.display = isPwd ? 'block' : 'none';
 });
 
+document.addEventListener('click', (event) => {
+  const toggleBtn = event.target.closest('.password-toggle-btn');
+  if (!toggleBtn) return;
+  const wrap = toggleBtn.closest('.password-input-wrap');
+  if (!wrap) return;
+  const input = wrap.querySelector('input');
+  if (!input) return;
+  const isPwd = input.type === 'password';
+  input.type = isPwd ? 'text' : 'password';
+  const showIcon = toggleBtn.querySelector('.pwd-eye-show');
+  const hideIcon = toggleBtn.querySelector('.pwd-eye-hide');
+  if (showIcon) showIcon.style.display = isPwd ? 'none' : 'block';
+  if (hideIcon) hideIcon.style.display = isPwd ? 'block' : 'none';
+  const label = isPwd ? 'Hide password' : 'Show password';
+  toggleBtn.setAttribute('aria-label', label);
+  toggleBtn.setAttribute('title', label);
+});
+
 $('#logoutButton').addEventListener('click', async () => {
   const confirmed = await askConfirmation({
     title: 'Sign Out',
@@ -3420,9 +4007,10 @@ $('#logoutButton').addEventListener('click', async () => {
   });
   if (!confirmed) return;
 
-  const session = JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
+  const session = currentSession || JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
   if (session?.token) api('logout', { token: session.token }).catch(() => {});
   localStorage.removeItem(ADMIN_SESSION_KEY);
+  currentSession = null;
   cart = [];
   renderCart();
   $('#authOverlay').hidden = false;
@@ -3437,5 +4025,4 @@ initCustomDatePickers();
 initSidebarBranchSwitcher();
 renderSidebarBranchMenu();
 setView(localStorage.getItem(ACTIVE_VIEW_KEY) || 'pos', true);
-refresh().catch((error) => showToast(error.message, 'error'));
 initAuth();
