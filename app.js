@@ -2230,7 +2230,27 @@ function renderCreditPayments() {
   const table = $('#inventoryTable');
   if (!table) return;
 
-  const accounts = creditAccounts.filter((account) => `${account.saleId} ${account.customerName}`.toLowerCase().includes(term));
+  // Build all credit accounts from salesHistory (including fully-paid ones)
+  const paidBySale = creditPayments.reduce((totals, payment) => {
+    totals[payment.saleId] = (totals[payment.saleId] || 0) + Number(payment.amount || 0);
+    return totals;
+  }, {});
+
+  const allCreditAccounts = salesHistory
+    .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
+    .map((sale) => {
+      const total = Number(sale.total || 0);
+      const paid = paidBySale[sale.saleId] || 0;
+      const balance = Math.max(total - paid, 0);
+      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance, isPaid: balance <= 0.00001 };
+    })
+    .sort((a, b) => {
+      // Sort: outstanding first, then by date
+      if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
+      return new Date(a.date) - new Date(b.date);
+    });
+
+  const accounts = allCreditAccounts.filter((account) => `${account.saleId} ${account.customerName}`.toLowerCase().includes(term));
 
   table.innerHTML = `
     <div class="table-row table-header">
@@ -2257,13 +2277,11 @@ function renderCreditPayments() {
               <span class="product-meta">${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span>
             </div>
             <span class="price-text">${money(total)}</span>
-            <span class="credit-balance">${money(balance)}</span>
+            <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(balance)}</span>
           </div>
           <div class="row-action-cell">
             <span class="table-actions">
-              <button class="icon-button success-icon" data-credit-sale="${escapeHtml(account.saleId)}" aria-label="Record Payment" title="Record Payment">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg>
-              </button>
+              ${!account.isPaid ? `<button class="icon-button success-icon" data-credit-sale="${escapeHtml(account.saleId)}" aria-label="Record Payment" title="Record Payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : '<span style="width:32px;"></span>'}
               <button class="icon-button primary-icon" data-view-payment-history="${escapeHtml(account.saleId)}" aria-label="Payment History (${historyCount})" title="Payment History (${historyCount} recorded)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </button>
@@ -2271,7 +2289,7 @@ function renderCreditPayments() {
           </div>
         </div>
       `;
-    }).join('') || '<div class="empty-state"><p>No outstanding credit sales</p><small>Credit balances for the selected branch will appear here.</small></div>'}
+    }).join('') || '<div class="empty-state"><p>No credit sales found</p><small>Credit sales for the selected branch will appear here.</small></div>'}
   `;
 
   table.querySelectorAll('[data-credit-sale]').forEach((button) => {
@@ -2334,11 +2352,13 @@ function renderSalesHistory() {
 
 function openCreditHistory(saleId) {
   const account = creditAccounts.find((item) => item.saleId === saleId);
+  // Fall back to salesHistory to get the original sale for fully-paid accounts
+  const saleRecord = salesHistory.find((item) => item.saleId === saleId);
   const payments = creditPayments.filter((item) => item.saleId === saleId);
 
-  const customerName = account ? account.customerName : (payments[0]?.customerName || 'Customer');
-  const customerId = account ? account.customerId : (payments[0]?.customerId || '');
-  const total = account ? Number(account.total) : payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const customerName = account?.customerName || saleRecord?.customerName || payments[0]?.customerName || 'Customer';
+  const customerId = account?.customerId || saleRecord?.customerId || payments[0]?.customerId || '';
+  const total = account ? Number(account.total) : Number(saleRecord?.total || 0);
   const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = account ? Number(account.balance) : Math.max(total - paid, 0);
   const percentPaid = total > 0 ? Math.min(Math.round((paid / total) * 100), 100) : 0;
