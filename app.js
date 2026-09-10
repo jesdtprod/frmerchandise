@@ -1636,7 +1636,7 @@ function renderDashboard() {
   const lowStockCount = lowStockItems.filter((item) => Number(item.qty) > 0).length;
   const attentionStock = lowStockItems.slice(0, 5);
   const pendingTransfers = transfers.filter((item) => !['Received', 'Cancelled'].includes(item.status)).slice(0, 5);
-  const recentSales = completedSales.slice(0, 5);
+  const recentSales = completedSales.slice(0, 10);
   const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
   const permissions = currentSession?.account?.permissions || ['*'];
   const canAccess = (view) => permissions.includes('*') || permissions.includes(view);
