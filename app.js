@@ -1572,7 +1572,460 @@ async function toggleAdminStatus(adminId) {
   try { await api('setAdminAccountStatus', { adminId, status: activating ? 'Active' : 'Inactive' }); await refresh(); showToast(`Administrator ${activating ? 'reactivated' : 'deactivated'}.`, 'success'); } catch (error) { showToast(error.message, 'error'); }
 }
 
+function renderDashboard() {
+  const dashboard = $('#dashboard');
+  if (!dashboard) return;
+  const completedSales = salesHistory.filter((sale) => String(sale.status || 'completed').toLowerCase() !== 'cancelled');
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (6 - index));
+    return {
+      key: formatDateInput(date),
+      label: date.toLocaleDateString('en-PH', { weekday: 'short' }),
+      dateFormatted: date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+      total: 0,
+      transactions: 0
+    };
+  });
+  const dayMap = Object.fromEntries(days.map((day) => [day.key, day]));
+  completedSales.forEach((sale) => {
+    const day = dayMap[saleDateKey(sale.date)];
+    if (day) { day.total += Number(sale.total || 0); day.transactions += 1; }
+  });
+  const periodSalesRecords = completedSales.filter((sale) => dayMap[saleDateKey(sale.date)]);
+  const todayKey = formatDateInput(today);
+  const todaySalesRecords = completedSales.filter((sale) => saleDateKey(sale.date) === todayKey);
+  const todaySales = todaySalesRecords.reduce((total, sale) => total + Number(sale.total || 0), 0);
+  const todayCashCollected = todaySalesRecords.filter((sale) => sale.paymentType === 'cash').reduce((total, sale) => total + Number(sale.total || 0), 0);
+  const creditOutstanding = creditAccounts.reduce((total, account) => total + Number(account.balance || 0), 0);
+
+  const sevenDayTotal = days.reduce((sum, d) => sum + d.total, 0);
+  const sevenDayAvg = Math.round(sevenDayTotal / 7);
+  const todayAvgTicket = todaySalesRecords.length > 0 ? Math.round(todaySales / todaySalesRecords.length) : 0;
+  const cashRatio = todaySales > 0 ? Math.min(Math.round((todayCashCollected / todaySales) * 100), 100) : 0;
+
+  const maxDayTotal = Math.max(...days.map((day) => day.total), 1);
+  const productTotals = new Map();
+  periodSalesRecords.forEach((sale) => (sale.items || []).forEach((item) => {
+    const current = productTotals.get(item.productId) || { id: item.productId, name: item.name, unit: item.unit, qty: 0, total: 0 };
+    current.qty += Number(item.qty || 0);
+    current.total += Number(item.qty || 0) * Number(item.price || 0);
+    productTotals.set(item.productId, current);
+  }));
+  const topProducts = [...productTotals.values()].sort((a, b) => b.qty - a.qty).slice(0, 10);
+  const maxProductQty = topProducts.length > 0 ? Math.max(...topProducts.map((p) => p.qty), 1) : 1;
+
+  const lowStockItems = products.filter((item) => item.status === 'Active' && Number(item.qty) <= Number(item.lowStockLevel || 0));
+  const outOfStockCount = lowStockItems.filter((item) => Number(item.qty) <= 0).length;
+  const lowStockCount = lowStockItems.filter((item) => Number(item.qty) > 0).length;
+  const attentionStock = lowStockItems.slice(0, 5);
+  const pendingTransfers = transfers.filter((item) => !['Received', 'Cancelled'].includes(item.status)).slice(0, 5);
+  const recentSales = completedSales.slice(0, 5);
+  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
+  const permissions = currentSession?.account?.permissions || ['*'];
+  const canAccess = (view) => permissions.includes('*') || permissions.includes(view);
+
+  const todayFormatted = today.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  const getCustomerInitials = (name) => {
+    const clean = displayCustomerName(name).replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    if (!clean || clean.toLowerCase() === 'walk-in customer') return 'WC';
+    const parts = clean.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  dashboard.innerHTML = `
+    <div class="dashboard-header-banner">
+      <div class="dashboard-title-area">
+        <div class="dashboard-eyebrow-row">
+          <span class="dashboard-live-pill">
+            <span class="pulse-dot"></span>
+            <span>LIVE OPERATIONS</span>
+          </span>
+          <span class="dashboard-date-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            <span>${escapeHtml(todayFormatted)}</span>
+          </span>
+        </div>
+        <h2 class="dashboard-main-title">${escapeHtml(branchName)} Dashboard</h2>
+        <p class="dashboard-main-sub">Real-time revenue metrics, product velocity, and operational stock alerts.</p>
+      </div>
+      <div class="dashboard-quick-actions">
+        <button class="button button-secondary dashboard-action-btn dashboard-refresh-btn" type="button" data-dashboard-action="refresh" title="Refresh dashboard data" aria-label="Refresh dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="dashboard-summary-grid">
+      <article class="dashboard-kpi-card kpi-revenue" data-dashboard-view="sales" role="button" tabindex="0" title="Click to view sales history">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <span class="kpi-badge badge-blue">${todaySalesRecords.length} order${todaySalesRecords.length === 1 ? '' : 's'} today</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Today's Gross Sales</span>
+          <strong class="kpi-value text-glow-blue">${money(todaySales)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Avg order: <b>${money(todayAvgTicket)}</b></span>
+          <span class="kpi-foot-link">Ledger &rarr;</span>
+        </div>
+      </article>
+
+      <article class="dashboard-kpi-card kpi-cash" data-dashboard-view="sales" role="button" tabindex="0" title="Click to view sales records">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-emerald">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+          </div>
+          <span class="kpi-badge badge-emerald">${cashRatio}% cash share</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Cash Collected</span>
+          <strong class="kpi-value text-success">${money(todayCashCollected)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Completed cash sales</span>
+          <span class="kpi-foot-link">Details &rarr;</span>
+        </div>
+      </article>
+
+      ${canAccess('credits') ? `
+        <article class="dashboard-kpi-card kpi-credit" data-dashboard-view="credits" role="button" tabindex="0" title="Click to manage credit accounts">
+          <div class="kpi-head">
+            <div class="kpi-icon-wrap icon-amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            </div>
+            <span class="kpi-badge badge-amber">${creditAccounts.length} customer${creditAccounts.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-label">Credit Receivables</span>
+            <strong class="kpi-value text-amber">${money(creditOutstanding)}</strong>
+          </div>
+          <div class="kpi-foot">
+            <span class="kpi-foot-sub">Outstanding balance due</span>
+            <span class="kpi-foot-link">Manage &rarr;</span>
+          </div>
+        </article>
+      ` : ''}
+
+      ${canAccess('inventory') ? `
+        <article class="dashboard-kpi-card kpi-stock" data-dashboard-view="inventory" role="button" tabindex="0" title="Click to audit branch inventory">
+          <div class="kpi-head">
+            <div class="kpi-icon-wrap icon-rose">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+            </div>
+            <span class="kpi-badge badge-rose">${outOfStockCount > 0 ? `${outOfStockCount} zero stock` : 'Low warnings'}</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-label">Stock Attention</span>
+            <strong class="kpi-value text-danger">${lowStockItems.length} <small style="font-size:13px;font-weight:600;color:var(--text-muted);">items</small></strong>
+          </div>
+          <div class="kpi-foot">
+            <span class="kpi-foot-sub">${outOfStockCount} out of stock &bull; ${lowStockCount} low</span>
+            <span class="kpi-foot-link">Audit &rarr;</span>
+          </div>
+        </article>
+      ` : ''}
+    </div>
+
+    <div class="dashboard-main-grid">
+      <section class="dashboard-panel dashboard-sales-panel">
+        <div class="dashboard-panel-head">
+          <div class="panel-head-titles">
+            <span class="panel-eyebrow">REVENUE VELOCITY</span>
+            <h3>Daily Sales Trend</h3>
+          </div>
+          <div class="sales-chart-legend">
+            <span class="chart-summary-chip">7-Day Total: <strong>${money(sevenDayTotal)}</strong></span>
+            <span class="chart-avg-pill">Avg: ${money(sevenDayAvg)}/day</span>
+          </div>
+        </div>
+        <div class="sales-chart-wrapper">
+          <div class="sales-chart" role="img" aria-label="Daily sales trend for the past seven days">
+            ${days.map((day) => {
+              const isToday = day.key === todayKey;
+              const isPeak = day.total === maxDayTotal && day.total > 0;
+              const hasSales = day.total > 0;
+              const barHeightPct = hasSales ? Math.max(Math.round((day.total / maxDayTotal) * 92), 6) : 3;
+              return `
+                <div class="sales-chart-col${isToday ? ' is-today' : ''}${isPeak ? ' is-peak' : ''}${!hasSales ? ' is-empty' : ''}">
+                  <div class="sales-chart-tooltip" role="tooltip">
+                    <span class="tooltip-date">${escapeHtml(day.label)}, ${escapeHtml(day.dateFormatted)}</span>
+                    <strong class="tooltip-amount">${money(day.total)}</strong>
+                    <span class="tooltip-tx">${day.transactions} transaction${day.transactions === 1 ? '' : 's'}</span>
+                  </div>
+                  <div class="sales-chart-track">
+                    <div class="sales-chart-bar${!hasSales ? ' bar-empty' : ''}" style="${hasSales ? `height:${barHeightPct}%` : ''}" aria-valuenow="${day.total}" aria-label="${escapeHtml(day.label)}: ${money(day.total)}">
+                      ${isPeak ? '<span class="peak-badge">PEAK</span>' : ''}
+                    </div>
+                  </div>
+                  <div class="sales-chart-col-foot">
+                    <span class="sales-chart-label">${escapeHtml(day.label)}</span>
+                    ${isToday ? '<span class="today-marker-dot" title="Today"></span>' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="dashboard-panel-head">
+          <div class="panel-head-titles">
+            <span class="panel-eyebrow">PRODUCT MOVEMENT</span>
+            <h3>Top Moving Products</h3>
+          </div>
+          <span class="dashboard-period-badge">Past 7 Days</span>
+        </div>
+        <div class="dashboard-top-list">
+          ${topProducts.length ? topProducts.map((product, index) => {
+            const rankClass = index === 0 ? 'rank-gold' : index === 1 ? 'rank-silver' : index === 2 ? 'rank-bronze' : 'rank-standard';
+            const progressPct = Math.max(Math.round((product.qty / maxProductQty) * 100), 10);
+            return `
+              <div class="dashboard-prod-row">
+                <div class="dashboard-rank ${rankClass}">${index + 1}</div>
+                <div class="dashboard-prod-info">
+                  <div class="dashboard-prod-top-line">
+                    <strong class="dashboard-prod-name" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</strong>
+                    <span class="dashboard-prod-qty">${product.qty} <small>${escapeHtml(product.unit || 'unit')}</small></span>
+                  </div>
+                  <div class="dashboard-progress-track">
+                    <div class="dashboard-progress-bar ${rankClass}" style="width:${progressPct}%"></div>
+                  </div>
+                  <div class="dashboard-prod-sub-line">
+                    <span class="dashboard-prod-sales-val">${money(product.total)} sales contribution</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('') : `
+            <div class="dashboard-empty-panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>
+              <p>No completed sales recorded in this branch yet.</p>
+              <small>Sales transactions will automatically populate product volume rankings.</small>
+            </div>
+          `}
+        </div>
+      </section>
+    </div>
+
+    <div class="dashboard-bottom-grid">
+      ${canAccess('inventory') ? `
+        <section class="dashboard-panel">
+          <div class="dashboard-panel-head">
+            <div class="panel-head-titles">
+              <span class="panel-eyebrow">CRITICAL INVENTORY</span>
+              <h3>Stock Warnings</h3>
+            </div>
+            <button class="dashboard-text-link" type="button" data-dashboard-view="inventory">Open inventory &rarr;</button>
+          </div>
+          <div class="dashboard-feed-list">
+            ${attentionStock.length ? attentionStock.map((product) => `
+              <div class="dashboard-feed-item">
+                <div class="dashboard-feed-item-icon warning-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                </div>
+                <div class="dashboard-feed-details">
+                  <strong class="dashboard-feed-title" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</strong>
+                  <span class="dashboard-feed-sub">${product.qty} ${escapeHtml(product.unit || 'unit')} in stock</span>
+                </div>
+                <span class="stock-pill ${product.qty <= 0 ? 'stock-low' : 'stock-quantity'}" style="${product.qty <= 0 ? 'background:rgba(227,41,52,0.18);color:#ff4d5a;border-color:rgba(227,41,52,0.4);' : 'background:rgba(245,158,11,0.18);color:#fbbf24;border-color:rgba(245,158,11,0.4);'}">
+                  ${product.qty <= 0 ? 'Out of stock' : 'Low stock'}
+                </span>
+              </div>
+            `).join('') : `
+              <div class="dashboard-empty-feed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                <p>All items are safely above minimum stock levels.</p>
+              </div>
+            `}
+          </div>
+        </section>
+      ` : ''}
+
+      ${canAccess('transfers') ? `
+        <section class="dashboard-panel">
+          <div class="dashboard-panel-head">
+            <div class="panel-head-titles">
+              <span class="panel-eyebrow">BRANCH LOGISTICS</span>
+              <h3>Pending Transfers</h3>
+            </div>
+            <button class="dashboard-text-link" type="button" data-dashboard-view="transfers">View transfers &rarr;</button>
+          </div>
+          <div class="dashboard-feed-list">
+            ${pendingTransfers.length ? pendingTransfers.map((transfer) => `
+              <div class="dashboard-feed-item">
+                <div class="dashboard-feed-item-icon transfer-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+                </div>
+                <div class="dashboard-feed-details">
+                  <strong class="dashboard-feed-title" title="${escapeHtml(transfer.productName || 'Transfer')}">${escapeHtml(transfer.productName || 'Transfer')}</strong>
+                  <span class="dashboard-feed-sub">${escapeHtml(transfer.sourceBranchName)} &rarr; ${escapeHtml(transfer.destinationBranchName)} &bull; ${transfer.qty} ${escapeHtml(transfer.unit || 'unit')}</span>
+                </div>
+                <span class="stock-pill stock-quantity" style="${transfer.status === 'In Transit' ? 'background:rgba(0,102,245,0.18);color:#38bdf8;border-color:rgba(0,102,245,0.4);' : ''}">
+                  ${escapeHtml(transfer.status)}
+                </span>
+              </div>
+            `).join('') : `
+              <div class="dashboard-empty-feed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                <p>No active stock transfers currently pending.</p>
+              </div>
+            `}
+          </div>
+        </section>
+      ` : ''}
+
+      <section class="dashboard-panel">
+        <div class="dashboard-panel-head">
+          <div class="panel-head-titles">
+            <span class="panel-eyebrow">LIVE ACTIVITY</span>
+            <h3>Latest Completed Sales</h3>
+          </div>
+          <button class="dashboard-text-link" type="button" data-dashboard-view="sales">View all &rarr;</button>
+        </div>
+        <div class="dashboard-feed-list">
+          ${recentSales.length ? recentSales.map((sale) => {
+            const isCash = sale.paymentType === 'cash';
+            const initials = getCustomerInitials(sale.customerName);
+            const timeStr = sale.date ? new Date(sale.date).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+            return `
+              <div class="dashboard-feed-item">
+                <div class="dashboard-avatar-badge">${escapeHtml(initials)}</div>
+                <div class="dashboard-feed-details">
+                  <div class="dashboard-feed-customer-line">
+                    <strong class="dashboard-feed-title" title="${escapeHtml(displayCustomerName(sale.customerName))}">${escapeHtml(displayCustomerName(sale.customerName))}</strong>
+                    <span class="dashboard-payment-pill ${isCash ? 'is-cash' : 'is-credit'}">${isCash ? 'Cash' : 'Credit'}</span>
+                  </div>
+                  <span class="dashboard-feed-sub">${escapeHtml(sale.saleId)} &bull; ${escapeHtml(timeStr)}</span>
+                </div>
+                <strong class="dashboard-sale-amount">${money(sale.total)}</strong>
+              </div>
+            `;
+          }).join('') : `
+            <div class="dashboard-empty-feed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <p>No completed sales recorded for this branch yet.</p>
+            </div>
+          `}
+        </div>
+      </section>
+    </div>
+  `;
+
+  // Interactive bindings
+  dashboard.querySelectorAll('[data-dashboard-view]').forEach((elem) => {
+    elem.addEventListener('click', () => setView(elem.dataset.dashboardView));
+    if (elem.classList.contains('dashboard-kpi-card')) {
+      elem.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setView(elem.dataset.dashboardView);
+        }
+      });
+    }
+  });
+
+  dashboard.querySelectorAll('[data-dashboard-action="stockIn"]').forEach((btn) => {
+    btn.addEventListener('click', () => openForm('stock'));
+  });
+
+  dashboard.querySelectorAll('[data-dashboard-action="refresh"]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.classList.add('is-spinning');
+      showToast('Refreshing dashboard data...', 'info');
+      try {
+        await refresh();
+        showToast('Dashboard updated with latest data.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Failed to refresh.', 'error');
+      } finally {
+        btn.classList.remove('is-spinning');
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function renderDashboardSkeleton() {
+  const dashboard = $('#dashboard');
+  if (!dashboard) return;
+  dashboard.innerHTML = `
+    <div class="dashboard-skeleton">
+      <div class="dashboard-skeleton-header">
+        <div class="skeleton-shimmer dashboard-skeleton-eyebrow"></div>
+        <div class="skeleton-shimmer dashboard-skeleton-title"></div>
+        <div class="skeleton-shimmer dashboard-skeleton-sub"></div>
+      </div>
+      <div class="dashboard-summary-grid">
+        ${Array.from({ length: 4 }).map(() => `
+          <div class="dashboard-skeleton-card">
+            <div class="skeleton-shimmer dashboard-skeleton-icon"></div>
+            <div class="skeleton-shimmer dashboard-skeleton-val"></div>
+            <div class="skeleton-shimmer dashboard-skeleton-label"></div>
+            <div class="skeleton-shimmer dashboard-skeleton-footer"></div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="dashboard-main-grid">
+        <div class="dashboard-skeleton-panel sales-panel-skeleton">
+          <div class="skeleton-shimmer skeleton-panel-head"></div>
+          <div class="skeleton-chart-tracks">
+            ${[40, 75, 55, 90, 60, 85, 45].map((h) => `
+              <div class="skeleton-chart-col">
+                <div class="skeleton-shimmer skeleton-chart-bar" style="height:${h}%;"></div>
+                <div class="skeleton-shimmer skeleton-chart-label"></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="dashboard-skeleton-panel products-panel-skeleton">
+          <div class="skeleton-shimmer skeleton-panel-head"></div>
+          <div class="skeleton-prod-rows">
+            ${Array.from({ length: 5 }).map(() => `
+              <div class="skeleton-prod-row">
+                <div class="skeleton-shimmer skeleton-rank-box"></div>
+                <div class="skeleton-prod-info-box">
+                  <div class="skeleton-shimmer skeleton-prod-line1"></div>
+                  <div class="skeleton-shimmer skeleton-prod-bar"></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="dashboard-bottom-grid">
+        ${Array.from({ length: 3 }).map(() => `
+          <div class="dashboard-skeleton-panel feed-panel-skeleton">
+            <div class="skeleton-shimmer skeleton-panel-head"></div>
+            <div class="skeleton-feed-rows">
+              ${Array.from({ length: 4 }).map(() => `
+                <div class="skeleton-feed-row">
+                  <div class="skeleton-shimmer skeleton-feed-avatar"></div>
+                  <div class="skeleton-feed-text">
+                    <div class="skeleton-shimmer skeleton-feed-line1"></div>
+                    <div class="skeleton-shimmer skeleton-feed-line2"></div>
+                  </div>
+                  <div class="skeleton-shimmer skeleton-feed-badge"></div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderInventory() {
+  if (activeView === 'dashboard') { renderDashboard(); return; }
   if (activeView === 'inventoryReports') {
     renderInventoryReports();
     return;
@@ -2379,7 +2832,7 @@ function updatePrice(id, value) {
    ========================================================================== */
 async function refresh(showSkeleton = true) {
   if (!currentSession?.token) return;
-  if (showSkeleton) renderSkeletonTable();
+  if (showSkeleton) activeView === 'dashboard' ? renderDashboardSkeleton() : renderSkeletonTable();
   try {
     const data = await api('getAppData', { branchId: activeBranchId }, 'GET');
     branches = data.branches;
@@ -2943,13 +3396,14 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
-  if (!permissions.includes('*') && !permissions.includes(view)) view = permissions[0] || 'pos';
+  if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(view)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
   localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
   const details = {
+    dashboard: ['WORKSPACE', 'Dashboard', 'BRANCH OVERVIEW', 'Operational Snapshot'],
     pos: ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'],
     products: ['CATALOG', 'Product Registration', 'PRODUCT CATALOG', 'Registered Products'],
     inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch Stock'],
@@ -2987,6 +3441,7 @@ function setView(view, preserveSidebarOpen = false) {
   }
 
   const viewIcons = {
+    dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>`,
     pos: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
     products: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>`,
     inventory: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>`,
@@ -3006,6 +3461,11 @@ function setView(view, preserveSidebarOpen = false) {
   }
 
   const isPos = view === 'pos';
+  const isDashboard = view === 'dashboard';
+  const dashboard = $('#dashboard');
+  const catalog = $('#products');
+  if (dashboard) dashboard.hidden = !isDashboard;
+  if (catalog) catalog.hidden = isDashboard;
   const sectionActions = $('#sectionActions');
   if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' ? 'none' : 'flex';
   const addBtn = $('#addProductButton');
@@ -3812,12 +4272,12 @@ function renderAuthSkeletons() {
   `;
 }
 
-function applySession(session) {
+function applySession(session, useRoleDefaultView = false) {
   currentSession = session;
   const account = session.account;
   const permittedViews = account.permissions || [];
   document.querySelectorAll('[data-view]').forEach((item) => {
-    const allowed = permittedViews.includes('*') || permittedViews.includes(item.dataset.view);
+    const allowed = item.dataset.view === 'dashboard' || permittedViews.includes('*') || permittedViews.includes(item.dataset.view);
     item.hidden = !allowed;
   });
   document.querySelectorAll('.side-nav .nav-label').forEach((label) => {
@@ -3833,7 +4293,9 @@ function applySession(session) {
     activeBranchId = account.branchId;
     localStorage.setItem(ACTIVE_BRANCH_KEY, activeBranchId);
   }
-  const requestedView = localStorage.getItem(ACTIVE_VIEW_KEY) || 'pos';
+  const requestedView = useRoleDefaultView
+    ? account.role === 'admin' ? 'dashboard' : 'pos'
+    : localStorage.getItem(ACTIVE_VIEW_KEY) || (account.role === 'admin' ? 'dashboard' : 'pos');
   setView(requestedView, true);
 }
 
@@ -3950,7 +4412,7 @@ $('#authForm').addEventListener('submit', async (event) => {
     const session = await api(setup ? 'createFirstAdmin' : 'login', payload);
     localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
     const requiresPasswordChange = session.account.mustChangePassword;
-    applySession(session);
+    applySession(session, true);
     await completeRequiredPasswordChange();
     $('#authOverlay').hidden = true;
     if (requiresPasswordChange) await refresh();
