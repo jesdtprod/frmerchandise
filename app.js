@@ -840,6 +840,12 @@ async function api(action, payload = {}) {
     throwIfError_(error);
     return { id: data.user_id, fullName: data.full_name, username: data.username };
   }
+  if (['createStaffAccount', 'updateStaffAccount', 'resetStaffPassword', 'setStaffAccountStatus', 'createAdminAccount', 'setAdminAccountStatus'].includes(action)) {
+    const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
+    throwIfError_(error);
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
   throw new Error(`Supabase action not yet configured: ${action}.`);
 }
 
@@ -3532,6 +3538,15 @@ function openForm(type, productId = '') {
     </div>
     ${type === 'staff' ? `
       <div class="form-field-group full-field">
+        <label for="modalStaffEmail"><span class="label-text">Email Address <span class="required">*</span></span></label>
+        <div class="input-with-icon">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a2 2 0 0 1-2.06 0L2 7"/></svg>
+          <input id="modalStaffEmail" name="email" type="email" placeholder="staff@example.com" required autocomplete="email" autocapitalize="none">
+        </div>
+      </div>
+    ` : ''}
+    ${type === 'staff' ? `
+      <div class="form-field-group full-field">
         <label for="modalStaffPassword"><span class="label-text">Temporary Password <span class="required">*</span></span></label>
         <div class="input-with-icon password-input-wrap">
           <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -3581,6 +3596,15 @@ function openForm(type, productId = '') {
         <input id="modalAdminUsername" name="username" value="${type === 'editAdmin' ? escapeHtml(currentAdmin?.username || '') : ''}" placeholder="e.g. admin" required autocapitalize="none">
       </div>
     </div>
+    ${type === 'admin' ? `
+      <div class="form-field-group full-field">
+        <label for="modalAdminEmail"><span class="label-text">Email Address <span class="required">*</span></span></label>
+        <div class="input-with-icon">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a2 2 0 0 1-2.06 0L2 7"/></svg>
+          <input id="modalAdminEmail" name="email" type="email" placeholder="admin@example.com" required autocomplete="email" autocapitalize="none">
+        </div>
+      </div>
+    ` : ''}
     ${type === 'admin' ? `
       <div class="form-field-group full-field">
         <label for="modalAdminPassword"><span class="label-text">Password <span class="required">*</span></span></label>
