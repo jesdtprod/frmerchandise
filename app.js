@@ -844,6 +844,12 @@ async function api(action, payload = {}) {
     if (data?.error) throw new Error(data.error);
     return data;
   }
+  if (['createOperationalBackup', 'restoreOperationalBackup'].includes(action)) {
+    const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
+    throwIfError_(error);
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
   if (['createStaffAccount', 'updateStaffAccount', 'resetStaffPassword', 'setStaffAccountStatus', 'createAdminAccount', 'setAdminAccountStatus'].includes(action)) {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
     throwIfError_(error);
@@ -1849,7 +1855,17 @@ function renderAdminAccount() {
   const panel = $('#accountProfilePanel');
   const table = $('#inventoryTable');
   if (!panel || !table) return;
-  panel.hidden = true;
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="account-profile-section">
+      <span class="eyebrow">OPERATIONS</span>
+      <h3>Backup and Restore</h3>
+      <p>Operational data only. Administrator accounts, passwords, and audit history remain unchanged.</p>
+      <button class="button button-primary" id="downloadBackupButton" type="button">Download Backup</button>
+      <button class="button modal-cancel-btn" id="restoreBackupButton" type="button">Restore Backup</button>
+      <input id="restoreBackupFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  `;
   table.innerHTML = `<div class="table-row table-header"><span>Administrator</span><span>Username</span><span>Access</span><span>Status</span><span>Action</span></div>${adminAccounts.map((account) => `<div class="table-row">
     <div class="product-cell"><strong class="product-name">${escapeHtml(account.fullName)}</strong><span class="product-meta">Administrator account</span></div>
     <div class="row-middle-cells">
@@ -1861,6 +1877,62 @@ function renderAdminAccount() {
   </div>`).join('') || '<div class="empty-state"><p>No administrator accounts found</p></div>'}`;
   table.querySelectorAll('[data-edit-admin]').forEach((button) => button.addEventListener('click', () => openForm('editAdmin', button.dataset.editAdmin)));
   table.querySelectorAll('[data-toggle-admin]').forEach((button) => button.addEventListener('click', () => toggleAdminStatus(button.dataset.toggleAdmin)));
+  $('#downloadBackupButton')?.addEventListener('click', downloadOperationalBackup);
+  $('#restoreBackupButton')?.addEventListener('click', () => $('#restoreBackupFile')?.click());
+  $('#restoreBackupFile')?.addEventListener('change', restoreOperationalBackup);
+}
+
+async function downloadOperationalBackup() {
+  const button = $('#downloadBackupButton');
+  if (button) button.disabled = true;
+  try {
+    const backup = await api('createOperationalBackup');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fr-merchandise-backup-${backup.createdAt.replace(/[:.]/g, '-')}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('Operational backup downloaded.', 'success');
+  } catch (error) {
+    showToast(error.message || 'Unable to create the backup.', 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function restoreOperationalBackup(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  let backup;
+  try {
+    backup = JSON.parse(await file.text());
+  } catch {
+    showToast('Choose a valid JSON backup file.', 'error');
+    return;
+  }
+  if (backup?.schemaVersion !== '1' || !backup?.tables) {
+    showToast('Choose a valid FR Merchandise POS backup file.', 'error');
+    return;
+  }
+  const confirmed = await askConfirmation({
+    title: 'Restore Operational Backup',
+    eyebrow: 'ADMINISTRATION',
+    subtitle: 'Replace current POS records',
+    message: `Restore the backup created <strong>${escapeHtml(formatDateTime(backup.createdAt))}</strong>?`,
+    warning: 'Current products, inventory, customers, sales, payments, and transfers will be replaced. Administrator accounts and passwords will not change.',
+    confirmText: 'Restore Backup',
+    confirmType: 'danger',
+  });
+  if (!confirmed) return;
+  try {
+    await api('restoreOperationalBackup', { backup, confirmation: 'RESTORE' });
+    showToast('Operational backup restored.', 'success');
+    await refresh();
+  } catch (error) {
+    showToast(error.message || 'Unable to restore the backup.', 'error');
+  }
 }
 
 function formatDateTime(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }); }

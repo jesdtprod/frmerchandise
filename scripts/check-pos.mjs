@@ -4,6 +4,7 @@ const files = {
   app: await readFile(new URL('../app.js', import.meta.url), 'utf8'),
   accountFunction: await readFile(new URL('../supabase/functions/manage-account/index.ts', import.meta.url), 'utf8'),
   branchLock: await readFile(new URL('../supabase/migrations/20260915193000_lock_staff_branch.sql', import.meta.url), 'utf8'),
+  backupRestore: await readFile(new URL('../supabase/migrations/20260915194000_operational_backup_restore.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -13,6 +14,8 @@ const checks = [
   ['administrator edits use the protected account function', /action === 'updateAdminAccount'[\s\S]*functions\.invoke\('manage-account'/.test(files.app)],
   ['administrator password resets require a password change on next login', /Reset administrator password/.test(files.accountFunction)],
   ['administrator edit passwords reach the account function', /body\.newPassword/.test(files.accountFunction)],
+  ['backup and restore actions require the administrator account function', /createOperationalBackup[\s\S]*restoreOperationalBackup/.test(files.accountFunction)],
+  ['restore is transactional in the database', /restore_pos_backup/.test(files.backupRestore)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

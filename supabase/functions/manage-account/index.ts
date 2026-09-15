@@ -73,6 +73,43 @@ Deno.serve(async (request) => {
     return json({ id: created.user.id, fullName, username, branchId: branchId || '', permissions, status: 'Active', mustChangePassword: role === 'staff' });
   }
 
+  if (action === 'createOperationalBackup') {
+    const results = await Promise.all([
+      admin.from('branches').select('*').order('branch_id'),
+      admin.from('products').select('*').order('product_id'),
+      admin.from('branch_products').select('*').order('branch_id').order('product_id'),
+      admin.from('customers').select('*').order('customer_id'),
+      admin.from('inventory').select('*').order('branch_id').order('product_id'),
+      admin.from('stock_ins').select('*').order('stock_in_id'),
+      admin.from('stock_transfers').select('*').order('transfer_id'),
+      admin.from('sales').select('*').order('sale_id'),
+      admin.from('sale_items').select('*').order('sale_item_id'),
+      admin.from('credit_payments').select('*').order('payment_id'),
+    ]);
+    const error = results.find((result) => result.error)?.error;
+    if (error) return fail(error.message);
+    const rows = results.map((result) => result.data || []);
+    await audit('Created operational backup', actorId, '');
+    return json({
+      schemaVersion: '1',
+      createdAt: new Date().toISOString(),
+      tables: {
+        branches: rows[0], products: rows[1], branchProducts: rows[2], customers: rows[3], inventory: rows[4],
+        stockIns: rows[5], stockTransfers: rows[6], sales: rows[7], saleItems: rows[8], creditPayments: rows[9],
+      },
+    });
+  }
+
+  if (action === 'restoreOperationalBackup') {
+    if (body.confirmation !== 'RESTORE') return fail('Restore confirmation is required.');
+    const backup = body.backup;
+    if (!backup || backup.schemaVersion !== '1' || typeof backup.tables !== 'object') return fail('Choose a valid FR Merchandise POS backup file.');
+    const { data, error } = await admin.rpc('restore_pos_backup', { backup });
+    if (error) return fail(error.message);
+    await audit('Restored operational backup', actorId, String(backup.createdAt || ''));
+    return json(data);
+  }
+
   const targetId = String(body.staffId || body.adminId || '');
   if (!targetId) return fail('Account is required.');
   const { data: target, error: targetError } = await admin.from('profiles').select('*').eq('user_id', targetId).maybeSingle();
