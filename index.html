@@ -168,6 +168,10 @@
                   <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14"/><path d="m19 9-7 7-7-7"/><circle cx="12" cy="21" r="1"/></svg>
                   <span>Stock In</span>
                 </button>
+                <button class="button button-secondary" id="stockInHistoryButton" hidden>
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V7"/><path d="M17 15v-7"/></svg>
+                  <span>Stock-In History</span>
+                </button>
                 <button class="button button-primary" id="addBranchButton" hidden>
                   <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                   <span>Add Branch</span>
@@ -308,6 +312,29 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Stock-In History Dialog -->
+    <dialog id="stockInHistoryDialog" class="pepsi-dialog stock-in-history-dialog">
+      <div class="stock-in-history-wrap">
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V7"/><path d="M17 15v-7"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow">INVENTORY STOCK</span>
+              <h2>Stock-In History</h2>
+              <p class="modal-subtitle" id="stockInHistorySubtitle">Exact receipt costs for the selected branch.</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="stockInHistoryDialog" aria-label="Close stock-in history" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="stock-in-history-list" id="stockInHistoryList"></div>
+        <div class="modal-actions">
+          <button class="button modal-cancel-btn" type="button" data-close="stockInHistoryDialog">Close</button>
+        </div>
+      </div>
     </dialog>
 
     <!-- Required first-login password change dialog -->

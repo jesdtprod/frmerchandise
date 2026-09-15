@@ -16,6 +16,7 @@ let creditPayments = [];
 let pendingCreditAccount = null;
 let salesHistory = [];
 let inventoryReportData = {};
+let stockInHistory = [];
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
@@ -682,6 +683,17 @@ async function getAppData_(branchId) {
     creditPayments: paymentRows.map((row) => ({ id: row.payment_id, saleId: row.sale_id, customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
     salesHistory,
     inventoryReport,
+    stockInHistory: stockInRows.map((row) => ({
+      id: row.stock_in_id,
+      productId: row.product_id,
+      productName: productMap[row.product_id]?.name || row.product_id,
+      unit: productMap[row.product_id]?.unit || 'unit',
+      qty: Number(row.qty || 0),
+      unitCost: row.unit_cost === null || row.unit_cost === undefined ? null : Number(row.unit_cost),
+      supplierReference: row.supplier_reference || '',
+      status: row.status || 'Completed',
+      date: row.occurred_at,
+    })).sort((a, b) => new Date(b.date) - new Date(a.date)),
   };
 }
 
@@ -1983,7 +1995,7 @@ function renderAdminAccount() {
         </div>
         <div class="backup-title-wrap">
           <div class="backup-icon-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
@@ -1996,15 +2008,15 @@ function renderAdminAccount() {
         </div>
         <div class="backup-tags-row">
           <span class="backup-tag">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             JSON Snapshot
           </span>
           <span class="backup-tag">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/></svg>
             Admin Credentials Preserved
           </span>
           <span class="backup-tag">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
             Instant Sync
           </span>
         </div>
@@ -2012,7 +2024,7 @@ function renderAdminAccount() {
       <div class="backup-actions-col">
         <button class="backup-action-card backup-download-card" id="downloadBackupButton" type="button" title="Download current operational database snapshot">
           <div class="backup-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
@@ -2022,11 +2034,11 @@ function renderAdminAccount() {
             <span class="backup-card-heading">Download Backup</span>
             <span class="backup-card-caption">Export full operational dataset</span>
           </div>
-          <svg class="backup-card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg class="backup-card-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
         <button class="backup-action-card backup-restore-card" id="restoreBackupButton" type="button" title="Upload and restore a JSON database backup">
           <div class="backup-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
@@ -2036,7 +2048,7 @@ function renderAdminAccount() {
             <span class="backup-card-heading">Restore Backup</span>
             <span class="backup-card-caption">Upload &amp; verify JSON file</span>
           </div>
-          <svg class="backup-card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg class="backup-card-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
         <input id="restoreBackupFile" type="file" accept="application/json,.json" hidden>
       </div>
@@ -2753,6 +2765,30 @@ function renderInventory() {
   });
   table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => openForm('edit', button.dataset.edit)));
   table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
+}
+
+function showStockInHistory() {
+  const dialog = $('#stockInHistoryDialog');
+  const list = $('#stockInHistoryList');
+  if (!dialog || !list) return;
+  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
+  $('#stockInHistorySubtitle').textContent = `Exact receipt costs for ${branchName}.`;
+  list.innerHTML = stockInHistory.length ? `
+    <div class="stock-in-history-table">
+      <div class="stock-in-history-row stock-in-history-header"><span>Date</span><span>Product</span><span>Quantity</span><span>Unit Cost</span><span>Supplier / Reference</span></div>
+      ${stockInHistory.map((receipt) => {
+        const date = receipt.date ? new Date(receipt.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown date';
+        const cost = receipt.unitCost === null ? '<span class="stock-in-cost-unknown">Not recorded</span>' : money(receipt.unitCost);
+        return `<div class="stock-in-history-row">
+          <span class="stock-in-date">${escapeHtml(date)}</span>
+          <div class="product-cell"><strong class="product-name">${escapeHtml(receipt.productName)}</strong><span class="product-meta">${escapeHtml(receipt.id)}</span></div>
+          <span class="stock-pill stock-quantity">${receipt.qty} ${escapeHtml(receipt.unit)}</span>
+          <strong class="stock-in-cost">${cost}</strong>
+          <span class="stock-in-reference">${escapeHtml(receipt.supplierReference || 'No reference')}</span>
+        </div>`;
+      }).join('')}
+    </div>` : `<div class="empty-state"><p>No stock-in receipts yet</p><small>New stock-ins will record their exact unit cost here.</small></div>`;
+  dialog.showModal();
 }
 
 function renderBranches() {
@@ -3493,6 +3529,7 @@ async function refresh(showSkeleton = true) {
     salesHistory = data.salesHistory || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
     inventoryReportData = data.inventoryReport || {};
+    stockInHistory = data.stockInHistory || [];
     allProducts = data.products;
     if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
     if (activeView === 'adminAccount') { adminAccount = await api('getAdminAccount', {}, 'GET'); adminAccounts = await api('getAdminAccounts', {}, 'GET'); }
@@ -4178,6 +4215,8 @@ function setView(view, preserveSidebarOpen = false) {
   if (addExistingProductBtn) addExistingProductBtn.hidden = view !== 'products';
   const stockBtn = $('#stockInButton');
   if (stockBtn) stockBtn.hidden = view !== 'inventory';
+  const stockInHistoryBtn = $('#stockInHistoryButton');
+  if (stockInHistoryBtn) stockInHistoryBtn.hidden = view !== 'inventory';
   const branchBtn = $('#addBranchButton');
   if (branchBtn) branchBtn.hidden = view !== 'branches';
   const customerBtn = $('#addCustomerButton');
@@ -4378,6 +4417,7 @@ $('#settingsForm').addEventListener('submit', async (event) => {
 $('#addProductButton').addEventListener('click', () => openForm('product'));
 $('#addExistingProductButton').addEventListener('click', () => openForm('linkProduct'));
 $('#stockInButton').addEventListener('click', () => openForm('stock'));
+$('#stockInHistoryButton').addEventListener('click', showStockInHistory);
 $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
