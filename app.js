@@ -3,6 +3,7 @@ const ACTIVE_VIEW_KEY = 'fr-pos-active-view';
 let activeBranchId = localStorage.getItem(ACTIVE_BRANCH_KEY) || 'MAIN';
 const ADMIN_SESSION_KEY = 'fr-pos-admin-session';
 const INITIAL_ADMIN_KEY = 'fr-pos-initial-admin';
+const INITIAL_ADMIN_REGISTERED_KEY = 'fr-pos-initial-admin-registered';
 const supabaseConfig = window.FR_POS_SUPABASE || {};
 const supabaseClient = window.supabase?.createClient?.(supabaseConfig.url, supabaseConfig.publishableKey);
 let products = [];
@@ -590,6 +591,7 @@ async function loadSupabaseSession_() {
     throwIfError_(error);
     profile = Array.isArray(data) ? data[0] : data;
     localStorage.removeItem(INITIAL_ADMIN_KEY);
+    localStorage.removeItem(INITIAL_ADMIN_REGISTERED_KEY);
   }
   if (!profile || profile.status !== 'Active') throw new Error('Account is unavailable.');
   await client.rpc('record_login');
@@ -692,7 +694,10 @@ async function api(action, payload = {}) {
       options: { emailRedirectTo: window.location.origin + window.location.pathname },
     });
     throwIfError_(error);
-    if (!data.session) throw new Error('Check your email to confirm this address, then return here to finish creating the administrator account.');
+    if (!data.session) {
+      localStorage.setItem(INITIAL_ADMIN_REGISTERED_KEY, 'true');
+      return { awaitingEmailConfirmation: true };
+    }
     return loadSupabaseSession_();
   }
   if (action === 'login') {
@@ -4609,7 +4614,7 @@ async function initAuth() {
   renderAuthSkeletons();
   try {
     const status = await api('getSetupStatus', {}, 'GET');
-    const setup = status.needsAdmin;
+    const setup = status.needsAdmin && !localStorage.getItem(INITIAL_ADMIN_REGISTERED_KEY);
     $('#authEyebrow').textContent = setup ? 'FIRST-TIME SETUP' : 'ADMINISTRATION';
     $('#authTitle').textContent = setup ? 'Create administrator' : 'Sign in';
     $('#authCopy').textContent = setup ? 'Create the first administrator account for this POS.' : 'Use your administrator or staff email to continue.';
@@ -4674,6 +4679,12 @@ $('#authForm').addEventListener('submit', async (event) => {
   submit.innerHTML = `<span class="btn-spinner"></span><span>${loadingLabel}</span>`;
   try {
     const session = await api(setup ? 'createFirstAdmin' : 'login', payload);
+    if (session.awaitingEmailConfirmation) {
+      event.currentTarget.reset();
+      showToast('Confirm your email, then sign in to finish setup.', 'info');
+      await initAuth();
+      return;
+    }
     localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
     const requiresPasswordChange = session.account.mustChangePassword;
     applySession(session, true);
