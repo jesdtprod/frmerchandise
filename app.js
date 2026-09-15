@@ -839,10 +839,10 @@ async function api(action, payload = {}) {
     return action === 'getAdminAccount' ? mapProfile(data) : (data || []).map(mapProfile);
   }
   if (action === 'updateAdminAccount') {
-    if (payload.adminId && payload.adminId !== currentSession?.account?.id) throw new Error('Editing other administrator accounts is not available yet.');
-    const { data, error } = await client.rpc('update_own_profile', { full_name_input: payload.fullName, username_input: payload.username });
+    const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
     throwIfError_(error);
-    return { id: data.user_id, fullName: data.full_name, username: data.username };
+    if (data?.error) throw new Error(data.error);
+    return data;
   }
   if (['createStaffAccount', 'updateStaffAccount', 'resetStaffPassword', 'setStaffAccountStatus', 'createAdminAccount', 'setAdminAccountStatus'].includes(action)) {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
@@ -3591,7 +3591,9 @@ function openForm(type, productId = '') {
         </div>
       </div>
     ` : ''}
-    <div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch <span class="required">*</span></span></label><select id="modalStaffBranch" name="branchId" required><option value="" disabled${staff ? '' : ' selected'}>Select branch</option>${branches.filter((item) => item.status === 'Active').map((item) => `<option value="${escapeHtml(item.id)}"${selected(staff?.branchId, item.id)}>${escapeHtml(item.name)}</option>`).join('')}</select></div>
+    ${type === 'editStaff'
+      ? `<div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch</span></label><input id="modalStaffBranch" value="${escapeHtml(branches.find((item) => item.id === staff?.branchId)?.name || staff?.branchId || '')}" readonly aria-describedby="modalStaffBranchHint"><p id="modalStaffBranchHint" class="field-hint">This branch is locked after account creation to protect branch records.</p></div>`
+      : `<div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch <span class="required">*</span></span></label><select id="modalStaffBranch" name="branchId" required><option value="" disabled selected>Select branch</option>${branches.filter((item) => item.status === 'Active').map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select></div>`}
     <div class="form-field-group full-field">
       <span class="label-text">Allowed Sidebar Menus <span class="required">*</span></span>
       <div class="staff-permission-grid">
@@ -3670,7 +3672,7 @@ function openForm(type, productId = '') {
           </div>
           <span class="form-section-badge">Optional</span>
         </div>
-        <p class="form-section-subtitle">Leave blank to keep your current password</p>
+        <p class="form-section-subtitle">${currentAdmin?.id === currentSession?.account?.id ? 'Leave blank to keep your current password' : 'Set a temporary password to require a new password at the next sign-in'}</p>
       </div>
       <div class="form-field-group">
         <label for="modalAdminNewPassword"><span class="label-text">New Password</span></label>
@@ -4229,7 +4231,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
     const name = form.get('fullName') || 'administrator';
     confirmConfig = activeForm === 'admin'
       ? { title: 'Add Administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm full system access', message: `Are you sure you want to make <strong class="confirm-highlight-name">${escapeHtml(name)}</strong> an administrator?`, warning: 'This account will have access to all branches and all menus.', confirmText: 'Add Administrator', confirmType: 'primary' }
-      : { title: 'Save Administrator Changes', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm profile update', message: 'Are you sure you want to save your administrator profile changes?', confirmText: 'Save Changes', confirmType: 'primary' };
+      : { title: 'Save Administrator Changes', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm profile update', message: 'Are you sure you want to save these administrator profile changes?', confirmText: 'Save Changes', confirmType: 'primary' };
   } else if (activeForm === 'transfer') {
     const prodId = form.get('productId');
     const prod = products.find((p) => p.id === prodId);

@@ -45,6 +45,11 @@ Deno.serve(async (request) => {
     const { data } = exceptUserId ? await query.neq('user_id', exceptUserId) : await query;
     return Boolean(data?.length);
   };
+  const activeBranchExists = async (branchId: string | null) => {
+    if (!branchId) return false;
+    const { data } = await admin.from('branches').select('branch_id').eq('branch_id', branchId).eq('status', 'Active').maybeSingle();
+    return Boolean(data);
+  };
 
   if (action === 'createStaffAccount' || action === 'createAdminAccount') {
     if (!fullName || !username || !email || password.length < 8) return fail('Full name, username, email, and a password of at least 8 characters are required.');
@@ -53,6 +58,7 @@ Deno.serve(async (request) => {
     const branchId = role === 'staff' ? String(body.branchId || '') : null;
     const permissions = role === 'admin' ? [...allowedPermissions] : (Array.isArray(body.permissions) ? body.permissions.filter((item) => allowedPermissions.has(item)) : []);
     if (role === 'staff' && (!branchId || !permissions.length)) return fail('Select an assigned branch and at least one allowed sidebar menu.');
+    if (role === 'staff' && !await activeBranchExists(branchId)) return fail('Select an active assigned branch.');
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (createError || !created.user) return fail(createError?.message || 'Unable to create the sign-in account.');
     const { error: profileError } = await admin.from('profiles').insert({
@@ -74,11 +80,33 @@ Deno.serve(async (request) => {
 
   if (action === 'updateStaffAccount') {
     const permissions = Array.isArray(body.permissions) ? body.permissions.filter((item) => allowedPermissions.has(item)) : [];
-    if (target.role !== 'staff' || !fullName || !body.branchId || !permissions.length) return fail('Enter valid staff account details.');
-    const { error } = await admin.from('profiles').update({ full_name: fullName, branch_id: body.branchId, permissions }).eq('user_id', targetId);
+    if (target.role !== 'staff' || !fullName || !permissions.length) return fail('Enter valid staff account details.');
+    const { error } = await admin.from('profiles').update({ full_name: fullName, permissions }).eq('user_id', targetId);
     if (error) return fail(error.message);
-    await audit('Updated staff account', targetId, fullName);
-    return json({ id: targetId, fullName, username: target.username, branchId: body.branchId, permissions, status: target.status });
+    await audit('Updated staff account', targetId, `${fullName}; branch remains ${target.branch_id}`);
+    return json({ id: targetId, fullName, username: target.username, branchId: target.branch_id, permissions, status: target.status });
+  }
+
+  if (action === 'updateAdminAccount') {
+    if (target.role !== 'admin' || !fullName || !username) return fail('Enter valid administrator account details.');
+    if (await duplicateUsername(username, targetId)) return fail('That username is already in use.');
+    if (password && password.length < 8) return fail('Enter a password of at least 8 characters.');
+    const { error: profileError } = await admin.from('profiles').update({ full_name: fullName, username }).eq('user_id', targetId);
+    if (profileError) return fail(profileError.message);
+    if (password) {
+      const { error: passwordError } = await admin.auth.admin.updateUserById(targetId, { password });
+      if (passwordError) return fail(passwordError.message);
+      const requiresPasswordChange = targetId !== actorId;
+      const { error: resetError } = await admin.from('profiles').update({
+        must_change_password: requiresPasswordChange,
+        password_reset_at: requiresPasswordChange ? new Date().toISOString() : null,
+      }).eq('user_id', targetId);
+      if (resetError) return fail(resetError.message);
+      await audit(requiresPasswordChange ? 'Reset administrator password' : 'Changed own password', targetId, fullName);
+    } else {
+      await audit('Updated administrator account', targetId, fullName);
+    }
+    return json({ id: targetId, fullName, username, mustChangePassword: Boolean(password && targetId !== actorId) });
   }
 
   if (action === 'resetStaffPassword') {
