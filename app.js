@@ -553,6 +553,16 @@ function throwIfError_(error) {
   if (error) throw new Error(error.message || 'Supabase request failed.');
 }
 
+function newPosId_(prefix) {
+  return `${prefix}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
+}
+
+function newSku_() {
+  const date = new Date();
+  const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+  return `SKU-${stamp}-${crypto.randomUUID().replaceAll('-', '').slice(0, 5).toUpperCase()}`;
+}
+
 function profileToAccount_(profile, token) {
   return {
     token,
@@ -716,6 +726,119 @@ async function api(action, payload = {}) {
     const { error } = await client.auth.updateUser({ password: payload.newPassword });
     throwIfError_(error);
     return { changed: true };
+  }
+  if (action === 'stockIn') {
+    const { data, error } = await client.rpc('stock_in', { target_branch_id: payload.branchId, target_product_id: payload.productId, quantity: Number(payload.qty) });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'recordSale') {
+    const { data, error } = await client.rpc('record_sale', {
+      target_branch_id: payload.branchId,
+      sale_lines: payload.items.map((item) => ({ productId: item.productId, qty: Number(item.qty), price: Number(item.price) })),
+      payment_type_input: payload.paymentType,
+      customer_id_input: payload.customerId || null,
+      discount_input: Number(payload.discount || 0),
+      cash_tendered_input: Number(payload.cashTendered || 0),
+    });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'recordCreditPayment') {
+    const { data, error } = await client.rpc('record_credit_payment', { target_branch_id: payload.branchId, target_sale_id: payload.saleId, payment_amount: Number(payload.amount), payment_notes: payload.notes || '' });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'deleteCreditPayment') {
+    const { data, error } = await client.rpc('delete_credit_payment', { target_branch_id: payload.branchId, target_payment_id: payload.paymentId });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'createTransfer') {
+    const { data, error } = await client.rpc('create_transfer', { source_branch_id_input: payload.sourceBranchId, destination_branch_id_input: payload.destinationBranchId, target_product_id: payload.productId, transfer_qty: Number(payload.qty), transfer_notes: payload.notes || '' });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'dispatchTransfer' || action === 'receiveTransfer' || action === 'cancelTransfer') {
+    const rpcName = { dispatchTransfer: 'dispatch_transfer', receiveTransfer: 'receive_transfer', cancelTransfer: 'cancel_transfer' }[action];
+    const { data, error } = await client.rpc(rpcName, { target_transfer_id: payload.transferId });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'createCustomer') {
+    const row = { customer_id: newPosId_('CUS'), branch_id: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active' };
+    const { data, error } = await client.from('customers').insert(row).select().single();
+    throwIfError_(error);
+    return { id: data.customer_id, branchId: data.branch_id, name: data.name, phone: data.phone, address: data.address, status: data.status };
+  }
+  if (action === 'updateCustomer') {
+    const { data, error } = await client.from('customers').update({ name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active' }).eq('customer_id', payload.customerId).eq('branch_id', payload.branchId).select().single();
+    throwIfError_(error);
+    return { id: data.customer_id, branchId: data.branch_id, name: data.name, phone: data.phone, address: data.address, status: data.status };
+  }
+  if (action === 'createBranch') {
+    const row = { branch_id: newPosId_('BRN'), name: String(payload.name).trim(), type: payload.type, address: String(payload.address || '').trim(), status: 'Active' };
+    const { data, error } = await client.from('branches').insert(row).select().single();
+    throwIfError_(error);
+    return { id: data.branch_id, name: data.name, type: data.type, address: data.address, status: data.status };
+  }
+  if (action === 'updateBranch') {
+    const { data, error } = await client.from('branches').update({ name: String(payload.name).trim(), type: payload.type, address: String(payload.address || '').trim(), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).select().single();
+    throwIfError_(error);
+    return { id: data.branch_id, name: data.name, type: data.type, address: data.address, status: data.status };
+  }
+  if (action === 'createProduct') {
+    const product = { product_id: newPosId_('PRD'), sku: newSku_(), name: String(payload.name).trim(), unit: payload.unit, price: Number(payload.price), category: payload.category, low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' };
+    const { data, error } = await client.from('products').insert(product).select().single();
+    throwIfError_(error);
+    const { error: branchError } = await client.from('branch_products').insert({ branch_id: payload.branchId, product_id: data.product_id, price_override: data.price, low_stock_level: data.low_stock_level, status: data.status });
+    throwIfError_(branchError);
+    if (Number(payload.beginningStock || 0) > 0) await api('stockIn', { branchId: payload.branchId, productId: data.product_id, qty: payload.beginningStock });
+    return { id: data.product_id, sku: data.sku, name: data.name, unit: data.unit, price: Number(data.price), category: data.category, lowStockLevel: Number(data.low_stock_level), status: data.status };
+  }
+  if (action === 'addProductToBranch') {
+    const product = allProducts.find((item) => item.id === payload.productId);
+    if (!product) throw new Error('Product not found.');
+    const price = payload.price === '' || payload.price === undefined ? product.price : Number(payload.price);
+    const lowStockLevel = payload.lowStockLevel === '' || payload.lowStockLevel === undefined ? product.lowStockLevel : Number(payload.lowStockLevel);
+    const { error } = await client.from('branch_products').insert({ branch_id: payload.branchId, product_id: payload.productId, price_override: price, low_stock_level: lowStockLevel, status: payload.status || 'Active' });
+    throwIfError_(error);
+    return { ...product, price, lowStockLevel, status: payload.status || 'Active' };
+  }
+  if (action === 'updateProduct') {
+    const { error: productError } = await client.from('products').update({ name: String(payload.name).trim(), category: payload.category, unit: payload.unit }).eq('product_id', payload.productId);
+    throwIfError_(productError);
+    const { data, error } = await client.from('branch_products').update({ price_override: Number(payload.price), low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
+    throwIfError_(error);
+    return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: Number(data.price_override), lowStockLevel: Number(data.low_stock_level), status: data.status };
+  }
+  if (action === 'deleteProduct') {
+    const { data, error } = await client.rpc('delete_product', { target_product_id: payload.productId });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'getTransferProducts') {
+    const [inventoryResult, destinationResult] = await Promise.all([
+      client.from('inventory').select('product_id,qty').eq('branch_id', payload.sourceBranchId),
+      client.from('branch_products').select('product_id').eq('branch_id', payload.destinationBranchId),
+    ]);
+    throwIfError_(inventoryResult.error); throwIfError_(destinationResult.error);
+    const destinationIds = new Set((destinationResult.data || []).map((row) => row.product_id));
+    const quantities = Object.fromEntries((inventoryResult.data || []).map((row) => [row.product_id, Number(row.qty || 0)]));
+    return allProducts.filter((product) => destinationIds.has(product.id) && product.status === 'Active').map((product) => ({ ...product, qty: quantities[product.id] || 0 }));
+  }
+  if (action === 'getStaffAccounts' || action === 'getAdminAccounts' || action === 'getAdminAccount') {
+    const query = client.from('profiles').select('*');
+    const { data, error } = action === 'getAdminAccount' ? await query.eq('user_id', currentSession.account.id).single() : await query.eq('role', action === 'getStaffAccounts' ? 'staff' : 'admin');
+    throwIfError_(error);
+    const mapProfile = (row) => ({ id: row.user_id, fullName: row.full_name, username: row.username, branchId: row.branch_id || '', permissions: row.permissions || [], status: row.status || 'Active', mustChangePassword: Boolean(row.must_change_password), lastLogin: row.last_login_at || '', passwordResetAt: row.password_reset_at || '' });
+    return action === 'getAdminAccount' ? mapProfile(data) : (data || []).map(mapProfile);
+  }
+  if (action === 'updateAdminAccount') {
+    if (payload.adminId && payload.adminId !== currentSession?.account?.id) throw new Error('Editing other administrator accounts is not available yet.');
+    const { data, error } = await client.rpc('update_own_profile', { full_name_input: payload.fullName, username_input: payload.username });
+    throwIfError_(error);
+    return { id: data.user_id, fullName: data.full_name, username: data.username };
   }
   throw new Error(`Supabase action not yet configured: ${action}.`);
 }

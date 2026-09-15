@@ -1,9 +1,10 @@
-const CACHE_NAME = 'fr-pos-shell-v1';
+const CACHE_NAME = 'fr-pos-shell-v2';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './supabase-config.js',
   './favicon.svg',
   './manifest.webmanifest'
 ];
