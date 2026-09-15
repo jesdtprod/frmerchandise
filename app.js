@@ -3601,7 +3601,7 @@ function openForm(type, productId = '') {
   const destinationBranches = branches.filter((item) => item.id !== activeBranchId && item.status === 'Active');
   const transferFields = `
     <div class="form-field-group full-field"><label for="modalTransferDestination"><span class="label-text">Destination Branch <span class="required">*</span></span></label><select id="modalTransferDestination" name="destinationBranchId" required ${destinationBranches.length ? '' : 'disabled'}><option value="" disabled selected>${destinationBranches.length ? 'Select destination branch' : 'Create another active branch first'}</option>${destinationBranches.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select></div>
-    <div class="form-field-group full-field"><label for="modalTransferProduct"><span class="label-text">Source Product <span class="required">*</span></span></label><select id="modalTransferProduct" name="productId" required><option value="" disabled selected>Select destination branch first</option></select></div>
+    <div class="form-field-group full-field"><label for="modalTransferProduct"><span class="label-text">Shared Product <span class="required">*</span></span></label><select id="modalTransferProduct" name="productId" required><option value="" disabled selected>Select destination branch first</option></select></div>
     <div class="form-field-group"><label for="modalTransferQty"><span class="label-text">Transfer Quantity <span class="required">*</span></span></label><input id="modalTransferQty" name="qty" type="number" min="1" step="1" placeholder="0" required /></div>
     <div class="form-field-group"><label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label><input id="modalTransferNotes" name="notes" placeholder="Optional reference" autocomplete="off" /></div>
   `;
@@ -3830,7 +3830,7 @@ function openForm(type, productId = '') {
       updateCustomDropdown(transferProduct);
       try {
         const sharedProducts = await api('getTransferProducts', { sourceBranchId: activeBranchId, destinationBranchId: transferDestination.value }, 'GET');
-        transferProduct.innerHTML = `<option value="" disabled selected>${sharedProducts.length ? 'Select product from source branch' : 'No shared products in these branches'}</option>${sharedProducts.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (Available: ${item.qty} ${escapeHtml(item.unit)})</option>`).join('')}`;
+        transferProduct.innerHTML = `<option value="" disabled selected>${sharedProducts.length ? 'Select a product shared by both branches' : 'No shared active products in these branches'}</option>${sharedProducts.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (Available: ${item.qty} ${escapeHtml(item.unit)})</option>`).join('')}`;
         updateCustomDropdown(transferProduct);
       } catch (error) {
         transferProduct.innerHTML = '<option value="" disabled selected>Unable to load shared products</option>';
