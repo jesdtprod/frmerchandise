@@ -725,6 +725,8 @@ async function api(action, payload = {}) {
     throwIfError_(signInError);
     const { error } = await client.auth.updateUser({ password: payload.newPassword });
     throwIfError_(error);
+    const { error: profileError } = await client.rpc('complete_own_password_change');
+    throwIfError_(profileError);
     return { changed: true };
   }
   if (action === 'stockIn') {
