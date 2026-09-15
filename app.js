@@ -4933,13 +4933,17 @@ $('#logoutButton').addEventListener('click', async () => {
   if (!confirmed) return;
 
   const session = currentSession || JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
-  if (session?.token) api('logout').catch(() => {});
+  try {
+    if (session?.token) await api('logout');
+  } catch (error) {
+    showToast(error.message || 'Unable to end the remote session.', 'error');
+  }
   localStorage.removeItem(ADMIN_SESSION_KEY);
   currentSession = null;
   cart = [];
   renderCart();
   $('#authOverlay').hidden = false;
-  initAuth();
+  await initAuth();
   showToast('You have been logged out.', 'info');
 });
 
