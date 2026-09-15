@@ -820,14 +820,14 @@ async function api(action, payload = {}) {
     return data;
   }
   if (action === 'getTransferProducts') {
-    const [inventoryResult, destinationResult] = await Promise.all([
+    const [inventoryResult, sourceProductsResult] = await Promise.all([
       client.from('inventory').select('product_id,qty').eq('branch_id', payload.sourceBranchId),
-      client.from('branch_products').select('product_id').eq('branch_id', payload.destinationBranchId),
+      client.from('branch_products').select('product_id').eq('branch_id', payload.sourceBranchId).eq('status', 'Active'),
     ]);
-    throwIfError_(inventoryResult.error); throwIfError_(destinationResult.error);
-    const destinationIds = new Set((destinationResult.data || []).map((row) => row.product_id));
+    throwIfError_(inventoryResult.error); throwIfError_(sourceProductsResult.error);
+    const sourceIds = new Set((sourceProductsResult.data || []).map((row) => row.product_id));
     const quantities = Object.fromEntries((inventoryResult.data || []).map((row) => [row.product_id, Number(row.qty || 0)]));
-    return allProducts.filter((product) => destinationIds.has(product.id) && product.status === 'Active').map((product) => ({ ...product, qty: quantities[product.id] || 0 }));
+    return allProducts.filter((product) => sourceIds.has(product.id) && product.status === 'Active').map((product) => ({ ...product, qty: quantities[product.id] || 0 }));
   }
   if (action === 'getStaffAccounts' || action === 'getAdminAccounts' || action === 'getAdminAccount') {
     const query = client.from('profiles').select('*');
