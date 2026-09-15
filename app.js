@@ -820,16 +820,12 @@ async function api(action, payload = {}) {
     return data;
   }
   if (action === 'getTransferProducts') {
-    const [inventoryResult, sourceProductsResult, destinationProductsResult] = await Promise.all([
-      client.from('inventory').select('product_id,qty').eq('branch_id', payload.sourceBranchId),
-      client.from('branch_products').select('product_id').eq('branch_id', payload.sourceBranchId).eq('status', 'Active'),
-      client.from('branch_products').select('product_id').eq('branch_id', payload.destinationBranchId).eq('status', 'Active'),
-    ]);
-    throwIfError_(inventoryResult.error); throwIfError_(sourceProductsResult.error); throwIfError_(destinationProductsResult.error);
-    const sourceIds = new Set((sourceProductsResult.data || []).map((row) => row.product_id));
-    const destinationIds = new Set((destinationProductsResult.data || []).map((row) => row.product_id));
-    const quantities = Object.fromEntries((inventoryResult.data || []).map((row) => [row.product_id, Number(row.qty || 0)]));
-    return allProducts.filter((product) => sourceIds.has(product.id) && destinationIds.has(product.id) && product.status === 'Active').map((product) => ({ ...product, qty: quantities[product.id] || 0 }));
+    const { data, error } = await client.rpc('get_shared_transfer_products', {
+      source_branch_id_input: payload.sourceBranchId,
+      destination_branch_id_input: payload.destinationBranchId,
+    });
+    throwIfError_(error);
+    return (data || []).map((row) => ({ id: row.product_id, name: row.name, unit: row.unit, qty: Number(row.qty || 0) }));
   }
   if (action === 'getStaffAccounts' || action === 'getAdminAccounts' || action === 'getAdminAccount') {
     const query = client.from('profiles').select('*');
