@@ -1093,11 +1093,84 @@ function initCustomDropdowns(container = document) {
 
     const menu = document.createElement('div');
     menu.className = 'dropdown-menu';
-    menu.setAttribute('role', 'listbox');
+
+    // Search bar header inside dropdown menu
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'dropdown-search-wrap';
+    searchWrap.innerHTML = `
+      <svg class="dropdown-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+      </svg>
+      <input type="text" class="dropdown-search-input" placeholder="Search..." autocomplete="off" spellcheck="false" />
+      <button type="button" class="dropdown-search-clear" aria-label="Clear search" title="Clear search" tabindex="-1" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    `;
+
+    const searchInput = searchWrap.querySelector('.dropdown-search-input');
+    const searchClear = searchWrap.querySelector('.dropdown-search-clear');
+
+    const optionsList = document.createElement('div');
+    optionsList.className = 'dropdown-options-list';
+    optionsList.setAttribute('role', 'listbox');
+
+    const emptyState = document.createElement('div');
+    emptyState.className = 'dropdown-empty-state';
+    emptyState.textContent = 'No matching items';
+    emptyState.style.display = 'none';
+
+    const filterOptions = () => {
+      const q = (searchInput.value || '').trim().toLowerCase();
+      searchClear.style.display = q ? 'flex' : 'none';
+      let visibleCount = 0;
+      const opts = optionsList.querySelectorAll('.dropdown-option');
+      opts.forEach((opt) => {
+        const text = opt.querySelector('span')?.textContent.toLowerCase() || '';
+        const match = !q || text.includes(q);
+        opt.style.display = match ? 'flex' : 'none';
+        if (match) visibleCount++;
+      });
+      emptyState.style.display = visibleCount === 0 ? 'block' : 'none';
+    };
+
+    searchInput.addEventListener('input', filterOptions);
+
+    searchClear.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchInput.value = '';
+      filterOptions();
+      searchInput.focus();
+    });
+
+    searchWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const firstVisible = Array.from(optionsList.querySelectorAll('.dropdown-option')).find((o) => o.style.display !== 'none' && !o.classList.contains('disabled'));
+        if (firstVisible) firstVisible.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const firstVisible = Array.from(optionsList.querySelectorAll('.dropdown-option')).find((o) => o.style.display !== 'none' && !o.classList.contains('disabled'));
+        if (firstVisible) firstVisible.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDropdown(wrapper, trigger);
+        trigger.focus();
+      }
+    });
 
     const renderMenuOptions = () => {
-      menu.innerHTML = '';
+      optionsList.innerHTML = '';
+      optionsList.appendChild(emptyState);
+      emptyState.style.display = 'none';
+
       Array.from(select.options).forEach((opt) => {
+        // Skip purely decorative empty placeholder prompts that are disabled
+        if (opt.disabled && !opt.value) return;
+
         const optionEl = document.createElement('div');
         optionEl.className = `dropdown-option${opt.selected ? ' selected' : ''}${opt.disabled ? ' disabled' : ''}`;
         optionEl.setAttribute('role', 'option');
@@ -1115,7 +1188,7 @@ function initCustomDropdowns(container = document) {
             select.value = opt.value;
             select.dispatchEvent(new Event('change', { bubbles: true }));
             trigger.querySelector('.dropdown-selected-text').textContent = opt.text;
-            menu.querySelectorAll('.dropdown-option').forEach((o) => o.classList.remove('selected'));
+            optionsList.querySelectorAll('.dropdown-option').forEach((o) => o.classList.remove('selected'));
             optionEl.classList.add('selected');
             closeDropdown(wrapper, trigger);
             trigger.focus();
@@ -1132,12 +1205,22 @@ function initCustomDropdowns(container = document) {
               selectThisOption();
             } else if (e.key === 'ArrowDown') {
               e.preventDefault();
-              const next = optionEl.nextElementSibling;
-              if (next && !next.classList.contains('disabled')) next.focus();
+              let next = optionEl.nextElementSibling;
+              while (next && (next.style.display === 'none' || next.classList.contains('disabled'))) {
+                next = next.nextElementSibling;
+              }
+              if (next && next.classList.contains('dropdown-option')) next.focus();
             } else if (e.key === 'ArrowUp') {
               e.preventDefault();
-              const prev = optionEl.previousElementSibling;
-              if (prev && !prev.classList.contains('disabled')) prev.focus();
+              let prev = optionEl.previousElementSibling;
+              while (prev && (prev.style.display === 'none' || prev.classList.contains('disabled'))) {
+                prev = prev.previousElementSibling;
+              }
+              if (prev && prev.classList.contains('dropdown-option')) {
+                prev.focus();
+              } else {
+                searchInput.focus();
+              }
             } else if (e.key === 'Escape') {
               e.preventDefault();
               closeDropdown(wrapper, trigger);
@@ -1146,12 +1229,17 @@ function initCustomDropdowns(container = document) {
           });
         }
 
-        menu.appendChild(optionEl);
+        optionsList.appendChild(optionEl);
       });
+
+      filterOptions();
     };
 
     renderMenuOptions();
     wrapper._renderOptions = renderMenuOptions;
+
+    menu.appendChild(searchWrap);
+    menu.appendChild(optionsList);
 
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1172,9 +1260,9 @@ function initCustomDropdowns(container = document) {
         e.preventDefault();
         if (!isOpen) {
           openDropdown(wrapper, trigger);
+        } else {
+          searchInput.focus();
         }
-        const activeOpt = menu.querySelector('.dropdown-option.selected') || menu.querySelector('.dropdown-option:not(.disabled)');
-        if (activeOpt) activeOpt.focus();
       } else if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
         closeDropdown(wrapper, trigger);
@@ -1185,7 +1273,7 @@ function initCustomDropdowns(container = document) {
       const newOpt = select.options[select.selectedIndex];
       if (newOpt) {
         trigger.querySelector('.dropdown-selected-text').textContent = newOpt.text;
-        menu.querySelectorAll('.dropdown-option').forEach((o) => {
+        optionsList.querySelectorAll('.dropdown-option').forEach((o) => {
           o.classList.toggle('selected', o.dataset.value === newOpt.value);
         });
       }
@@ -1219,11 +1307,30 @@ function updateCustomDropdown(select) {
 function openDropdown(wrapper, trigger) {
   wrapper.classList.add('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'true');
+  const parentGroup = wrapper.closest('.form-field-group');
+  if (parentGroup) parentGroup.classList.add('has-open-dropdown');
+
+  const searchInput = wrapper.querySelector('.dropdown-search-input');
+  if (searchInput) {
+    searchInput.value = '';
+    const clearBtn = wrapper.querySelector('.dropdown-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const emptyState = wrapper.querySelector('.dropdown-empty-state');
+    if (emptyState) emptyState.style.display = 'none';
+    wrapper.querySelectorAll('.dropdown-option').forEach((opt) => {
+      opt.style.display = 'flex';
+    });
+    setTimeout(() => {
+      searchInput.focus();
+    }, 40);
+  }
 }
 
 function closeDropdown(wrapper, trigger) {
   wrapper.classList.remove('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  const parentGroup = wrapper.closest('.form-field-group');
+  if (parentGroup) parentGroup.classList.remove('has-open-dropdown');
 }
 
 /* ==========================================================================
@@ -1853,13 +1960,74 @@ function renderAdminAccount() {
   if (!panel || !table) return;
   panel.hidden = false;
   panel.innerHTML = `
-    <div class="account-profile-section">
-      <span class="eyebrow">OPERATIONS</span>
-      <h3>Backup and Restore</h3>
-      <p>Operational data only. Administrator accounts, passwords, and audit history remain unchanged.</p>
-      <button class="button button-primary" id="downloadBackupButton" type="button">Download Backup</button>
-      <button class="button modal-cancel-btn" id="restoreBackupButton" type="button">Restore Backup</button>
-      <input id="restoreBackupFile" type="file" accept="application/json,.json" hidden>
+    <div class="backup-restore-container">
+      <div class="backup-info-col">
+        <div class="backup-header-line">
+          <span class="eyebrow">SYSTEM OPERATIONS</span>
+          <span class="backup-status-pill">
+            <span class="backup-pulse-dot"></span>
+            System Ready
+          </span>
+        </div>
+        <div class="backup-title-wrap">
+          <div class="backup-icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div>
+            <h3>Backup &amp; Restore Operations</h3>
+            <p>Export or restore operational records (products, stock levels, transactions, customers, transfers). Administrator accounts, passwords, and audit history remain secured and untouched.</p>
+          </div>
+        </div>
+        <div class="backup-tags-row">
+          <span class="backup-tag">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            JSON Snapshot
+          </span>
+          <span class="backup-tag">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/></svg>
+            Admin Credentials Preserved
+          </span>
+          <span class="backup-tag">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+            Instant Sync
+          </span>
+        </div>
+      </div>
+      <div class="backup-actions-col">
+        <button class="backup-action-card backup-download-card" id="downloadBackupButton" type="button" title="Download current operational database snapshot">
+          <div class="backup-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div class="backup-card-details">
+            <span class="backup-card-heading">Download Backup</span>
+            <span class="backup-card-caption">Export full operational dataset</span>
+          </div>
+          <svg class="backup-card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button class="backup-action-card backup-restore-card" id="restoreBackupButton" type="button" title="Upload and restore a JSON database backup">
+          <div class="backup-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="backup-card-details">
+            <span class="backup-card-heading">Restore Backup</span>
+            <span class="backup-card-caption">Upload &amp; verify JSON file</span>
+          </div>
+          <svg class="backup-card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <input id="restoreBackupFile" type="file" accept="application/json,.json" hidden>
+      </div>
     </div>
   `;
   table.innerHTML = `<div class="table-row table-header"><span>Administrator</span><span>Username</span><span>Access</span><span>Status</span><span>Action</span></div>${adminAccounts.map((account) => `<div class="table-row">
@@ -3495,6 +3663,7 @@ function openForm(type, productId = '') {
     </div>
   `;
 
+  const stockProductList = (allProducts && allProducts.length ? allProducts : products);
   const stockFields = `
     <div class="form-field-group full-field">
       <label for="modalStockProduct">
@@ -3502,7 +3671,12 @@ function openForm(type, productId = '') {
       </label>
       <select id="modalStockProduct" name="productId" required>
         <option value="" disabled selected>Select product to stock in</option>
-        ${products.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (Current stock: ${item.qty} ${escapeHtml(item.unit || '')})</option>`).join('')}
+        ${stockProductList.map((item) => {
+          const branchItem = products.find((p) => p.id === item.id);
+          const currentQty = branchItem ? branchItem.qty : 0;
+          const unit = escapeHtml(item.unit || branchItem?.unit || 'unit');
+          return `<option value="${item.id}">${escapeHtml(item.name)} (Current stock: ${currentQty} ${unit})</option>`;
+        }).join('')}
       </select>
     </div>
     <div class="form-field-group full-field">
@@ -4406,8 +4580,29 @@ $('#modalForm').addEventListener('submit', async (event) => {
       showToast('Stock transfer draft created.', 'success');
     } else {
       // stockIn
-      const result = await api('stockIn', { ...Object.fromEntries(form), branchId: activeBranchId });
-      if (result?.productId) products = products.map((p) => p.id === result.productId ? { ...p, qty: (Number(p.qty) || 0) + Number(result.qty || 0) } : p);
+      const productId = form.get('productId');
+      const branchId = activeBranchId;
+      const isInBranch = products.some((p) => p.id === productId);
+      if (!isInBranch) {
+        const catItem = allProducts.find((p) => p.id === productId);
+        await api('addProductToBranch', {
+          productId,
+          branchId,
+          price: catItem?.price,
+          lowStockLevel: catItem?.lowStockLevel || 5,
+          status: 'Active',
+        });
+      }
+      const result = await api('stockIn', { ...Object.fromEntries(form), branchId });
+      if (result?.productId) {
+        const branchItem = products.find((p) => p.id === result.productId);
+        if (branchItem) {
+          products = products.map((p) => (p.id === result.productId ? { ...p, qty: (Number(p.qty) || 0) + Number(result.qty || 0) } : p));
+        } else {
+          const cat = allProducts.find((p) => p.id === result.productId);
+          products = [{ ...(cat || {}), id: result.productId, qty: Number(result.qty || 0), status: 'Active' }, ...products];
+        }
+      }
       showToast('Stock updated successfully.', 'success');
     }
     $('#formDialog').close();
