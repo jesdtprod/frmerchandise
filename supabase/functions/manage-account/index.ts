@@ -85,6 +85,9 @@ Deno.serve(async (request) => {
       admin.from('sales').select('*').order('sale_id'),
       admin.from('sale_items').select('*').order('sale_item_id'),
       admin.from('credit_payments').select('*').order('payment_id'),
+      admin.from('inventory_cost_batches').select('*').order('branch_id').order('product_id').order('received_at'),
+      admin.from('sale_item_cost_allocations').select('*').order('sale_item_id'),
+      admin.from('transfer_batch_allocations').select('*').order('transfer_id'),
     ]);
     const error = results.find((result) => result.error)?.error;
     if (error) return fail(error.message);
@@ -96,6 +99,7 @@ Deno.serve(async (request) => {
       tables: {
         branches: rows[0], products: rows[1], branchProducts: rows[2], customers: rows[3], inventory: rows[4],
         stockIns: rows[5], stockTransfers: rows[6], sales: rows[7], saleItems: rows[8], creditPayments: rows[9],
+        inventoryCostBatches: rows[10], saleItemCostAllocations: rows[11], transferBatchAllocations: rows[12],
       },
     });
   }
@@ -104,7 +108,7 @@ Deno.serve(async (request) => {
     if (body.confirmation !== 'RESTORE') return fail('Restore confirmation is required.');
     const backup = body.backup;
     if (!backup || backup.schemaVersion !== '1' || typeof backup.tables !== 'object') return fail('Choose a valid FR Merchandise POS backup file.');
-    const { data, error } = await admin.rpc('restore_pos_backup', { backup });
+    const { data, error } = await admin.rpc('restore_pos_backup_fifo', { backup });
     if (error) return fail(error.message);
     await audit('Restored operational backup', actorId, String(backup.createdAt || ''));
     return json(data);

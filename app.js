@@ -730,7 +730,13 @@ async function api(action, payload = {}) {
     return { changed: true };
   }
   if (action === 'stockIn') {
-    const { data, error } = await client.rpc('stock_in', { target_branch_id: payload.branchId, target_product_id: payload.productId, quantity: Number(payload.qty) });
+    const { data, error } = await client.rpc('stock_in', {
+      target_branch_id: payload.branchId,
+      target_product_id: payload.productId,
+      quantity: Number(payload.qty),
+      unit_cost_input: Number(payload.unitCost),
+      supplier_reference_input: payload.supplierReference || '',
+    });
     throwIfError_(error);
     return data;
   }
@@ -795,7 +801,13 @@ async function api(action, payload = {}) {
     throwIfError_(error);
     const { error: branchError } = await client.from('branch_products').insert({ branch_id: payload.branchId, product_id: data.product_id, price_override: data.price, low_stock_level: data.low_stock_level, status: data.status });
     throwIfError_(branchError);
-    if (Number(payload.beginningStock || 0) > 0) await api('stockIn', { branchId: payload.branchId, productId: data.product_id, qty: payload.beginningStock });
+    if (Number(payload.beginningStock || 0) > 0) await api('stockIn', {
+      branchId: payload.branchId,
+      productId: data.product_id,
+      qty: payload.beginningStock,
+      unitCost: payload.beginningUnitCost,
+      supplierReference: 'Opening stock',
+    });
     return { id: data.product_id, sku: data.sku, name: data.name, unit: data.unit, price: Number(data.price), category: data.category, lowStockLevel: Number(data.low_stock_level), status: data.status };
   }
   if (action === 'addProductToBranch') {
@@ -3696,6 +3708,24 @@ function openForm(type, productId = '') {
         </div>
       </div>
     </div>
+    <div class="form-field-group">
+      <label for="modalStockUnitCost">
+        <span class="label-text">Unit Cost (PHP) <span class="required">*</span></span>
+      </label>
+      <div class="input-with-prefix">
+        <span class="input-prefix">PHP</span>
+        <input id="modalStockUnitCost" name="unitCost" type="number" min="0" step="0.01" placeholder="0.00" required />
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalStockSupplierReference">
+        <span class="label-text">Supplier / Reference</span>
+      </label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
+        <input id="modalStockSupplierReference" name="supplierReference" placeholder="Supplier or invoice number" autocomplete="off" />
+      </div>
+    </div>
   `;
 
   const availableProducts = allProducts.filter((item) => !products.some((productItem) => productItem.id === item.id));
@@ -4491,11 +4521,12 @@ $('#modalForm').addEventListener('submit', async (event) => {
   } else {
     const prod = products.find((p) => p.id === editingProductId);
     const qty = form.get('qty') || '0';
+    const unitCost = form.get('unitCost') || '0';
     confirmConfig = {
       title: 'Confirm Stock In',
       eyebrow: 'INVENTORY STOCK',
       subtitle: 'Add physical inventory stock',
-      message: `Are you sure you want to add <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> to <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong>?`,
+      message: `Are you sure you want to add <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> to <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong> at <strong>PHP ${escapeHtml(unitCost)}</strong> per unit?`,
       confirmText: 'Update Stock',
       confirmType: 'primary'
     };
