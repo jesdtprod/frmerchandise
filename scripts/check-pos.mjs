@@ -12,6 +12,7 @@ const checks = [
   ['database trigger prevents staff branch changes', /prevent_staff_branch_change/.test(files.branchLock)],
   ['administrator edits use the protected account function', /action === 'updateAdminAccount'[\s\S]*functions\.invoke\('manage-account'/.test(files.app)],
   ['administrator password resets require a password change on next login', /Reset administrator password/.test(files.accountFunction)],
+  ['administrator edit passwords reach the account function', /body\.newPassword/.test(files.accountFunction)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

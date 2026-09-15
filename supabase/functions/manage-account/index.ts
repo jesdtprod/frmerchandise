@@ -35,7 +35,7 @@ Deno.serve(async (request) => {
   const fullName = String(body.fullName || '').trim();
   const username = String(body.username || '').trim().toLowerCase();
   const email = String(body.email || '').trim().toLowerCase();
-  const password = String(body.password || body.temporaryPassword || '');
+  const password = String(body.password || body.temporaryPassword || body.newPassword || '');
 
   const audit = async (name: string, targetId: string, details = '') => {
     await admin.from('account_audit').insert({ actor_id: actorId, action: name, target_id: targetId, details });
