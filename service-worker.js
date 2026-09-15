@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fr-pos-shell-v3';
+const CACHE_NAME = 'fr-pos-shell-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -28,6 +28,12 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('./index.html')));
+    return;
+  }
+
+  const alwaysFresh = /\/(app\.js|supabase-config\.js|index\.html)$/.test(url.pathname);
+  if (alwaysFresh) {
+    event.respondWith(fetch(request).catch(() => caches.match(request, { ignoreSearch: true })));
     return;
   }
 
