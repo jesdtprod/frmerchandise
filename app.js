@@ -4791,7 +4791,8 @@ async function initAuth() {
 
 $('#authForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
   const payload = Object.fromEntries(form);
   const setup = event.currentTarget.dataset.mode === 'setup';
   const submit = $('#authSubmit');
@@ -4803,7 +4804,7 @@ $('#authForm').addEventListener('submit', async (event) => {
   try {
     const session = await api(setup ? 'createFirstAdmin' : 'login', payload);
     if (session.awaitingEmailConfirmation) {
-      event.currentTarget.reset();
+      formElement.reset();
       showToast('Confirm your email, then sign in to finish setup.', 'info');
       await initAuth();
       return;
