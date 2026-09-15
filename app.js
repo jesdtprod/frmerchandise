@@ -4712,12 +4712,50 @@ function applySession(session, useRoleDefaultView = false) {
   setView(requestedView, true);
 }
 
-async function completeRequiredPasswordChange() {
+async function completeRequiredPasswordChange(temporaryPassword = '') {
   if (!currentSession?.account?.mustChangePassword) return true;
-  const currentPassword = window.prompt('Enter your temporary password to continue:');
-  const newPassword = window.prompt('Create a new password (minimum 8 characters):');
-  if (!currentPassword || !newPassword) throw new Error('You must change your temporary password before continuing.');
-  await api('changeOwnPassword', { currentPassword, newPassword });
+  if (!temporaryPassword) {
+    await api('logout');
+    throw new Error('Please sign in again to set your new password.');
+  }
+  const dialog = $('#requiredPasswordDialog');
+  const form = $('#requiredPasswordForm');
+  const submit = $('#requiredPasswordSubmit');
+  const error = $('#requiredPasswordError');
+  form.reset();
+  error.textContent = '';
+  dialog.showModal();
+  await new Promise((resolve) => {
+    const handleSubmit = async (event) => {
+      event.preventDefault();
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const values = new FormData(form);
+      const newPassword = String(values.get('newPassword') || '');
+      if (newPassword !== String(values.get('confirmPassword') || '')) {
+        error.textContent = 'New password and confirmation do not match.';
+        return;
+      }
+      submit.disabled = true;
+      submit.innerHTML = '<span class="btn-spinner"></span><span>Saving...</span>';
+      error.textContent = '';
+      try {
+        await api('changeOwnPassword', { currentPassword: temporaryPassword, newPassword });
+        dialog.close();
+        form.removeEventListener('submit', handleSubmit);
+        resolve(true);
+      } catch (changeError) {
+        error.textContent = changeError.message || 'Unable to change password.';
+      } finally {
+        submit.disabled = false;
+        submit.innerHTML = '<span class="button-text">Save New Password</span>';
+      }
+    };
+    form.addEventListener('submit', handleSubmit);
+    dialog.addEventListener('cancel', (event) => event.preventDefault(), { once: true });
+  });
   currentSession.account.mustChangePassword = false;
   localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(currentSession));
   showToast('Password updated. Your account is ready.', 'success');
@@ -4836,7 +4874,7 @@ $('#authForm').addEventListener('submit', async (event) => {
     localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
     const requiresPasswordChange = session.account.mustChangePassword;
     applySession(session, true);
-    await completeRequiredPasswordChange();
+    await completeRequiredPasswordChange(String(payload.password || ''));
     $('#authOverlay').hidden = true;
     if (requiresPasswordChange) await refresh();
     showToast(`Welcome, ${session.account.fullName}.`, 'success');
