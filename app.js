@@ -3037,6 +3037,7 @@ function initSidebarBranchSwitcher() {
 }
 
 async function setActiveBranch(branchId) {
+  if (!await enforcePasswordResetLogout_()) return;
   if (branchId === activeBranchId) return;
   activeBranchId = branchId;
   localStorage.setItem(ACTIVE_BRANCH_KEY, activeBranchId);
@@ -3045,6 +3046,34 @@ async function setActiveBranch(branchId) {
   updateActiveBranchLabels();
   await refresh();
   showToast(`${branches.find((branch) => branch.id === branchId)?.name || 'Branch'} is now active.`, 'success');
+}
+
+let passwordResetLogoutInFlight_ = false;
+
+async function enforcePasswordResetLogout_() {
+  if (!currentSession?.token || !supabaseClient || passwordResetLogoutInFlight_) return !passwordResetLogoutInFlight_;
+  const client = requireSupabase_();
+  const { data: profile, error } = await client
+    .from('profiles')
+    .select('must_change_password, status')
+    .eq('user_id', currentSession.account.id)
+    .maybeSingle();
+
+  if (!error && profile?.status === 'Active' && !profile.must_change_password) return true;
+  passwordResetLogoutInFlight_ = true;
+  try {
+    await api('logout');
+  } catch (_) {
+    // Local session removal below still prevents continued POS use.
+  }
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+  currentSession = null;
+  cart = [];
+  renderCart();
+  $('#authOverlay').hidden = false;
+  await initAuth();
+  showToast(profile?.must_change_password ? 'Your password was reset. Sign in with the temporary password to continue.' : 'Your account is unavailable.', 'info');
+  return false;
 }
 
 /* ==========================================================================
@@ -4032,7 +4061,9 @@ if (inventoryTableElement) {
   scheduleBadgeAlignment();
 }
 
-document.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', () => setView(link.dataset.view)));
+document.querySelectorAll('[data-view]').forEach((link) => link.addEventListener('click', async () => {
+  if (await enforcePasswordResetLogout_()) setView(link.dataset.view);
+}));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => {
   const dialogId = button.dataset.close;
   const dlg = $(`#${dialogId}`);
