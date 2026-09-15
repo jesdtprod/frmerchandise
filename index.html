@@ -319,8 +319,8 @@
             </div>
             <div class="modal-title-content">
               <span class="modal-eyebrow">SYSTEM CONFIGURATION</span>
-              <h2>API Connection</h2>
-              <p class="modal-subtitle">Connect to your Google Apps Script backend deployment.</p>
+              <h2>Supabase Connection</h2>
+              <p class="modal-subtitle">This POS is connected to its secure Supabase backend.</p>
             </div>
           </div>
           <button class="icon-button close-dialog-btn" type="button" data-close="settingsDialog" aria-label="Close dialog" title="Close dialog">
@@ -329,15 +329,15 @@
         </div>
         <div class="settings-body">
           <label class="field-label">
-            <span>Apps Script Web App URL <span class="required">*</span></span>
-            <input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec" required />
+            <span>Supabase Project URL</span>
+            <input id="apiUrlInput" type="url" readonly />
           </label>
-          <p class="hint">Your API URL is stored securely only in your local browser storage.</p>
+          <p class="hint">Access is protected by Supabase Authentication and row-level security.</p>
         </div>
         <div class="modal-actions">
           <button class="button button-secondary" type="button" data-close="settingsDialog">Cancel</button>
           <button class="button button-primary" type="submit" id="settingsSubmit">
-            <span class="button-text">Save and connect</span>
+            <span class="button-text">Done</span>
           </button>
         </div>
       </form>
@@ -783,7 +783,9 @@
       <span class="toast-message" id="toastMessage"></span>
     </div>
 
-    <script src="app.js?v=staff-accounts-1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="supabase-config.js?v=1"></script>
+    <script src="app.js?v=supabase-auth-1"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));

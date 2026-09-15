@@ -1,8 +1,10 @@
 const ACTIVE_BRANCH_KEY = 'fr-pos-active-branch';
 const ACTIVE_VIEW_KEY = 'fr-pos-active-view';
 let activeBranchId = localStorage.getItem(ACTIVE_BRANCH_KEY) || 'MAIN';
-const endpointKey = 'fr-pos-api-url';
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyyYPXS315h-QMn1WRCAbbDh2BirtPyiF1729_k1reR3SSWLknom-cKPJQuMMsA_gfF/exec';
+const ADMIN_SESSION_KEY = 'fr-pos-admin-session';
+const INITIAL_ADMIN_KEY = 'fr-pos-initial-admin';
+const supabaseConfig = window.FR_POS_SUPABASE || {};
+const supabaseClient = window.supabase?.createClient?.(supabaseConfig.url, supabaseConfig.publishableKey);
 let products = [];
 let allProducts = [];
 let branches = [];
@@ -541,21 +543,176 @@ function askConfirmation({
 /* ==========================================================================
    API CLIENT
    ========================================================================== */
-async function api(action, payload = {}, method = 'POST') {
-  const url = localStorage.getItem(endpointKey) || DEFAULT_API_URL;
-  if (!url) throw new Error('Add your Apps Script Web App URL in settings first.');
-  const session = currentSession || JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
-  const securedPayload = ['getSetupStatus', 'createFirstAdmin', 'login', 'restoreSession', 'logout'].includes(action) ? payload : { ...payload, token: payload.token || session?.token };
-  const options = method === 'GET' ? {} : {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...securedPayload }),
+function requireSupabase_() {
+  if (!supabaseClient) throw new Error('Supabase configuration is unavailable. Refresh the page and try again.');
+  return supabaseClient;
+}
+
+function throwIfError_(error) {
+  if (error) throw new Error(error.message || 'Supabase request failed.');
+}
+
+function profileToAccount_(profile, token) {
+  return {
+    token,
+    account: {
+      id: profile.user_id,
+      fullName: profile.full_name,
+      username: profile.username,
+      role: profile.role,
+      branchId: profile.branch_id || '',
+      permissions: profile.role === 'admin' ? ['*'] : (profile.permissions || []),
+      mustChangePassword: Boolean(profile.must_change_password),
+    },
   };
-  const target = method === 'GET' ? `${url}?${new URLSearchParams({ action, ...securedPayload })}` : url;
-  const response = await fetch(target, options);
-  const result = await response.json();
-  if (!result.ok) throw new Error(result.error || 'The API request failed.');
-  return result.data;
+}
+
+async function loadSupabaseSession_() {
+  const client = requireSupabase_();
+  const { data: { session }, error: sessionError } = await client.auth.getSession();
+  throwIfError_(sessionError);
+  if (!session) throw new Error('Your session has expired.');
+
+  let { data: profile, error: profileError } = await client
+    .from('profiles')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+  throwIfError_(profileError);
+
+  if (!profile) {
+    const pending = JSON.parse(localStorage.getItem(INITIAL_ADMIN_KEY) || 'null');
+    if (!pending) throw new Error('This email has not been assigned to a POS account.');
+    const { data, error } = await client.rpc('claim_initial_admin', {
+      full_name_input: pending.fullName,
+      username_input: pending.username,
+    });
+    throwIfError_(error);
+    profile = Array.isArray(data) ? data[0] : data;
+    localStorage.removeItem(INITIAL_ADMIN_KEY);
+  }
+  if (!profile || profile.status !== 'Active') throw new Error('Account is unavailable.');
+  await client.rpc('record_login');
+  return profileToAccount_(profile, session.access_token);
+}
+
+async function getAppData_(branchId) {
+  const client = requireSupabase_();
+  const results = await Promise.all([
+    client.from('branches').select('*').order('name'),
+    client.from('products').select('*'),
+    client.from('branch_products').select('*').eq('branch_id', branchId),
+    client.from('inventory').select('*').eq('branch_id', branchId),
+    client.from('customers').select('*').eq('branch_id', branchId),
+    client.from('stock_transfers').select('*').or(`source_branch_id.eq.${branchId},destination_branch_id.eq.${branchId}`),
+    client.from('sales').select('*').eq('branch_id', branchId),
+    client.from('sale_items').select('*'),
+    client.from('credit_payments').select('*').eq('branch_id', branchId),
+    client.from('stock_ins').select('*').eq('branch_id', branchId),
+  ]);
+  results.forEach((result) => throwIfError_(result.error));
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, stockInRows] = results.map((result) => result.data || []);
+  const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
+  const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
+  const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
+  const branchProducts = Object.fromEntries(branchProductRows.map((row) => [row.product_id, row]));
+  const quantities = Object.fromEntries(inventoryRows.map((row) => [row.product_id, Number(row.qty || 0)]));
+  const products = productRows.map((row) => ({
+    id: row.product_id, sku: row.sku || row.product_id, name: row.name, unit: row.unit,
+    price: Number(row.price), category: row.category, lowStockLevel: Number(row.low_stock_level || 5), status: row.status || 'Active',
+  }));
+  const inventory = products.filter((product) => branchProducts[product.id]).map((product) => {
+    const branchProduct = branchProducts[product.id];
+    return {
+      ...product,
+      price: branchProduct.price_override === null ? product.price : Number(branchProduct.price_override),
+      lowStockLevel: branchProduct.low_stock_level === null ? product.lowStockLevel : Number(branchProduct.low_stock_level),
+      status: branchProduct.status || product.status,
+      qty: quantities[product.id] || 0,
+    };
+  });
+  const paidBySale = paymentRows.reduce((totals, row) => {
+    totals[row.sale_id] = (totals[row.sale_id] || 0) + Number(row.amount || 0);
+    return totals;
+  }, {});
+  const salesHistory = saleRows.map((sale) => {
+    const paymentType = String(sale.payment_type || 'cash').toLowerCase();
+    const total = Number(sale.total || 0);
+    const paid = paidBySale[sale.sale_id] || 0;
+    return {
+      saleId: sale.sale_id, branchId: sale.branch_id, date: sale.occurred_at, customerId: sale.customer_id || '',
+      customerName: customerMap[sale.customer_id]?.name || 'Walk-in customer', subtotal: total + Number(sale.discount || 0),
+      total, discount: Number(sale.discount || 0), paymentType, status: sale.status || 'completed',
+      cashTendered: Number(sale.cash_tendered || 0), change: Number(sale.change || 0),
+      creditPaid: paymentType === 'credit' ? paid : total, creditBalance: paymentType === 'credit' ? Math.max(total - paid, 0) : 0,
+      items: saleItemRows.filter((item) => item.sale_id === sale.sale_id).map((item) => ({
+        productId: item.product_id, name: productMap[item.product_id]?.name || 'Unknown product', unit: productMap[item.product_id]?.unit || 'unit',
+        qty: Number(item.qty || 0), price: Number(item.price || 0),
+      })),
+    };
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const inventoryReport = {};
+  const movement = (id) => inventoryReport[id] || (inventoryReport[id] = { qtySold: 0, qtyStockIn: 0, qtyTransferIn: 0, qtyTransferOut: 0 });
+  const completedSales = new Set(saleRows.filter((sale) => sale.status === 'completed').map((sale) => sale.sale_id));
+  saleItemRows.forEach((item) => { if (completedSales.has(item.sale_id)) movement(item.product_id).qtySold += Number(item.qty || 0); });
+  stockInRows.forEach((item) => { if (item.status === 'Completed') movement(item.product_id).qtyStockIn += Number(item.qty || 0); });
+  transferRows.forEach((item) => {
+    if (item.source_branch_id === branchId && ['In Transit', 'Received'].includes(item.status)) movement(item.product_id).qtyTransferOut += Number(item.qty || 0);
+    if (item.destination_branch_id === branchId && item.status === 'Received') movement(item.product_id).qtyTransferIn += Number(item.qty || 0);
+  });
+  return {
+    branches: branchRows.map((row) => ({ id: row.branch_id, name: row.name, type: row.type, address: row.address || '', status: row.status || 'Active' })),
+    inventory,
+    products,
+    customers: customerRows.map((row) => ({ id: row.customer_id, branchId: row.branch_id, name: row.name, phone: row.phone || '', address: row.address || '', status: row.status || 'Active' })),
+    transfers: transferRows.map((row) => ({ id: row.transfer_id, sourceBranchId: row.source_branch_id, destinationBranchId: row.destination_branch_id, sourceBranchName: branchMap[row.source_branch_id]?.name || row.source_branch_id, destinationBranchName: branchMap[row.destination_branch_id]?.name || row.destination_branch_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || '', qty: Number(row.qty), status: row.status, createdAt: row.created_at, dispatchedAt: row.dispatched_at, receivedAt: row.received_at, notes: row.notes || '' })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    creditAccounts: salesHistory.filter((sale) => sale.paymentType === 'credit' && sale.creditBalance > 0).map((sale) => ({ saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total: sale.total, paid: sale.creditPaid, balance: sale.creditBalance })),
+    creditPayments: paymentRows.map((row) => ({ id: row.payment_id, saleId: row.sale_id, customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
+    salesHistory,
+    inventoryReport,
+  };
+}
+
+async function api(action, payload = {}) {
+  const client = requireSupabase_();
+  if (action === 'getSetupStatus') {
+    const { data, error } = await client.rpc('needs_initial_admin');
+    throwIfError_(error);
+    return { needsAdmin: Boolean(data) };
+  }
+  if (action === 'getAppData') return getAppData_(payload.branchId || 'MAIN');
+  if (action === 'createFirstAdmin') {
+    const email = String(payload.email || '').trim().toLowerCase();
+    if (!payload.fullName || !payload.username || !email || !payload.password) throw new Error('Full name, username, email, and password are required.');
+    if (String(payload.password).length < 8) throw new Error('Password must have at least 8 characters.');
+    localStorage.setItem(INITIAL_ADMIN_KEY, JSON.stringify({ fullName: payload.fullName.trim(), username: payload.username.trim().toLowerCase() }));
+    const { data, error } = await client.auth.signUp({
+      email,
+      password: payload.password,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    });
+    throwIfError_(error);
+    if (!data.session) throw new Error('Check your email to confirm this address, then return here to finish creating the administrator account.');
+    return loadSupabaseSession_();
+  }
+  if (action === 'login') {
+    const { data, error } = await client.auth.signInWithPassword({ email: String(payload.email || '').trim(), password: payload.password || '' });
+    throwIfError_(error);
+    if (!data.session) throw new Error('Invalid email or password.');
+    return loadSupabaseSession_();
+  }
+  if (action === 'restoreSession') return loadSupabaseSession_();
+  if (action === 'logout') { const { error } = await client.auth.signOut(); throwIfError_(error); return { loggedOut: true }; }
+  if (action === 'changeOwnPassword') {
+    const { data: { user } } = await client.auth.getUser();
+    if (!user?.email) throw new Error('Your session has expired.');
+    const { error: signInError } = await client.auth.signInWithPassword({ email: user.email, password: payload.currentPassword || '' });
+    throwIfError_(signInError);
+    const { error } = await client.auth.updateUser({ password: payload.newPassword });
+    throwIfError_(error);
+    return { changed: true };
+  }
+  throw new Error(`Supabase action not yet configured: ${action}.`);
 }
 
 /* ==========================================================================
@@ -3613,7 +3770,7 @@ function setView(view, preserveSidebarOpen = false) {
 const settingsBtn = $('#settingsButton');
 if (settingsBtn) {
   settingsBtn.addEventListener('click', () => {
-    $('#apiUrlInput').value = localStorage.getItem(endpointKey) || DEFAULT_API_URL;
+    $('#apiUrlInput').value = supabaseConfig.url || '';
     $('#settingsDialog').showModal();
   });
 }
@@ -3752,26 +3909,8 @@ if (actionConfirmSubmitBtn) {
 // Settings Form submission with loading spinner
 $('#settingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const url = $('#apiUrlInput').value.trim();
-  if (!url) return;
-
-  const submitBtn = $('#settingsSubmit');
-  const originalText = submitBtn.querySelector('.button-text')?.textContent || 'Save and connect';
-
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = `<span class="btn-spinner"></span><span>Connecting...</span>`;
-
-  try {
-    localStorage.setItem(endpointKey, url);
-    await refresh();
-    $('#settingsDialog').close();
-    showToast('API connected successfully.', 'success');
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = `<span class="button-text">${originalText}</span>`;
-  }
+  $('#settingsDialog').close();
+  showToast('This POS is configured to use Supabase.', 'info');
 });
 
 // Modal Form submission with loading spinner (User Rule)
@@ -4379,8 +4518,6 @@ $('#saleForm').addEventListener('submit', async (event) => {
 
 });
 
-const ADMIN_SESSION_KEY = 'fr-pos-admin-session';
-
 function renderAuthSkeletons() {
   const fields = $('#authFields');
   if (!fields) return;
@@ -4438,14 +4575,13 @@ async function completeRequiredPasswordChange() {
 async function initAuth() {
   const overlay = $('#authOverlay');
   overlay.classList.add('session-loading');
-  const savedSession = JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
-  if (savedSession?.token) {
+  if (supabaseClient) {
     let restoreError;
     try {
       let session;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          session = await api('restoreSession', { token: savedSession.token }, 'GET');
+          session = await api('restoreSession');
           break;
         } catch (error) {
           restoreError = error;
@@ -4462,16 +4598,11 @@ async function initAuth() {
       return;
     } catch (error) {
       const message = String(error?.message || '');
-      const sessionInvalid = /session has expired|account is unavailable|sign in is required/i.test(message);
+      const sessionInvalid = /session has expired|account is unavailable|not been assigned/i.test(message);
       if (sessionInvalid) {
         localStorage.removeItem(ADMIN_SESSION_KEY);
       } else {
-        currentSession = savedSession;
-        applySession(savedSession);
-        overlay.hidden = true;
-        showToast('Connection is unstable. Your saved session is still active.', 'info');
-        refresh(false);
-        return;
+        localStorage.removeItem(ADMIN_SESSION_KEY);
       }
     }
   }
@@ -4481,7 +4612,7 @@ async function initAuth() {
     const setup = status.needsAdmin;
     $('#authEyebrow').textContent = setup ? 'FIRST-TIME SETUP' : 'ADMINISTRATION';
     $('#authTitle').textContent = setup ? 'Create administrator' : 'Sign in';
-    $('#authCopy').textContent = setup ? 'Create the first administrator account for this POS.' : 'Use your administrator or staff account to continue.';
+    $('#authCopy').textContent = setup ? 'Create the first administrator account for this POS.' : 'Use your administrator or staff email to continue.';
     $('#authSubmit').textContent = setup ? 'Create administrator' : 'Sign in';
     $('#authSubmit').hidden = false;
     $('#authFields').innerHTML = `
@@ -4495,12 +4626,21 @@ async function initAuth() {
         </label>
       ` : ''}
       <label class="auth-field-group">
-        <span class="auth-label-text">Username</span>
+        <span class="auth-label-text">${setup ? 'Username' : 'Email address'}</span>
         <div class="auth-input-wrap">
           <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <input name="username" autocomplete="username" placeholder="Enter administrator username" required spellcheck="false" autocapitalize="none">
+          <input name="${setup ? 'username' : 'email'}" type="${setup ? 'text' : 'email'}" autocomplete="${setup ? 'username' : 'email'}" placeholder="${setup ? 'Choose administrator username' : 'Enter email address'}" required spellcheck="false" autocapitalize="none">
         </div>
       </label>
+      ${setup ? `
+        <label class="auth-field-group">
+          <span class="auth-label-text">Email address</span>
+          <div class="auth-input-wrap">
+            <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a2 2 0 0 1-2.06 0L2 7"/></svg>
+            <input name="email" type="email" autocomplete="email" placeholder="Enter administrator email" required spellcheck="false" autocapitalize="none">
+          </div>
+        </label>
+      ` : ''}
       <label class="auth-field-group">
         <span class="auth-label-text">Password</span>
         <div class="auth-input-wrap">
@@ -4517,7 +4657,7 @@ async function initAuth() {
     overlay.classList.remove('session-loading');
   } catch (error) {
     overlay.classList.remove('session-loading');
-    $('#authError').textContent = 'Update and deploy the latest Apps Script code before signing in.';
+    $('#authError').textContent = error.message || 'Unable to reach Supabase. Refresh and try again.';
   }
 }
 
@@ -4594,7 +4734,7 @@ $('#logoutButton').addEventListener('click', async () => {
   if (!confirmed) return;
 
   const session = currentSession || JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
-  if (session?.token) api('logout', { token: session.token }).catch(() => {});
+  if (session?.token) api('logout').catch(() => {});
   localStorage.removeItem(ADMIN_SESSION_KEY);
   currentSession = null;
   cart = [];
