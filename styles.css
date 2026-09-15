@@ -3543,15 +3543,19 @@ body::after {
   color: var(--text-muted);
 }
 
-/* Credit History Modal */
+/* Stock-In History Modal */
+dialog.pepsi-dialog.stock-in-history-dialog,
 dialog.stock-in-history-dialog {
-  max-width: 940px;
-  width: min(940px, calc(100vw - 32px));
+  max-width: 940px !important;
+  width: min(940px, calc(100vw - 32px)) !important;
   max-height: min(90vh, 740px);
   overflow: hidden !important;
 }
 
 .stock-in-history-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   max-height: min(90vh, 740px);
   padding: 20px 24px;
   box-sizing: border-box;
@@ -3559,7 +3563,49 @@ dialog.stock-in-history-dialog {
 }
 
 .stock-in-history-wrap .modal-head,
-.stock-in-history-wrap .modal-actions { flex-shrink: 0; }
+.stock-in-history-wrap .modal-actions {
+  flex-shrink: 0;
+}
+
+.stock-in-history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+  flex-shrink: 0;
+}
+
+.stock-in-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.stock-in-search-wrap input {
+  padding-left: 38px;
+  height: 40px;
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.stock-in-search-wrap .search-icon {
+  left: 12px;
+  width: 16px;
+  height: 16px;
+}
+
+.stock-in-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 9px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
 
 dialog.credit-history-dialog {
   max-width: 680px;
@@ -3578,38 +3624,36 @@ dialog.credit-history-dialog {
   overflow: hidden;
 }
 
-.stock-in-history-wrap {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
 .stock-in-history-list {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 440px;
-  overflow: auto;
+  max-height: 460px;
+  overflow-x: auto;
+  overflow-y: auto;
   border: 1px solid var(--border-card);
   border-radius: 8px;
   background: var(--bg-input);
 }
 
 .stock-in-history-table {
-  min-width: 760px;
+  min-width: 780px;
+  width: 100%;
 }
 
 .stock-in-history-row {
   display: grid;
-  grid-template-columns: 145px minmax(190px, 1.6fr) 115px 120px minmax(150px, 1fr);
+  grid-template-columns: 145px minmax(180px, 1.4fr) 100px 130px minmax(160px, 1.2fr);
   align-items: center;
   gap: 12px;
-  min-height: 64px;
+  min-height: 62px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
 }
 
-.stock-in-history-row:last-child { border-bottom: 0; }
+.stock-in-history-row:last-child {
+  border-bottom: 0;
+}
 
 .stock-in-history-header {
   min-height: 40px;
@@ -3617,19 +3661,79 @@ dialog.credit-history-dialog {
   background: var(--bg-obsidian);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
-.stock-in-date,
-.stock-in-reference { color: var(--text-secondary); }
+.stock-in-date {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
 
-.stock-in-cost { color: var(--text-pure); white-space: nowrap; }
+.stock-in-price-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stock-in-cost {
+  color: #38bdf8;
+  font-weight: 700;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.stock-in-unit-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 .stock-in-cost-unknown {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.stock-in-ref-cell {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stock-in-ref-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 102, 245, 0.12);
+  border: 1px solid rgba(0, 102, 245, 0.28);
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stock-in-ref-badge svg {
+  flex-shrink: 0;
+  color: #60a5fa;
+}
+
+.stock-in-ref-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-in-ref-empty {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-style: italic;
 }
 
 .credit-history-wrap .modal-head {
@@ -4436,18 +4540,41 @@ dialog.credit-history-dialog {
 }
 
 .cart-step-btn {
+  position: relative;
   width: 28px;
   height: 34px;
+  box-sizing: border-box;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: 0;
   color: var(--text-secondary);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 0;
   cursor: pointer;
   transition: all var(--transition-fast);
+}
+
+.cart-step-btn::before,
+.cart-step-btn::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 2px;
+  content: '';
+  background: currentColor;
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.cart-step-btn[data-delta="1"]::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.cart-step-btn[data-delta="-1"]::after {
+  display: none;
 }
 
 .cart-step-btn:hover {
@@ -4504,6 +4631,25 @@ dialog.credit-history-dialog {
 .cart-qty-stepper:focus-within {
   border-color: var(--pepsi-blue);
   box-shadow: 0 0 0 2px var(--pepsi-blue-glow);
+}
+
+.cart-batch-prices {
+  min-width: 126px;
+}
+
+.cart-batch-price {
+  display: block;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.price-unset {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .cart-subtotal-col {
@@ -4698,6 +4844,23 @@ dialog.credit-history-dialog {
   transition: opacity 0.22s var(--ease-inertia), transform 0.22s var(--ease-inertia), visibility 0s 0.22s;
 }
 
+.dropdown-menu.opens-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform: translateY(8px) scale(0.97);
+  transform-origin: bottom center;
+}
+
+.dropdown-menu-floating {
+  position: absolute;
+  z-index: 1200;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.22s var(--ease-inertia), transform 0.22s var(--ease-inertia), visibility 0s 0s;
+}
+
 /* Embedded search within dropdowns */
 .dropdown-search-wrap {
   position: relative;
@@ -4811,6 +4974,14 @@ dialog.credit-history-dialog {
 }
 
 .custom-dropdown.open .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.22s var(--ease-inertia), transform 0.22s var(--ease-inertia), visibility 0s 0s;
+}
+
+.custom-dropdown.open .dropdown-menu.opens-up {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -7342,6 +7513,12 @@ dialog .form-grid {
   padding: 6px 8px !important;
   margin: -6px -8px !important;
   box-sizing: border-box;
+}
+
+/* Standard Add/Edit dialogs fit without an internal scroll area. */
+dialog#formDialog[data-form-layout="compact"] #formFields {
+  overflow-y: hidden;
+  overscroll-behavior: none;
 }
 
 .form-field-group:has(.custom-dropdown.open),

@@ -17,6 +17,7 @@ let pendingCreditAccount = null;
 let salesHistory = [];
 let inventoryReportData = {};
 let stockInHistory = [];
+let sellingPriceBatches = [];
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
@@ -554,6 +555,24 @@ function throwIfError_(error) {
   if (error) throw new Error(error.message || 'Supabase request failed.');
 }
 
+async function throwIfFunctionError_(error) {
+  if (!error) return;
+  let message = error.message || 'Supabase function failed.';
+  const response = error.context;
+  if (response && typeof response.clone === 'function') {
+    try {
+      const payload = await response.clone().json();
+      if (payload?.error) message = payload.error;
+    } catch {
+      try {
+        const detail = await response.clone().text();
+        if (detail) message = detail;
+      } catch { /* Keep the original function error. */ }
+    }
+  }
+  throw new Error(message);
+}
+
 function newPosId_(prefix) {
   return `${prefix}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
 }
@@ -604,7 +623,10 @@ async function loadSupabaseSession_() {
     localStorage.removeItem(INITIAL_ADMIN_KEY);
     localStorage.removeItem(INITIAL_ADMIN_REGISTERED_KEY);
   }
-  if (!profile || profile.status !== 'Active') throw new Error('Account is unavailable.');
+  if (!profile || profile.status !== 'Active') {
+    await client.auth.signOut();
+    throw new Error('This account has been deactivated. Contact an administrator for access.');
+  }
   await client.rpc('record_login');
   return profileToAccount_(profile, session.access_token);
 }
@@ -622,9 +644,10 @@ async function getAppData_(branchId) {
     client.from('sale_items').select('*'),
     client.from('credit_payments').select('*').eq('branch_id', branchId),
     client.from('stock_ins').select('*').eq('branch_id', branchId),
+    client.rpc('get_branch_selling_price_batches', { target_branch_id: branchId }),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, stockInRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, stockInRows, sellingPriceBatchRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -632,13 +655,18 @@ async function getAppData_(branchId) {
   const quantities = Object.fromEntries(inventoryRows.map((row) => [row.product_id, Number(row.qty || 0)]));
   const products = productRows.map((row) => ({
     id: row.product_id, sku: row.sku || row.product_id, name: row.name, unit: row.unit,
-    price: Number(row.price), category: row.category, lowStockLevel: Number(row.low_stock_level || 5), status: row.status || 'Active',
+    price: Number(row.price), category: row.category, lowStockLevel: Number(row.low_stock_level || 5), status: row.status || 'Active', archivedAt: row.archived_at || null,
   }));
-  const inventory = products.filter((product) => branchProducts[product.id]).map((product) => {
+  const batchesByProduct = sellingPriceBatchRows.reduce((groups, batch) => {
+    (groups[batch.product_id] ||= []).push({ qty: Number(batch.qty_remaining), sellingPrice: Number(batch.selling_price) });
+    return groups;
+  }, {});
+  const catalogProducts = products.filter((product) => !product.archivedAt);
+  const inventory = catalogProducts.filter((product) => branchProducts[product.id]).map((product) => {
     const branchProduct = branchProducts[product.id];
     return {
       ...product,
-      price: branchProduct.price_override === null ? product.price : Number(branchProduct.price_override),
+      price: batchesByProduct[product.id]?.[0]?.sellingPrice ?? (branchProduct.price_override === null ? product.price : Number(branchProduct.price_override)),
       lowStockLevel: branchProduct.low_stock_level === null ? product.lowStockLevel : Number(branchProduct.low_stock_level),
       status: branchProduct.status || product.status,
       qty: quantities[product.id] || 0,
@@ -676,7 +704,7 @@ async function getAppData_(branchId) {
   return {
     branches: branchRows.map((row) => ({ id: row.branch_id, name: row.name, type: row.type, address: row.address || '', status: row.status || 'Active' })),
     inventory,
-    products,
+    products: catalogProducts,
     customers: customerRows.map((row) => ({ id: row.customer_id, branchId: row.branch_id, name: row.name, phone: row.phone || '', address: row.address || '', status: row.status || 'Active' })),
     transfers: transferRows.map((row) => ({ id: row.transfer_id, sourceBranchId: row.source_branch_id, destinationBranchId: row.destination_branch_id, sourceBranchName: branchMap[row.source_branch_id]?.name || row.source_branch_id, destinationBranchName: branchMap[row.destination_branch_id]?.name || row.destination_branch_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || '', qty: Number(row.qty), status: row.status, createdAt: row.created_at, dispatchedAt: row.dispatched_at, receivedAt: row.received_at, notes: row.notes || '' })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
     creditAccounts: salesHistory.filter((sale) => sale.paymentType === 'credit' && sale.creditBalance > 0).map((sale) => ({ saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total: sale.total, paid: sale.creditPaid, balance: sale.creditBalance })),
@@ -689,11 +717,12 @@ async function getAppData_(branchId) {
       productName: productMap[row.product_id]?.name || row.product_id,
       unit: productMap[row.product_id]?.unit || 'unit',
       qty: Number(row.qty || 0),
-      unitCost: row.unit_cost === null || row.unit_cost === undefined ? null : Number(row.unit_cost),
+      sellingPrice: row.selling_price !== null && row.selling_price !== undefined ? Number(row.selling_price) : (row.unit_cost !== null && row.unit_cost !== undefined ? Number(row.unit_cost) : null),
       supplierReference: row.supplier_reference || '',
       status: row.status || 'Completed',
       date: row.occurred_at,
     })).sort((a, b) => new Date(b.date) - new Date(a.date)),
+    sellingPriceBatches: sellingPriceBatchRows.map((row) => ({ productId: row.product_id, qty: Number(row.qty_remaining), sellingPrice: Number(row.selling_price) })),
   };
 }
 
@@ -746,7 +775,7 @@ async function api(action, payload = {}) {
       target_branch_id: payload.branchId,
       target_product_id: payload.productId,
       quantity: Number(payload.qty),
-      unit_cost_input: Number(payload.unitCost),
+      selling_price_input: Number(payload.sellingPrice),
       supplier_reference_input: payload.supplierReference || '',
     });
     throwIfError_(error);
@@ -755,7 +784,7 @@ async function api(action, payload = {}) {
   if (action === 'recordSale') {
     const { data, error } = await client.rpc('record_sale', {
       target_branch_id: payload.branchId,
-      sale_lines: payload.items.map((item) => ({ productId: item.productId, qty: Number(item.qty), price: Number(item.price) })),
+      sale_lines: payload.items.map((item) => ({ productId: item.productId, qty: Number(item.qty) })),
       payment_type_input: payload.paymentType,
       customer_id_input: payload.customerId || null,
       discount_input: Number(payload.discount || 0),
@@ -808,18 +837,11 @@ async function api(action, payload = {}) {
     return { id: data.branch_id, name: data.name, type: data.type, address: data.address, status: data.status };
   }
   if (action === 'createProduct') {
-    const product = { product_id: newPosId_('PRD'), sku: newSku_(), name: String(payload.name).trim(), unit: payload.unit, price: Number(payload.price), category: payload.category, low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' };
+    const product = { product_id: newPosId_('PRD'), sku: newSku_(), name: String(payload.name).trim(), unit: payload.unit, price: 0, category: payload.category, low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' };
     const { data, error } = await client.from('products').insert(product).select().single();
     throwIfError_(error);
     const { error: branchError } = await client.from('branch_products').insert({ branch_id: payload.branchId, product_id: data.product_id, price_override: data.price, low_stock_level: data.low_stock_level, status: data.status });
     throwIfError_(branchError);
-    if (Number(payload.beginningStock || 0) > 0) await api('stockIn', {
-      branchId: payload.branchId,
-      productId: data.product_id,
-      qty: payload.beginningStock,
-      unitCost: payload.beginningUnitCost,
-      supplierReference: 'Opening stock',
-    });
     return { id: data.product_id, sku: data.sku, name: data.name, unit: data.unit, price: Number(data.price), category: data.category, lowStockLevel: Number(data.low_stock_level), status: data.status };
   }
   if (action === 'addProductToBranch') {
@@ -834,9 +856,9 @@ async function api(action, payload = {}) {
   if (action === 'updateProduct') {
     const { error: productError } = await client.from('products').update({ name: String(payload.name).trim(), category: payload.category, unit: payload.unit }).eq('product_id', payload.productId);
     throwIfError_(productError);
-    const { data, error } = await client.from('branch_products').update({ price_override: Number(payload.price), low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
+    const { data, error } = await client.from('branch_products').update({ low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
     throwIfError_(error);
-    return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: Number(data.price_override), lowStockLevel: Number(data.low_stock_level), status: data.status };
+    return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: Number(data.price_override || 0), lowStockLevel: Number(data.low_stock_level), status: data.status };
   }
   if (action === 'deleteProduct') {
     const { data, error } = await client.rpc('delete_product', { target_product_id: payload.productId });
@@ -860,19 +882,19 @@ async function api(action, payload = {}) {
   }
   if (action === 'updateAdminAccount') {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
-    throwIfError_(error);
+    await throwIfFunctionError_(error);
     if (data?.error) throw new Error(data.error);
     return data;
   }
   if (['createOperationalBackup', 'restoreOperationalBackup'].includes(action)) {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
-    throwIfError_(error);
+    await throwIfFunctionError_(error);
     if (data?.error) throw new Error(data.error);
     return data;
   }
   if (['createStaffAccount', 'updateStaffAccount', 'resetStaffPassword', 'setStaffAccountStatus', 'createAdminAccount', 'setAdminAccountStatus'].includes(action)) {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
-    throwIfError_(error);
+    await throwIfFunctionError_(error);
     if (data?.error) throw new Error(data.error);
     return data;
   }
@@ -1117,6 +1139,7 @@ function initCustomDropdowns(container = document) {
 
     const menu = document.createElement('div');
     menu.className = 'dropdown-menu';
+    menu.addEventListener('click', (e) => e.stopPropagation());
 
     // Search bar header inside dropdown menu
     const searchWrap = document.createElement('div');
@@ -1329,6 +1352,18 @@ function updateCustomDropdown(select) {
 }
 
 function openDropdown(wrapper, trigger) {
+  const menu = wrapper.querySelector('.dropdown-menu');
+  if (menu) {
+    const dialog = wrapper.closest('dialog');
+    if (dialog) {
+      if (!wrapper.dataset.dropdownId) wrapper.dataset.dropdownId = `dropdown-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      menu._dropdownHome = wrapper;
+      menu.dataset.dropdownOwner = wrapper.dataset.dropdownId;
+      dialog.appendChild(menu);
+      menu.classList.add('dropdown-menu-floating');
+    }
+    positionDropdownMenu(wrapper, menu);
+  }
   wrapper.classList.add('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'true');
   const parentGroup = wrapper.closest('.form-field-group');
@@ -1345,16 +1380,50 @@ function openDropdown(wrapper, trigger) {
       opt.style.display = 'flex';
     });
     setTimeout(() => {
-      searchInput.focus();
+      searchInput.focus({ preventScroll: true });
     }, 40);
   }
 }
 
 function closeDropdown(wrapper, trigger) {
+  const menu = document.querySelector(`.dropdown-menu-floating[data-dropdown-owner="${wrapper.dataset.dropdownId || ''}"]`) || wrapper.querySelector('.dropdown-menu');
+  if (menu) {
+    menu.classList.remove('dropdown-menu-floating', 'opens-up');
+    menu.removeAttribute('data-dropdown-owner');
+    menu.removeAttribute('style');
+    (menu._dropdownHome || wrapper).appendChild(menu);
+  }
   wrapper.classList.remove('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'false');
   const parentGroup = wrapper.closest('.form-field-group');
   if (parentGroup) parentGroup.classList.remove('has-open-dropdown');
+}
+
+function positionDropdownMenu(wrapper, menu) {
+  const trigger = wrapper.querySelector('.dropdown-trigger');
+  if (!trigger) return;
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const dialogRect = wrapper.closest('dialog')?.getBoundingClientRect();
+  const margin = 8;
+  const gap = 6;
+  const topLimit = Math.max(margin, dialogRect ? dialogRect.top + margin : margin);
+  const bottomLimit = Math.min(window.innerHeight - margin, dialogRect ? dialogRect.bottom - margin : window.innerHeight - margin);
+  const spaceAbove = triggerRect.top - topLimit - gap;
+  const spaceBelow = bottomLimit - triggerRect.bottom - gap;
+  const opensUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+  const availableSpace = Math.max(120, Math.min(280, opensUp ? spaceAbove : spaceBelow));
+
+  menu.classList.toggle('opens-up', opensUp);
+  if (dialogRect && menu.classList.contains('dropdown-menu-floating')) {
+    menu.style.left = `${triggerRect.left - dialogRect.left}px`;
+    menu.style.width = `${triggerRect.width}px`;
+    menu.style.maxHeight = `${availableSpace}px`;
+    menu.style.top = opensUp ? 'auto' : `${triggerRect.bottom - dialogRect.top + gap}px`;
+    menu.style.bottom = opensUp ? `${dialogRect.bottom - triggerRect.top + gap}px` : 'auto';
+  } else {
+    menu.style.maxHeight = `${availableSpace}px`;
+  }
 }
 
 /* ==========================================================================
@@ -1821,6 +1890,16 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+function repositionOpenDropdowns() {
+  document.querySelectorAll('.custom-dropdown.open').forEach((dropdown) => {
+    const menu = document.querySelector(`.dropdown-menu-floating[data-dropdown-owner="${dropdown.dataset.dropdownId || ''}"]`) || dropdown.querySelector('.dropdown-menu');
+    if (menu) positionDropdownMenu(dropdown, menu);
+  });
+}
+
+window.addEventListener('resize', repositionOpenDropdowns);
+document.addEventListener('scroll', repositionOpenDropdowns, true);
+
 /* ==========================================================================
    INVENTORY & TABLE RENDERING
    ========================================================================== */
@@ -1969,7 +2048,7 @@ function renderStaffAccounts() {
         <div class="row-action-cell"><span class="table-actions">
           <button class="icon-button" data-edit-staff="${staff.id}" aria-label="Edit ${escapeHtml(staff.fullName)}" title="Edit staff account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
           <button class="icon-button primary-icon" data-reset-staff="${staff.id}" aria-label="Reset password for ${escapeHtml(staff.fullName)}" title="Reset password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg></button>
-          <button class="icon-button ${staff.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-staff="${staff.id}" aria-label="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(staff.fullName)}" title="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></button>
+          <button class="icon-button ${staff.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-staff="${staff.id}" aria-label="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(staff.fullName)}" title="${staff.status === 'Active' ? 'Deactivate' : 'Reactivate'} account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${staff.status === 'Active' ? '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="m17 8 5 5m0-5-5 5"/>' : '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="m16 12 2 2 4-4"/>'}</svg></button>
         </span></div></div>`;
     }).join('') || '<div class="empty-state"><p>No staff accounts found</p><small>Add a staff account to assign a branch and allowed menus.</small></div>'}
   `;
@@ -2061,7 +2140,7 @@ function renderAdminAccount() {
       <span class="account-permissions"><span class="menu-chip menu-chip-all" title="Full system access across all branches and menus"><svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>All branches &amp; menus</span></span></span>
       <span class="stock-pill ${account.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(account.status)}</span>
     </div>
-    <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-admin="${account.id}" aria-label="Edit ${escapeHtml(account.fullName)}" title="Edit administrator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${account.id !== currentSession?.account?.id ? `<button class="icon-button ${account.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-admin="${account.id}" aria-label="${account.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(account.fullName)}" title="${account.status === 'Active' ? 'Deactivate administrator' : 'Reactivate administrator'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg></button>` : ''}</span></div>
+    <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-admin="${account.id}" aria-label="Edit ${escapeHtml(account.fullName)}" title="Edit administrator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${account.id !== currentSession?.account?.id ? `<button class="icon-button ${account.status === 'Active' ? 'danger-icon' : 'primary-icon'}" data-toggle-admin="${account.id}" aria-label="${account.status === 'Active' ? 'Deactivate' : 'Reactivate'} ${escapeHtml(account.fullName)}" title="${account.status === 'Active' ? 'Deactivate administrator' : 'Reactivate administrator'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${account.status === 'Active' ? '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="m17 8 5 5m0-5-5 5"/>' : '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="m16 12 2 2 4-4"/>'}</svg></button>` : ''}</span></div>
   </div>`).join('') || '<div class="empty-state"><p>No administrator accounts found</p></div>'}`;
   table.querySelectorAll('[data-edit-admin]').forEach((button) => button.addEventListener('click', () => openForm('editAdmin', button.dataset.editAdmin)));
   table.querySelectorAll('[data-toggle-admin]').forEach((button) => button.addEventListener('click', () => toggleAdminStatus(button.dataset.toggleAdmin)));
@@ -2128,7 +2207,7 @@ function formatDateTime(value) { const date = new Date(value); return Number.isN
 async function toggleStaffStatus(staffId) {
   const staff = staffAccounts.find((item) => item.id === staffId); if (!staff) return;
   const activating = staff.status !== 'Active';
-  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Staff`, eyebrow: 'STAFF ACCOUNTS', subtitle: 'Confirm account access change', message: `${activating ? 'Restore' : 'Remove'} sign-in access for <strong class="confirm-highlight-name">${escapeHtml(staff.fullName)}</strong>?`, warning: activating ? 'The staff member can sign in again.' : 'All active sessions for this staff member will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
+  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Staff`, eyebrow: 'STAFF ACCOUNTS', subtitle: 'Confirm account access change', message: `${activating ? 'Restore' : 'Remove'} sign-in access for <strong class="confirm-highlight-name">${escapeHtml(staff.fullName)}</strong>?`, warning: activating ? 'The staff member can sign in again.' : 'New sign-ins are blocked and the account immediately loses application access.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
   if (!confirmed) return;
   try {
     await api('setStaffAccountStatus', { staffId, status: activating ? 'Active' : 'Inactive' });
@@ -2160,7 +2239,7 @@ async function changeOwnPassword() {
 async function toggleAdminStatus(adminId) {
   const account = adminAccounts.find((item) => item.id === adminId); if (!account) return;
   const activating = account.status !== 'Active';
-  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Administrator`, eyebrow: 'ADMINISTRATION', subtitle: 'Confirm administrator access', message: `${activating ? 'Restore' : 'Remove'} full system access for <strong class="confirm-highlight-name">${escapeHtml(account.fullName)}</strong>?`, warning: activating ? 'This administrator can sign in again.' : 'Their active sessions will end immediately.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
+  const confirmed = await askConfirmation({ title: `${activating ? 'Reactivate' : 'Deactivate'} Administrator`, eyebrow: 'ADMINISTRATION', subtitle: 'Confirm administrator access', message: `${activating ? 'Restore' : 'Remove'} full system access for <strong class="confirm-highlight-name">${escapeHtml(account.fullName)}</strong>?`, warning: activating ? 'This administrator can sign in again.' : 'New sign-ins are blocked and the account immediately loses application access.', confirmText: activating ? 'Reactivate' : 'Deactivate', confirmType: activating ? 'primary' : 'danger' });
   if (!confirmed) return;
   try {
     await api('setAdminAccountStatus', { adminId, status: activating ? 'Active' : 'Inactive' });
@@ -2474,7 +2553,7 @@ function renderDashboard() {
               </div>
             `).join('') : `
               <div class="dashboard-empty-feed">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
                 <p>No active stock transfers currently pending.</p>
               </div>
             `}
@@ -2691,7 +2770,9 @@ function renderInventory() {
     `;
 
     const categoryCell = `<span class="category-badge">${escapeHtml(product.category || 'General')}</span>`;
-    const priceCell = `<span class="price-text">${money(product.price)}</span>`;
+    const priceCell = product.qty > 0
+      ? `<span class="price-text">${money(displayedSellingPrice(product))}</span>`
+      : '<span class="price-text price-unset">Stock In required</span>';
     const quantityCell = `<span class="stock-pill stock-quantity">${product.qty} ${escapeHtml(product.unit || 'unit')}</span>`;
 
     const productRow = `
@@ -2767,27 +2848,75 @@ function renderInventory() {
   table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
 }
 
-function showStockInHistory() {
-  const dialog = $('#stockInHistoryDialog');
+function renderStockInHistoryTable(filterTerm = '') {
   const list = $('#stockInHistoryList');
-  if (!dialog || !list) return;
-  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
-  $('#stockInHistorySubtitle').textContent = `Exact receipt costs for ${branchName}.`;
-  list.innerHTML = stockInHistory.length ? `
+  if (!list) return;
+  const term = String(filterTerm || '').trim().toLowerCase();
+  const rows = stockInHistory.filter((item) => {
+    if (!term) return true;
+    const dateStr = item.date ? new Date(item.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).toLowerCase() : '';
+    return (
+      (item.productName || '').toLowerCase().includes(term) ||
+      (item.id || '').toLowerCase().includes(term) ||
+      (item.supplierReference || '').toLowerCase().includes(term) ||
+      (item.unit || '').toLowerCase().includes(term) ||
+      dateStr.includes(term)
+    );
+  });
+
+  if (!stockInHistory.length) {
+    list.innerHTML = `<div class="empty-state"><p>No stock-in receipts yet</p><small>New stock-ins will record their exact unit cost and supplier/invoice number here.</small></div>`;
+    return;
+  }
+
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty-state"><p>No matching stock-in records</p><small>No records matched "${escapeHtml(term)}". Try searching by product name, STK ID, or invoice/supplier.</small></div>`;
+    return;
+  }
+
+  list.innerHTML = `
     <div class="stock-in-history-table">
-      <div class="stock-in-history-row stock-in-history-header"><span>Date</span><span>Product</span><span>Quantity</span><span>Unit Cost</span><span>Supplier / Reference</span></div>
-      ${stockInHistory.map((receipt) => {
+      <div class="stock-in-history-row stock-in-history-header">
+        <span>Date</span>
+        <span>Product</span>
+        <span>Quantity</span>
+        <span>Stock-In Price</span>
+        <span>Supplier / Invoice #</span>
+      </div>
+      ${rows.map((receipt) => {
         const date = receipt.date ? new Date(receipt.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown date';
-        const cost = receipt.unitCost === null ? '<span class="stock-in-cost-unknown">Not recorded</span>' : money(receipt.unitCost);
+        const cost = receipt.sellingPrice === null ? '<span class="stock-in-cost-unknown">Not recorded</span>' : money(receipt.sellingPrice);
+        const ref = receipt.supplierReference
+          ? `<span class="stock-in-ref-badge" title="Invoice / Supplier: ${escapeHtml(receipt.supplierReference)}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span>${escapeHtml(receipt.supplierReference)}</span>
+            </span>`
+          : '<span class="stock-in-ref-empty">No invoice / ref</span>';
         return `<div class="stock-in-history-row">
           <span class="stock-in-date">${escapeHtml(date)}</span>
-          <div class="product-cell"><strong class="product-name">${escapeHtml(receipt.productName)}</strong><span class="product-meta">${escapeHtml(receipt.id)}</span></div>
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(receipt.productName)}</strong>
+            <span class="product-meta">${escapeHtml(receipt.id)}</span>
+          </div>
           <span class="stock-pill stock-quantity">${receipt.qty} ${escapeHtml(receipt.unit)}</span>
-          <strong class="stock-in-cost">${cost}</strong>
-          <span class="stock-in-reference">${escapeHtml(receipt.supplierReference || 'No reference')}</span>
+          <div class="stock-in-price-cell">
+            <strong class="stock-in-cost">${cost}</strong>
+            <span class="stock-in-unit-meta">per ${escapeHtml(receipt.unit)}</span>
+          </div>
+          <div class="stock-in-ref-cell">${ref}</div>
         </div>`;
       }).join('')}
-    </div>` : `<div class="empty-state"><p>No stock-in receipts yet</p><small>New stock-ins will record their exact unit cost here.</small></div>`;
+    </div>`;
+}
+
+function showStockInHistory() {
+  const dialog = $('#stockInHistoryDialog');
+  if (!dialog) return;
+  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
+  $('#stockInHistorySubtitle').textContent = `Stock-in records and receipt pricing for ${branchName}.`;
+  const searchInput = $('#stockInSearchInput');
+  if (searchInput) searchInput.value = '';
+  renderStockInHistoryTable('');
   dialog.showModal();
 }
 
@@ -3391,6 +3520,30 @@ function updateReceiptScrollFade() {
   container.classList.toggle('can-scroll-up', canScrollUp);
 }
 
+function getCartPriceBreakdown(item) {
+  let remaining = Number(item.qty) || 0;
+  const batches = sellingPriceBatches.filter((batch) => batch.productId === item.id && batch.qty > 0);
+  const lines = [];
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+    const qty = Math.min(remaining, batch.qty);
+    lines.push({ qty, sellingPrice: batch.sellingPrice, total: qty * batch.sellingPrice });
+    remaining -= qty;
+  }
+  if (remaining > 0) lines.push({ qty: remaining, sellingPrice: Number(item.price) || 0, total: remaining * (Number(item.price) || 0) });
+  return lines;
+}
+
+function cartItemTotal(item) {
+  return getCartPriceBreakdown(item).reduce((total, line) => total + line.total, 0);
+}
+
+function displayedSellingPrice(product) {
+  const cartItem = cart.find((item) => item.id === product.id);
+  const breakdown = cartItem ? getCartPriceBreakdown(cartItem) : [];
+  return breakdown.length ? breakdown[breakdown.length - 1].sellingPrice : product.price;
+}
+
 function renderCart() {
   const container = $('#cartItems');
   const badge = $('#mobileCartBadge');
@@ -3420,7 +3573,7 @@ function renderCart() {
         <div class="cart-card-header">
           <div class="cart-item-info">
             <strong class="cart-item-title">${escapeHtml(item.name)}</strong>
-            <span class="cart-item-meta">${escapeHtml(item.unit || 'unit')} &bull; Base: ${money(item.price)}</span>
+            <span class="cart-item-meta">${escapeHtml(item.unit || 'unit')} &bull; FIFO price: ${money(getCartPriceBreakdown(item)[0]?.sellingPrice || item.price)}</span>
           </div>
           <button class="remove cart-remove-btn" aria-label="Remove ${escapeHtml(item.name)}" data-remove="${item.id}" title="Remove item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -3435,29 +3588,26 @@ function renderCart() {
               <button type="button" class="cart-step-btn" data-step-qty="${item.id}" data-delta="1" aria-label="Increase quantity">&plus;</button>
             </div>
           </div>
-          <div class="cart-control-col price-col">
-            <label class="cart-control-label" for="cartPrice_${item.id}">Price (PHP)</label>
-            <div class="cart-price-input-wrap">
-              <span class="cart-currency-prefix">PHP</span>
-              <input id="cartPrice_${item.id}" aria-label="Selling price for ${escapeHtml(item.name)}" type="number" min="0" step="0.01" value="${item.price}" data-price="${item.id}" />
-            </div>
+          <div class="cart-control-col price-col cart-batch-prices">
+            <span class="cart-control-label">Batch Selling Price</span>
+            ${getCartPriceBreakdown(item).map((line) => `<span class="cart-batch-price">${line.qty} &times; ${money(line.sellingPrice)}</span>`).join('')}
           </div>
           <div class="cart-subtotal-col">
             <span class="cart-control-label">Subtotal</span>
-            <strong class="item-subtotal">${money(item.qty * item.price)}</strong>
+            <strong class="item-subtotal">${money(cartItemTotal(item))}</strong>
           </div>
         </div>
       </div>
     `).join('')}
   `;
 
-  $('#cartTotal').textContent = money(cart.reduce((total, item) => total + item.qty * item.price, 0));
+  $('#cartTotal').textContent = money(cart.reduce((total, item) => total + cartItemTotal(item), 0));
 
   container.querySelectorAll('[data-qty]').forEach((input) => input.addEventListener('change', () => updateQty(input.dataset.qty, input.value)));
-  container.querySelectorAll('[data-price]').forEach((input) => input.addEventListener('change', () => updatePrice(input.dataset.price, input.value)));
   container.querySelectorAll('[data-remove]').forEach((button) => button.addEventListener('click', () => {
     cart = cart.filter((item) => item.id !== button.dataset.remove);
     renderCart();
+    renderInventory();
   }));
   container.querySelectorAll('[data-step-qty]').forEach((button) => button.addEventListener('click', () => {
     const item = cart.find((entry) => entry.id === button.dataset.stepQty);
@@ -3471,6 +3621,7 @@ function renderCart() {
     }
     item.qty = newQty;
     renderCart();
+    renderInventory();
   }));
 
   requestAnimationFrame(updateCartScrollFade);
@@ -3493,6 +3644,7 @@ function addToCart(id) {
     showToast(`Added ${product.name} to cart.`, 'success');
   }
   renderCart();
+  renderInventory();
 }
 
 function updateQty(id, value) {
@@ -3500,14 +3652,9 @@ function updateQty(id, value) {
   if (!item) return;
   item.qty = Math.min(item.stock, Math.max(1, Number(value) || 1));
   renderCart();
+  renderInventory();
 }
 
-function updatePrice(id, value) {
-  const item = cart.find((entry) => entry.id === id);
-  if (!item) return;
-  item.price = Math.max(0, Number(value) || 0);
-  renderCart();
-}
 
 /* ==========================================================================
    REFRESH DATA
@@ -3530,6 +3677,7 @@ async function refresh(showSkeleton = true) {
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
     inventoryReportData = data.inventoryReport || {};
     stockInHistory = data.stockInHistory || [];
+    sellingPriceBatches = data.sellingPriceBatches || [];
     allProducts = data.products;
     if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
     if (activeView === 'adminAccount') { adminAccount = await api('getAdminAccount', {}, 'GET'); adminAccounts = await api('getAdminAccounts', {}, 'GET'); }
@@ -3676,15 +3824,6 @@ function openForm(type, productId = '') {
       </select>
     </div>
     <div class="form-field-group">
-      <label for="modalProdPrice">
-        <span class="label-text">Selling Price (PHP) <span class="required">*</span></span>
-      </label>
-      <div class="input-with-prefix">
-        <span class="input-prefix">PHP</span>
-        <input id="modalProdPrice" name="price" type="number" min="0" step="0.01" placeholder="0.00" value="${product?.price ?? ''}" required />
-      </div>
-    </div>
-    <div class="form-field-group">
       <label for="modalProdLowStock">
         <span class="label-text">Low Stock Warning Level <span class="required">*</span></span>
       </label>
@@ -3701,7 +3840,7 @@ function openForm(type, productId = '') {
         </div>
       </div>
     </div>
-    <div class="form-field-group full-field">
+    <div class="form-field-group">
       <label for="modalProdStatus">
         <span class="label-text">Status</span>
       </label>
@@ -3747,11 +3886,11 @@ function openForm(type, productId = '') {
     </div>
     <div class="form-field-group">
       <label for="modalStockUnitCost">
-        <span class="label-text">Unit Cost (PHP) <span class="required">*</span></span>
+        <span class="label-text">Selling Price (PHP) <span class="required">*</span></span>
       </label>
       <div class="input-with-prefix">
         <span class="input-prefix">PHP</span>
-        <input id="modalStockUnitCost" name="unitCost" type="number" min="0" step="0.01" placeholder="0.00" required />
+        <input id="modalStockUnitCost" name="sellingPrice" type="number" min="0" step="0.01" placeholder="0.00" required />
       </div>
     </div>
     <div class="form-field-group">
@@ -3767,10 +3906,9 @@ function openForm(type, productId = '') {
 
   const availableProducts = allProducts.filter((item) => !products.some((productItem) => productItem.id === item.id));
   const linkProductFields = `
-    <div class="form-field-group full-field"><label for="modalLinkProduct"><span class="label-text">Catalog Product <span class="required">*</span></span></label><select id="modalLinkProduct" name="productId" required ${availableProducts.length ? '' : 'disabled'}><option value="" disabled selected>${availableProducts.length ? 'Select product to add' : 'All catalog products are already in this branch'}</option>${availableProducts.map((item) => `<option value="${item.id}" data-price="${item.price}" data-low-stock="${item.lowStockLevel}">${escapeHtml(item.name)} (${escapeHtml(item.sku)})</option>`).join('')}</select></div>
-    <div class="form-field-group"><label for="modalLinkPrice"><span class="label-text">Selling Price (PHP) <span class="required">*</span></span></label><div class="input-with-prefix"><span class="input-prefix">PHP</span><input id="modalLinkPrice" name="price" type="number" min="0" step="0.01" placeholder="0.00" required /></div></div>
+    <div class="form-field-group full-field"><label for="modalLinkProduct"><span class="label-text">Catalog Product <span class="required">*</span></span></label><select id="modalLinkProduct" name="productId" required ${availableProducts.length ? '' : 'disabled'}><option value="" disabled selected>${availableProducts.length ? 'Select product to add' : 'All catalog products are already in this branch'}</option>${availableProducts.map((item) => `<option value="${item.id}" data-low-stock="${item.lowStockLevel}">${escapeHtml(item.name)} (${escapeHtml(item.sku)})</option>`).join('')}</select></div>
     <div class="form-field-group"><label for="modalLinkLowStock"><span class="label-text">Low Stock Warning Level <span class="required">*</span></span></label><input id="modalLinkLowStock" name="lowStockLevel" type="number" min="0" step="1" value="5" required /></div>
-    <div class="form-field-group full-field"><label for="modalLinkStatus"><span class="label-text">Status</span></label><select id="modalLinkStatus" name="status"><option value="Active" selected>Active</option><option value="Inactive">Inactive</option></select></div>
+    <div class="form-field-group"><label for="modalLinkStatus"><span class="label-text">Status</span></label><select id="modalLinkStatus" name="status"><option value="Active" selected>Active</option><option value="Inactive">Inactive</option></select></div>
   `;
 
   const branchFields = `
@@ -4035,6 +4173,9 @@ function openForm(type, productId = '') {
   `;
 
   const container = $('#formFields');
+  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'stock', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'transfer', 'resetStaff']);
+  $('#formDialog').dataset.formLayout = compactFormTypes.has(type) ? 'compact' : 'scrollable';
+  container.scrollTop = 0;
   container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : stockFields;
 
   // Initialize smooth dropdowns for newly injected selects
@@ -4054,7 +4195,6 @@ function openForm(type, productId = '') {
   if (linkedProductSelect) {
     linkedProductSelect.addEventListener('change', () => {
       const option = linkedProductSelect.options[linkedProductSelect.selectedIndex];
-      $('#modalLinkPrice').value = option?.dataset.price || '';
       $('#modalLinkLowStock').value = option?.dataset.lowStock || 5;
     });
   }
@@ -4113,7 +4253,7 @@ async function deleteProduct(productId) {
     eyebrow: 'CATALOG MANAGEMENT',
     subtitle: 'Permanent action • please confirm',
     message: `Are you sure you want to delete <strong class="confirm-highlight-name">${escapeHtml(product.name)}</strong>?`,
-    warning: 'This product will be permanently removed from your catalog and inventory records.',
+    warning: 'Unused products are permanently deleted. Products with Stock In, transfer, or sale records are archived and removed from the active catalog.',
     confirmText: 'Delete Product',
     confirmType: 'danger'
   });
@@ -4121,12 +4261,12 @@ async function deleteProduct(productId) {
   if (!confirmed) return;
 
   try {
-    await api('deleteProduct', { productId });
+    const result = await api('deleteProduct', { productId });
     // Optimistic: remove from local array and re-render immediately
     products = products.filter((item) => item.id !== productId);
     allProducts = allProducts.filter((item) => item.id !== productId);
     renderInventory();
-    showToast('Product deleted successfully.', 'success');
+    showToast(result?.archived ? 'Product archived; its transaction history was preserved.' : 'Product deleted successfully.', 'success');
     backgroundRefresh();
   } catch (error) {
     showToast(error.message || 'Failed to delete product.', 'error');
@@ -4418,6 +4558,22 @@ $('#addProductButton').addEventListener('click', () => openForm('product'));
 $('#addExistingProductButton').addEventListener('click', () => openForm('linkProduct'));
 $('#stockInButton').addEventListener('click', () => openForm('stock'));
 $('#stockInHistoryButton').addEventListener('click', showStockInHistory);
+const stockInSearchInput = $('#stockInSearchInput');
+if (stockInSearchInput) {
+  stockInSearchInput.addEventListener('input', () => renderStockInHistoryTable(stockInSearchInput.value));
+  stockInSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      renderStockInHistoryTable(stockInSearchInput.value);
+    }
+  });
+}
+const stockInSearchBtn = $('#stockInSearchButton');
+if (stockInSearchBtn) {
+  stockInSearchBtn.addEventListener('click', () => {
+    renderStockInHistoryTable($('#stockInSearchInput')?.value || '');
+  });
+}
 $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
@@ -4561,12 +4717,12 @@ $('#modalForm').addEventListener('submit', async (event) => {
   } else {
     const prod = products.find((p) => p.id === editingProductId);
     const qty = form.get('qty') || '0';
-    const unitCost = form.get('unitCost') || '0';
+    const sellingPrice = form.get('sellingPrice') || '0';
     confirmConfig = {
       title: 'Confirm Stock In',
       eyebrow: 'INVENTORY STOCK',
       subtitle: 'Add physical inventory stock',
-      message: `Are you sure you want to add <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> to <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong> at <strong>PHP ${escapeHtml(unitCost)}</strong> per unit?`,
+      message: `Are you sure you want to add <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> to <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong> at a selling price of <strong>PHP ${escapeHtml(sellingPrice)}</strong> per unit?`,
       confirmText: 'Update Stock',
       confirmType: 'primary'
     };
@@ -4589,8 +4745,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
       const payload = Object.fromEntries(form);
       if (!payload.status) payload.status = 'Active';
       const result = await api('createProduct', { ...payload, branchId: activeBranchId });
-      const qty = Number(payload.beginningStock || 0);
-      products = [{ ...result, qty, sku: result.sku || '' }, ...products];
+      products = [{ ...result, qty: 0, sku: result.sku || '' }, ...products];
       allProducts = [{ ...result }, ...allProducts];
       showToast('Product added successfully.', 'success');
     } else if (activeForm === 'edit') {
@@ -4735,6 +4890,7 @@ $('#clearCartButton').addEventListener('click', async () => {
 
   cart = [];
   renderCart();
+  renderInventory();
   showToast('Cart cleared.', 'info');
 });
 
@@ -4790,7 +4946,7 @@ $('#creditPaymentForm').addEventListener('submit', async (event) => {
 });
 
 function saleSubtotal() {
-  return cart.reduce((total, item) => total + item.price * item.qty, 0);
+  return cart.reduce((total, item) => total + cartItemTotal(item), 0);
 }
 
 function syncSaleCustomerOptions(paymentType) {
@@ -4923,10 +5079,10 @@ function showSaleReceipt({ sale, items, customerName }) {
         <strong class="receipt-item-name">${escapeHtml(item.name)}</strong>
         <div class="receipt-item-meta">
           <span class="receipt-qty-badge">${escapeHtml(String(item.qty))} ${escapeHtml(item.unit || 'unit')}</span>
-          <span class="receipt-rate-text">&times; ${money(item.price)}</span>
+          <span class="receipt-rate-text">${(item.priceBreakdown || [{ qty: item.qty, sellingPrice: item.price }]).map((line) => `${line.qty} &times; ${money(line.sellingPrice)}`).join(' + ')}</span>
         </div>
       </div>
-      <strong class="receipt-item-total">${money(item.qty * item.price)}</strong>
+      <strong class="receipt-item-total">${money(item.lineTotal ?? (item.qty * item.price))}</strong>
     </div>
   `).join('');
 
@@ -5006,14 +5162,14 @@ $('#saleForm').addEventListener('submit', async (event) => {
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<span class="btn-spinner"></span><span>Recording sale...</span>';
   try {
-    const receiptItems = cart.map((item) => ({ ...item }));
+    const receiptItems = cart.map((item) => ({ ...item, priceBreakdown: getCartPriceBreakdown(item), lineTotal: cartItemTotal(item) }));
     const sale = await api('recordSale', {
       branchId: activeBranchId,
       customerId,
       paymentType: values.paymentType,
       discount: values.discount,
       cashTendered: values.paymentType === 'cash' ? values.tendered : 0,
-      items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })),
+      items: cart.map((item) => ({ productId: item.id, qty: item.qty })),
     });
     $('#saleDialog').close();
     // Optimistic: deduct sold quantities from local products and add sale to history
@@ -5023,6 +5179,7 @@ $('#saleForm').addEventListener('submit', async (event) => {
       const soldItem = soldItems.find((item) => item.id === p.id);
       return soldItem ? { ...p, qty: Math.max((Number(p.qty) || 0) - soldItem.qty, 0) } : p;
     });
+    await refresh(false);
     salesHistory = [{ ...sale, customerName, customerId, items: receiptItems, status: 'completed' }, ...salesHistory];
     if (values.paymentType === 'credit') {
       creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);

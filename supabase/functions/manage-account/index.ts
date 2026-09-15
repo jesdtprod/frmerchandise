@@ -87,6 +87,7 @@ Deno.serve(async (request) => {
       admin.from('credit_payments').select('*').order('payment_id'),
       admin.from('inventory_cost_batches').select('*').order('branch_id').order('product_id').order('received_at'),
       admin.from('sale_item_cost_allocations').select('*').order('sale_item_id'),
+      admin.from('sale_item_price_allocations').select('*').order('sale_item_id'),
       admin.from('transfer_batch_allocations').select('*').order('transfer_id'),
     ]);
     const error = results.find((result) => result.error)?.error;
@@ -99,7 +100,7 @@ Deno.serve(async (request) => {
       tables: {
         branches: rows[0], products: rows[1], branchProducts: rows[2], customers: rows[3], inventory: rows[4],
         stockIns: rows[5], stockTransfers: rows[6], sales: rows[7], saleItems: rows[8], creditPayments: rows[9],
-        inventoryCostBatches: rows[10], saleItemCostAllocations: rows[11], transferBatchAllocations: rows[12],
+        inventoryCostBatches: rows[10], saleItemCostAllocations: rows[11], saleItemPriceAllocations: rows[12], transferBatchAllocations: rows[13],
       },
     });
   }
@@ -169,6 +170,13 @@ Deno.serve(async (request) => {
     const status = body.status === 'Inactive' ? 'Inactive' : 'Active';
     const { error } = await admin.from('profiles').update({ status }).eq('user_id', targetId);
     if (error) return fail(error.message);
+    const { error: authError } = await admin.auth.admin.updateUserById(targetId, {
+      ban_duration: status === 'Inactive' ? '876000h' : 'none',
+    });
+    if (authError) {
+      await admin.from('profiles').update({ status: target.status }).eq('user_id', targetId);
+      return fail(authError.message);
+    }
     await audit(status === 'Active' ? 'Reactivated account' : 'Deactivated account', targetId, target.full_name);
     return json({ id: targetId, status });
   }

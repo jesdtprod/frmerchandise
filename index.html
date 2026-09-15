@@ -330,6 +330,16 @@
           </div>
           <button class="icon-button close-dialog-btn" type="button" data-close="stockInHistoryDialog" aria-label="Close stock-in history" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
+        <div class="stock-in-history-toolbar">
+          <div class="search-wrap stock-in-search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="stockInSearchInput" type="search" placeholder="Search product, stock-in ID, or invoice/supplier..." autocomplete="off" />
+          </div>
+          <button class="button button-secondary stock-in-search-btn" id="stockInSearchButton" type="button">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search</span>
+          </button>
+        </div>
         <div class="stock-in-history-list" id="stockInHistoryList"></div>
         <div class="modal-actions">
           <button class="button modal-cancel-btn" type="button" data-close="stockInHistoryDialog">Close</button>
