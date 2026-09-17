@@ -56,7 +56,7 @@ Deno.serve(async (request) => {
     if (await duplicateUsername(username)) return fail('That username is already in use.');
     const role = action === 'createAdminAccount' ? 'admin' : 'staff';
     const branchId = role === 'staff' ? String(body.branchId || '') : null;
-    const permissions = role === 'admin' ? [...allowedPermissions] : (Array.isArray(body.permissions) ? body.permissions.filter((item) => allowedPermissions.has(item)) : []);
+    const permissions = role === 'admin' ? [...allowedPermissions] : (Array.isArray(body.permissions) ? body.permissions.filter((item: unknown): item is string => typeof item === 'string' && allowedPermissions.has(item)) : []);
     if (role === 'staff' && (!branchId || !permissions.length)) return fail('Select an assigned branch and at least one allowed sidebar menu.');
     if (role === 'staff' && !await activeBranchExists(branchId)) return fail('Select an active assigned branch.');
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
@@ -128,7 +128,7 @@ Deno.serve(async (request) => {
   if (targetError || !target) return fail('Account not found.', 404);
 
   if (action === 'updateStaffAccount') {
-    const permissions = Array.isArray(body.permissions) ? body.permissions.filter((item) => allowedPermissions.has(item)) : [];
+    const permissions = Array.isArray(body.permissions) ? body.permissions.filter((item: unknown): item is string => typeof item === 'string' && allowedPermissions.has(item)) : [];
     if (target.role !== 'staff' || !fullName || !permissions.length) return fail('Enter valid staff account details.');
     const { error } = await admin.from('profiles').update({ full_name: fullName, permissions }).eq('user_id', targetId);
     if (error) return fail(error.message);
