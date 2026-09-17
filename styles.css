@@ -3234,7 +3234,7 @@ body::after {
 }
 
 .workspace[data-view="customers"] .table-row {
-  grid-template-columns: minmax(220px, 1.8fr) 150px minmax(180px, 1.6fr) 100px repeat(3, minmax(120px, 1fr)) 150px;
+  grid-template-columns: minmax(300px, 2.2fr) repeat(3, minmax(135px, 1fr)) 150px;
 }
 
 .workspace[data-view="transfers"] .table-row {
