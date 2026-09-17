@@ -975,7 +975,7 @@ function renderSkeletonTable() {
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'credits'
-    ? ['Customer', 'Credit Account', 'Previous Balance', 'Current Credit', 'Remaining Balance']
+    ? ['Customer', 'Contact', 'Credit Sale', 'Credit Amount', 'Remaining Balance']
     : activeView === 'sales'
     ? ['Receipt', 'Date and Time', 'Customer', 'Payment', 'Total', 'Action']
     : activeView === 'staffAccounts'
@@ -3015,49 +3015,33 @@ function renderCreditPayments() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-
-  // Include both credit sales and customer previous balances, including fully-paid accounts.
   const paidByCredit = creditPayments.reduce((totals, payment) => {
     const creditId = payment.creditId || payment.saleId;
     totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
     return totals;
   }, {});
-  const saleCreditAccounts = salesHistory
+  const accounts = salesHistory
     .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
     .map((sale) => {
       const total = Number(sale.total || 0);
       const paid = paidByCredit[sale.saleId] || 0;
       const balance = Math.max(total - paid, 0);
-      return { creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', sourceLabel: 'Credit Sale', customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance, isPaid: balance <= 0.00001 };
-    });
-  const allCreditAccounts = [...saleCreditAccounts, ...openingCreditAccounts.map((account) => {
-    const total = Number(account.total || 0);
-    const paid = paidByCredit[account.creditId] || 0;
-    const balance = Math.max(total - paid, 0);
-    return { ...account, sourceType: 'previous_balance', sourceLabel: 'Previous Balance', total, paid, balance, isPaid: balance <= 0.00001 };
-  })]
-    .sort((a, b) => {
-      // Sort: outstanding first, then by date
-      if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
-      return new Date(a.date) - new Date(b.date);
-    });
-
-  const accounts = allCreditAccounts.filter((account) => `${account.creditId} ${account.customerName} ${account.reference || ''}`.toLowerCase().includes(term));
+      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, balance, isPaid: balance <= 0.00001 };
+    })
+    .filter((sale) => `${sale.saleId} ${sale.customerName}`.toLowerCase().includes(term))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   table.innerHTML = `
     <div class="table-row table-header">
       <span>Customer</span>
-      <span>Credit Account</span>
-      <span>Previous Balance</span>
-      <span>Current Credit</span>
+      <span>Contact</span>
+      <span>Credit Sale</span>
+      <span>Credit Amount</span>
       <span>Remaining Balance</span>
     </div>
 
     ${accounts.map((account) => {
-      const total = Number(account.total) || 0;
-      const balance = Number(account.balance) || 0;
-      const previousBalance = account.sourceType === 'previous_balance' ? total : 0;
-      const currentCredit = account.sourceType === 'sale' ? total : 0;
+      const customer = customers.find((item) => item.id === account.customerId);
       return `
         <div class="table-row">
           <div class="product-cell">
@@ -3066,33 +3050,17 @@ function renderCreditPayments() {
           </div>
           <div class="row-middle-cells">
             <div class="product-cell">
-              <strong class="product-name">${escapeHtml(account.sourceLabel)}</strong>
-              <span class="product-meta">${escapeHtml(account.reference || account.creditId)}${account.date ? ` &bull; ${escapeHtml(new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }))}` : ''}</span>
+              <strong class="product-name customer-detail-value">${escapeHtml(customer?.phone || 'No phone recorded')}</strong>
+              <span class="product-meta">${escapeHtml(customer?.address || 'No address recorded')}</span>
             </div>
-            <span class="price-text">${money(previousBalance)}</span>
-            <span class="price-text">${money(currentCredit)}</span>
-            <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(balance)}</span>
-          </div>
-          <div class="row-action-cell">
-            <span class="table-actions">
-              ${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${escapeHtml(account.creditId)}" aria-label="Record Payment" title="Record Payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : '<span style="width:32px;"></span>'}
-              <button class="icon-button primary-icon" data-view-payment-history="${escapeHtml(account.creditId)}" aria-label="Payment History (${historyCount})" title="Payment History (${historyCount} recorded)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </button>
-            </span>
+            <div class="product-cell"><strong class="product-name">${escapeHtml(account.saleId)}</strong><span class="product-meta">${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></div>
+            <span class="price-text">${money(account.total)}</span>
+            <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(account.balance)}</span>
           </div>
         </div>
       `;
-    }).join('') || '<div class="empty-state"><p>No credit accounts found</p><small>Credit sales and previous balances will appear here.</small></div>'}
+    }).join('') || '<div class="empty-state"><p>No credit sales found</p><small>Credit sales for the selected branch will appear here.</small></div>'}
   `;
-
-  table.querySelectorAll('[data-credit-account]').forEach((button) => {
-    button.addEventListener('click', () => openCreditPayment(button.dataset.creditAccount));
-  });
-
-  table.querySelectorAll('[data-view-payment-history]').forEach((button) => {
-    button.addEventListener('click', () => openCreditHistory(button.dataset.viewPaymentHistory));
-  });
 }
 
 function renderSalesHistory() {
