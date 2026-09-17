@@ -971,7 +971,7 @@ function renderSkeletonTable() {
     : activeView === 'branches'
     ? ['Branch', 'Type', 'Address', 'Status', 'Action']
     : activeView === 'customers'
-    ? ['Customer', 'Remaining Balance', 'Action']
+    ? ['Customer', 'Contact', 'Credit', 'Remaining Balance', 'Action']
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'credits'
@@ -1020,6 +1020,8 @@ function renderSkeletonTable() {
     }
     if (activeView === 'customers') {
       return `
+        <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:110px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:150px;"></div></div>
+        <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:120px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:105px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
       `;
     }
@@ -2990,15 +2992,15 @@ function renderCustomers() {
   salesHistory.filter((sale) => sale.paymentType === 'credit').forEach((sale) => addBalance({ creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', customerId: sale.customerId, total: sale.total }));
   openingCreditAccounts.forEach((account) => addBalance(account));
   table.innerHTML = `
-    <div class="table-row table-header"><span>Customer</span><span>Remaining Balance</span><span>Action</span></div>
+    <div class="table-row table-header"><span>Customer</span><span>Contact</span><span>Credit</span><span>Remaining Balance</span><span>Action</span></div>
     ${rows.map((customer) => {
       const customerAccounts = balancesByCustomer[customer.id]?.accounts || [];
       const paymentAccount = customerAccounts.find((account) => !account.isPaid);
       const historyAccount = paymentAccount || customerAccounts[0];
       return `
       <div class="table-row">
-        <div class="product-cell customer-details-cell"><div class="customer-name-line"><strong class="product-name">${escapeHtml(displayCustomerName(customer.name))}</strong><span class="customer-status-meta stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(customer.status)}</span></div><span class="product-meta">${escapeHtml(customer.id)} · ${escapeHtml(customer.phone || 'No phone recorded')}</span><span class="product-meta">${escapeHtml(customer.address || 'No address recorded')}</span><span class="product-meta customer-credit-summary">Current Credit: ${money(balancesByCustomer[customer.id]?.current || 0)} · Previous Balance: ${money(balancesByCustomer[customer.id]?.previous || 0)}</span></div>
-        <div class="row-middle-cells"><span class="credit-balance">${money(balancesByCustomer[customer.id]?.remaining || 0)}</span></div>
+        <div class="product-cell customer-details-cell"><div class="customer-name-line"><strong class="product-name">${escapeHtml(displayCustomerName(customer.name))}</strong><span class="customer-status-meta stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(customer.status)}</span></div><span class="product-meta">${escapeHtml(customer.id)}</span></div>
+        <div class="row-middle-cells"><div class="product-cell"><strong class="product-name customer-detail-value">${escapeHtml(customer.phone || 'No phone recorded')}</strong><span class="product-meta">${escapeHtml(customer.address || 'No address recorded')}</span></div><div class="product-cell"><strong class="product-name customer-detail-value">Current Credit: ${money(balancesByCustomer[customer.id]?.current || 0)}</strong><span class="product-meta">Previous Balance: ${money(balancesByCustomer[customer.id]?.previous || 0)}</span></div><span class="credit-balance">${money(balancesByCustomer[customer.id]?.remaining || 0)}</span></div>
         <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${(balancesByCustomer[customer.id]?.accounts || []).map((account) => `${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${account.creditId}" aria-label="Record payment" title="Record payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : ''}<button class="icon-button primary-icon" data-view-payment-history="${account.creditId}" aria-label="Payment history" title="Payment history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`).join('')}</span></div>
       </div>
     `;

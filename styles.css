@@ -3234,8 +3234,8 @@ body::after {
 }
 
 .workspace[data-view="customers"] .table-row {
-  grid-template-columns: minmax(440px, 2.8fr) minmax(190px, 1fr) 160px;
-  min-height: 86px;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1.5fr) minmax(210px, 1.4fr) minmax(160px, 1fr) 150px;
+  min-height: 72px;
 }
 
 .customer-details-cell {
@@ -3257,10 +3257,7 @@ body::after {
   margin: 0;
 }
 
-.customer-credit-summary {
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
+.customer-detail-value { font-size: 13px; }
 
 .workspace[data-view="customers"] .row-action-cell .table-actions {
   justify-content: flex-start;
