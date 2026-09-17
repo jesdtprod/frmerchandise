@@ -3235,7 +3235,7 @@ body::after {
 
 .workspace[data-view="customers"] .table-row:not(.table-header) {
   grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1.5fr) minmax(210px, 1.4fr) minmax(160px, 1fr) 150px;
-  min-height: 72px;
+  min-height: 60px;
 }
 
 .workspace[data-view="customers"] .table-header {
