@@ -3252,10 +3252,11 @@ body::after {
   display: block;
 }
 
-.customer-status-meta {
+.customer-name-line .customer-status-meta.stock-pill {
   width: 26px;
   height: 26px;
   min-width: 26px;
+  max-width: 26px;
   padding: 0;
   margin: 0;
   display: inline-flex;
@@ -3263,9 +3264,11 @@ body::after {
   justify-content: center;
 }
 
-.customer-status-meta svg {
+.customer-name-line .customer-status-meta.stock-pill svg {
+  display: block;
   width: 14px;
   height: 14px;
+  stroke: currentColor;
 }
 
 .customer-detail-value { font-size: 13px; }
