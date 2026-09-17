@@ -3234,7 +3234,7 @@ body::after {
 }
 
 .workspace[data-view="customers"] .table-row {
-  grid-template-columns: minmax(220px, 1.8fr) 150px minmax(180px, 1.6fr) 100px 64px;
+  grid-template-columns: minmax(220px, 1.8fr) 150px minmax(180px, 1.6fr) 100px repeat(3, minmax(120px, 1fr)) 150px;
 }
 
 .workspace[data-view="transfers"] .table-row {
@@ -3242,7 +3242,11 @@ body::after {
 }
 
 .workspace[data-view="credits"] .table-row {
-  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr)) 85px;
+  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr));
+}
+
+.workspace[data-view="credits"] .row-action-cell {
+  display: none !important;
 }
 
 .workspace[data-view="sales"] .table-row {
@@ -9047,7 +9051,7 @@ dialog.confirm-dialog {
   }
 
   .workspace[data-view="customers"] .table-row .product-cell { grid-area: prod; }
-  .workspace[data-view="customers"] .table-row .row-middle-cells { grid-area: details; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px 10px; align-items: center; }
+  .workspace[data-view="customers"] .table-row .row-middle-cells { grid-area: details; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: center; }
   .workspace[data-view="customers"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
   .workspace[data-view="credits"] .table-row:not(.table-header) {

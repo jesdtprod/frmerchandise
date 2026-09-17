@@ -971,11 +971,11 @@ function renderSkeletonTable() {
     : activeView === 'branches'
     ? ['Branch', 'Type', 'Address', 'Status', 'Action']
     : activeView === 'customers'
-    ? ['Customer', 'Phone', 'Address', 'Status', 'Action']
+    ? ['Customer', 'Phone', 'Address', 'Status', 'Previous Balance', 'Current Credit', 'Remaining Balance', 'Action']
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'credits'
-    ? ['Customer', 'Credit Sale', 'Original Amount', 'Amount Due', 'Action']
+    ? ['Customer', 'Credit Account', 'Previous Balance', 'Current Credit', 'Remaining Balance']
     : activeView === 'sales'
     ? ['Receipt', 'Date and Time', 'Customer', 'Payment', 'Total', 'Action']
     : activeView === 'staffAccounts'
@@ -2020,7 +2020,7 @@ const STAFF_MENU_DEFS = {
   credits: {
     key: 'credits',
     label: 'Credits',
-    fullName: 'Credit Payments',
+    fullName: 'Credit History',
     icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>'
   },
   sales: {
@@ -2973,17 +2973,36 @@ function renderCustomers() {
   const table = $('#inventoryTable');
   if (!table) return;
   const rows = customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.address}`.toLowerCase().includes(term));
+  const paidByCredit = creditPayments.reduce((totals, payment) => {
+    const creditId = payment.creditId || payment.saleId;
+    totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
+    return totals;
+  }, {});
+  const balancesByCustomer = {};
+  const addBalance = (account) => {
+    const summary = balancesByCustomer[account.customerId] ||= { previous: 0, current: 0, remaining: 0, accounts: [] };
+    const paid = paidByCredit[account.creditId] || 0;
+    const total = Number(account.total || 0);
+    if (account.sourceType === 'previous_balance') summary.previous += total;
+    if (account.sourceType === 'sale') summary.current += total;
+    summary.remaining += Math.max(total - paid, 0);
+    summary.accounts.push({ ...account, balance: Math.max(total - paid, 0), isPaid: total - paid <= 0.00001 });
+  };
+  salesHistory.filter((sale) => sale.paymentType === 'credit').forEach((sale) => addBalance({ creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', customerId: sale.customerId, total: sale.total }));
+  openingCreditAccounts.forEach((account) => addBalance(account));
   table.innerHTML = `
-    <div class="table-row table-header"><span>Customer</span><span>Phone</span><span>Address</span><span>Status</span><span>Action</span></div>
+    <div class="table-row table-header"><span>Customer</span><span>Phone</span><span>Address</span><span>Status</span><span>Previous Balance</span><span>Current Credit</span><span>Remaining Balance</span><span>Action</span></div>
     ${rows.map((customer) => `
       <div class="table-row">
         <div class="product-cell"><strong class="product-name">${escapeHtml(displayCustomerName(customer.name))}</strong><span class="product-meta">${escapeHtml(customer.id)}</span></div>
-        <div class="row-middle-cells"><span class="branch-address">${escapeHtml(customer.phone || 'No phone recorded')}</span><span class="branch-address">${escapeHtml(customer.address || 'No address recorded')}</span><span class="stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(customer.status)}</span></div>
-        <div class="row-action-cell"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button></div>
+        <div class="row-middle-cells"><span class="branch-address">${escapeHtml(customer.phone || 'No phone recorded')}</span><span class="branch-address">${escapeHtml(customer.address || 'No address recorded')}</span><span class="stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(customer.status)}</span><span class="price-text">${money(balancesByCustomer[customer.id]?.previous || 0)}</span><span class="price-text">${money(balancesByCustomer[customer.id]?.current || 0)}</span><span class="credit-balance">${money(balancesByCustomer[customer.id]?.remaining || 0)}</span></div>
+        <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${(balancesByCustomer[customer.id]?.accounts || []).map((account) => `${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${account.creditId}" aria-label="Record payment" title="Record payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : ''}<button class="icon-button primary-icon" data-view-payment-history="${account.creditId}" aria-label="Payment history" title="Payment history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`).join('')}</span></div>
       </div>
     `).join('') || '<div class="empty-state"><p>No customers found</p><small>Add a customer for this branch.</small></div>'}
   `;
   table.querySelectorAll('[data-edit-customer]').forEach((button) => button.addEventListener('click', () => openForm('editCustomer', button.dataset.editCustomer)));
+  table.querySelectorAll('[data-credit-account]').forEach((button) => button.addEventListener('click', () => openCreditPayment(button.dataset.creditAccount)));
+  table.querySelectorAll('[data-view-payment-history]').forEach((button) => button.addEventListener('click', () => openCreditHistory(button.dataset.viewPaymentHistory)));
 }
 
 function renderCreditPayments() {
@@ -3026,7 +3045,6 @@ function renderCreditPayments() {
       <span>Previous Balance</span>
       <span>Current Credit</span>
       <span>Remaining Balance</span>
-      <span>Action</span>
     </div>
 
     ${accounts.map((account) => {
@@ -3034,7 +3052,6 @@ function renderCreditPayments() {
       const balance = Number(account.balance) || 0;
       const previousBalance = account.sourceType === 'previous_balance' ? total : 0;
       const currentCredit = account.sourceType === 'sale' ? total : 0;
-      const historyCount = creditPayments.filter((p) => (p.creditId || p.saleId) === account.creditId).length;
       return `
         <div class="table-row">
           <div class="product-cell">
@@ -4032,7 +4049,7 @@ function openForm(type, productId = '') {
     ['inventory', 'Inventory Stock'],
     ['transfers', 'Stock Transfers'],
     ['customers', 'Customers'],
-    ['credits', 'Credit Payments'],
+    ['credits', 'Credit History'],
     ['sales', 'Sales History'],
     ['inventoryReports', 'Inventory Reports']
   ];
@@ -4335,7 +4352,7 @@ function setView(view, preserveSidebarOpen = false) {
     inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch Stock'],
     branches: ['BRANCH OPERATIONS', 'Branches', 'LOCATION DIRECTORY', 'Main and Satellite Branches'],
     customers: ['CUSTOMER ACCOUNTS', 'Customers', 'CUSTOMER DIRECTORY', 'Customers in the Selected Branch'],
-    credits: ['CUSTOMER ACCOUNTS', 'Credit Payments', 'ACCOUNT RECEIVABLES', 'Outstanding Customer Credit'],
+    credits: ['CUSTOMER ACCOUNTS', 'Credit History', 'ACCOUNT RECEIVABLES', 'Customer Credit History'],
     sales: ['REPORTING', 'Sales History', 'SALES LEDGER', 'Branch Sales History'],
     inventoryReports: ['REPORTING', 'Inventory Reports', 'INVENTORY REPORT', 'Active Branch Stock Report'],
     transfers: ['BRANCH OPERATIONS', 'Stock Transfers', 'TRANSFER TRACKING', 'Outgoing and Incoming Branch Stock'],
