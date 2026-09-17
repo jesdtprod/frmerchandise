@@ -3242,7 +3242,7 @@ body::after {
 }
 
 .workspace[data-view="credits"] .table-row {
-  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(130px, 1fr) 85px;
+  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr)) 85px;
 }
 
 .workspace[data-view="sales"] .table-row {

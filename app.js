@@ -3023,14 +3023,17 @@ function renderCreditPayments() {
     <div class="table-row table-header">
       <span>Customer</span>
       <span>Credit Account</span>
-      <span>Original Amount</span>
-      <span>Amount Due</span>
+      <span>Previous Balance</span>
+      <span>Current Credit</span>
+      <span>Remaining Balance</span>
       <span>Action</span>
     </div>
 
     ${accounts.map((account) => {
       const total = Number(account.total) || 0;
       const balance = Number(account.balance) || 0;
+      const previousBalance = account.sourceType === 'previous_balance' ? total : 0;
+      const currentCredit = account.sourceType === 'sale' ? total : 0;
       const historyCount = creditPayments.filter((p) => (p.creditId || p.saleId) === account.creditId).length;
       return `
         <div class="table-row">
@@ -3043,7 +3046,8 @@ function renderCreditPayments() {
               <strong class="product-name">${escapeHtml(account.sourceLabel)}</strong>
               <span class="product-meta">${escapeHtml(account.reference || account.creditId)}${account.date ? ` &bull; ${escapeHtml(new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }))}` : ''}</span>
             </div>
-            <span class="price-text">${money(total)}</span>
+            <span class="price-text">${money(previousBalance)}</span>
+            <span class="price-text">${money(currentCredit)}</span>
             <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(balance)}</span>
           </div>
           <div class="row-action-cell">
