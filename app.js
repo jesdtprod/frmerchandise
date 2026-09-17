@@ -132,7 +132,7 @@ function calculateOutstandingCreditAccounts(sales, payments, openingAccounts = [
   const migrationAccounts = openingAccounts.map((account) => {
     const total = Number(account.total || 0);
     const paid = paidByCredit[account.creditId] || 0;
-    return { ...account, sourceType: 'opening_balance', sourceLabel: 'Opening Balance', total, paid, balance: Math.max(total - paid, 0) };
+    return { ...account, sourceType: 'previous_balance', sourceLabel: 'Previous Balance', total, paid, balance: Math.max(total - paid, 0) };
   });
   return [...saleAccounts, ...migrationAccounts]
     .filter((account) => account.balance > 0.00001)
@@ -825,22 +825,29 @@ async function api(action, payload = {}) {
     return data;
   }
   if (action === 'createCustomer') {
-    const { data, error } = await client.rpc('create_customer_with_opening_balance', {
+    const { data, error } = await client.rpc('create_customer_with_previous_balance', {
       target_branch_id: payload.branchId,
       customer_name_input: String(payload.name).trim(),
       customer_phone_input: String(payload.phone || '').trim(),
       customer_address_input: String(payload.address || '').trim(),
       customer_status_input: payload.status || 'Active',
-      opening_balance_input: Number(payload.openingBalance || 0),
-      migration_reference_input: String(payload.migrationReference || '').trim(),
+      previous_balance_input: Number(payload.previousBalance || 0),
     });
     throwIfError_(error);
-    return { id: data.customerId, branchId: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active', openingBalance: Number(data.openingBalance || 0) };
+    return { id: data.customerId, branchId: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active', previousBalance: Number(data.previousBalance || 0) };
   }
   if (action === 'updateCustomer') {
-    const { data, error } = await client.from('customers').update({ name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active' }).eq('customer_id', payload.customerId).eq('branch_id', payload.branchId).select().single();
+    const { data, error } = await client.rpc('update_customer_with_previous_balance', {
+      target_branch_id: payload.branchId,
+      target_customer_id: payload.customerId,
+      customer_name_input: String(payload.name).trim(),
+      customer_phone_input: String(payload.phone || '').trim(),
+      customer_address_input: String(payload.address || '').trim(),
+      customer_status_input: payload.status || 'Active',
+      previous_balance_input: Number(payload.previousBalance || 0),
+    });
     throwIfError_(error);
-    return { id: data.customer_id, branchId: data.branch_id, name: data.name, phone: data.phone, address: data.address, status: data.status };
+    return { id: data.customerId, branchId: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active', previousBalance: Number(data.previousBalance || 0) };
   }
   if (action === 'createBranch') {
     const row = { branch_id: newPosId_('BRN'), name: String(payload.name).trim(), type: payload.type, address: String(payload.address || '').trim(), status: 'Active' };
@@ -2984,7 +2991,7 @@ function renderCreditPayments() {
   const table = $('#inventoryTable');
   if (!table) return;
 
-  // Include both credit sales and opening balances, including fully-paid accounts.
+  // Include both credit sales and customer previous balances, including fully-paid accounts.
   const paidByCredit = creditPayments.reduce((totals, payment) => {
     const creditId = payment.creditId || payment.saleId;
     totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
@@ -3002,7 +3009,7 @@ function renderCreditPayments() {
     const total = Number(account.total || 0);
     const paid = paidByCredit[account.creditId] || 0;
     const balance = Math.max(total - paid, 0);
-    return { ...account, sourceType: 'opening_balance', sourceLabel: 'Opening Balance', total, paid, balance, isPaid: balance <= 0.00001 };
+    return { ...account, sourceType: 'previous_balance', sourceLabel: 'Previous Balance', total, paid, balance, isPaid: balance <= 0.00001 };
   })]
     .sort((a, b) => {
       // Sort: outstanding first, then by date
@@ -3049,7 +3056,7 @@ function renderCreditPayments() {
           </div>
         </div>
       `;
-    }).join('') || '<div class="empty-state"><p>No credit accounts found</p><small>Credit sales and opening balances will appear here.</small></div>'}
+    }).join('') || '<div class="empty-state"><p>No credit accounts found</p><small>Credit sales and previous balances will appear here.</small></div>'}
   `;
 
   table.querySelectorAll('[data-credit-account]').forEach((button) => {
@@ -3126,7 +3133,7 @@ function openCreditHistory(creditId) {
   const titleEl = $('#creditHistoryCustomerName');
   const subtitleEl = $('#creditHistorySaleSubtitle');
   if (titleEl) titleEl.textContent = displayCustomerName(customerName);
-  if (subtitleEl) subtitleEl.textContent = `${account?.sourceLabel || (openingRecord ? 'Opening Balance' : 'Credit Sale')}: ${account?.reference || openingRecord?.reference || creditId}${customerId ? ` • ${customerId}` : ''}`;
+  if (subtitleEl) subtitleEl.textContent = `${account?.sourceLabel || (openingRecord ? 'Previous Balance' : 'Credit Sale')}: ${account?.reference || openingRecord?.reference || creditId}${customerId ? ` • ${customerId}` : ''}`;
 
   const summaryEl = $('#creditHistoryModalSummary');
   if (summaryEl) {
@@ -3732,6 +3739,7 @@ function openForm(type, productId = '') {
   const customer = customers.find((item) => item.id === productId);
   const permissions = currentSession?.account?.permissions || ['*'];
   const canRecordOpeningCredit = permissions.includes('*') || permissions.includes('credits');
+  const customerPreviousBalance = Number(openingCreditAccounts.find((item) => item.customerId === customer?.id)?.total || 0);
   editingProductId = productId;
 
   const formMeta = {
@@ -3997,16 +4005,11 @@ function openForm(type, productId = '') {
         <input id="modalCustomerAddress" name="address" placeholder="Street, barangay, city" value="${escapeHtml(customer?.address || '')}" autocomplete="street-address" />
       </div>
     </div>
-    ${type === 'customer' && canRecordOpeningCredit ? `
-      <div class="form-field-group">
-        <label for="modalCustomerOpeningBalance"><span class="label-text">Opening Credit Balance <span class="optional-label">(optional)</span></span></label>
-        <input id="modalCustomerOpeningBalance" name="openingBalance" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
-        <p class="field-hint">Use only when the customer has an unpaid previous balance.</p>
-      </div>
-      <div class="form-field-group">
-        <label for="modalCustomerMigrationReference"><span class="label-text">Previous Balance Reference</span></label>
-        <input id="modalCustomerMigrationReference" name="migrationReference" placeholder="Required when balance is entered" autocomplete="off" />
-        <p class="field-hint">Example: old ledger, invoice, or prior balance date.</p>
+    ${(type === 'customer' || type === 'editCustomer') && canRecordOpeningCredit ? `
+      <div class="form-field-group full-field">
+        <label for="modalCustomerPreviousBalance"><span class="label-text">Previous Balance <span class="optional-label">(optional)</span></span></label>
+        <input id="modalCustomerPreviousBalance" name="previousBalance" type="number" min="0" step="0.01" value="${type === 'editCustomer' ? customerPreviousBalance.toFixed(2) : '0.00'}" inputmode="decimal" />
+        <p class="field-hint">Amount owed before this POS was started. You can update it when correcting the customer's prior balance.</p>
       </div>
     ` : ''}
   `;
@@ -4809,16 +4812,18 @@ $('#modalForm').addEventListener('submit', async (event) => {
       showToast('Branch updated successfully.', 'success');
     } else if (activeForm === 'customer') {
       const payload = Object.fromEntries(form);
-      const openingBalance = Number(payload.openingBalance || 0);
-      if (!Number.isFinite(openingBalance) || openingBalance < 0) throw new Error('Enter a valid opening credit balance.');
-      if (openingBalance > 0 && !String(payload.migrationReference || '').trim()) throw new Error('Enter a previous balance reference.');
-      const result = await api('createCustomer', { ...payload, openingBalance, branchId: activeBranchId });
+      const previousBalance = Number(payload.previousBalance || 0);
+      if (!Number.isFinite(previousBalance) || previousBalance < 0) throw new Error('Enter a valid previous balance.');
+      const result = await api('createCustomer', { ...payload, previousBalance, branchId: activeBranchId });
       customers = [...customers, result];
-      showToast(openingBalance > 0 ? 'Customer and opening credit balance added.' : 'Customer added successfully.', 'success');
+      showToast(previousBalance > 0 ? 'Customer and previous balance added.' : 'Customer added successfully.', 'success');
     } else if (activeForm === 'editCustomer') {
-      const result = await api('updateCustomer', { ...Object.fromEntries(form), customerId: editingProductId, branchId: activeBranchId });
+      const payload = Object.fromEntries(form);
+      const previousBalance = Number(payload.previousBalance || 0);
+      if (!Number.isFinite(previousBalance) || previousBalance < 0) throw new Error('Enter a valid previous balance.');
+      const result = await api('updateCustomer', { ...payload, previousBalance, customerId: editingProductId, branchId: activeBranchId });
       customers = customers.map((c) => c.id === editingProductId ? { ...c, ...result } : c);
-      showToast('Customer updated successfully.', 'success');
+      showToast('Customer and previous balance updated.', 'success');
     } else if (activeForm === 'staff' || activeForm === 'editStaff') {
       const payload = Object.fromEntries(form);
       payload.permissions = form.getAll('permissions');
