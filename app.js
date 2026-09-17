@@ -2987,18 +2987,24 @@ function renderCustomers() {
     if (account.sourceType === 'sale') summary.current += total;
     summary.remaining += Math.max(total - paid, 0);
     summary.accounts.push({ ...account, balance: Math.max(total - paid, 0), isPaid: total - paid <= 0.00001 });
+    if (summary.accounts.length > 1) summary.accounts = [summary.accounts.find((item) => !item.isPaid) || summary.accounts[0]];
   };
   salesHistory.filter((sale) => sale.paymentType === 'credit').forEach((sale) => addBalance({ creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', customerId: sale.customerId, total: sale.total }));
   openingCreditAccounts.forEach((account) => addBalance(account));
   table.innerHTML = `
     <div class="table-row table-header"><span>Customer</span><span>Previous Balance</span><span>Current Credit</span><span>Remaining Balance</span><span>Action</span></div>
-    ${rows.map((customer) => `
+    ${rows.map((customer) => {
+      const customerAccounts = balancesByCustomer[customer.id]?.accounts || [];
+      const paymentAccount = customerAccounts.find((account) => !account.isPaid);
+      const historyAccount = paymentAccount || customerAccounts[0];
+      return `
       <div class="table-row">
         <div class="product-cell"><strong class="product-name">${escapeHtml(displayCustomerName(customer.name))}</strong><span class="product-meta">${escapeHtml(customer.id)}</span><span class="product-meta">${escapeHtml(customer.phone || 'No phone recorded')} · ${escapeHtml(customer.address || 'No address recorded')}</span><span class="product-meta"><span class="stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}">${escapeHtml(customer.status)}</span></span></div>
         <div class="row-middle-cells"><span class="price-text">${money(balancesByCustomer[customer.id]?.previous || 0)}</span><span class="price-text">${money(balancesByCustomer[customer.id]?.current || 0)}</span><span class="credit-balance">${money(balancesByCustomer[customer.id]?.remaining || 0)}</span></div>
         <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${(balancesByCustomer[customer.id]?.accounts || []).map((account) => `${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${account.creditId}" aria-label="Record payment" title="Record payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : ''}<button class="icon-button primary-icon" data-view-payment-history="${account.creditId}" aria-label="Payment history" title="Payment history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`).join('')}</span></div>
       </div>
-    `).join('') || '<div class="empty-state"><p>No customers found</p><small>Add a customer for this branch.</small></div>'}
+    `;
+    }).join('') || '<div class="empty-state"><p>No customers found</p><small>Add a customer for this branch.</small></div>'}
   `;
   table.querySelectorAll('[data-edit-customer]').forEach((button) => button.addEventListener('click', () => openForm('editCustomer', button.dataset.editCustomer)));
   table.querySelectorAll('[data-credit-account]').forEach((button) => button.addEventListener('click', () => openCreditPayment(button.dataset.creditAccount)));
