@@ -3233,9 +3233,14 @@ body::after {
   grid-template-columns: minmax(220px, 2fr) 130px minmax(180px, 1.6fr) 100px 64px;
 }
 
-.workspace[data-view="customers"] .table-row {
+.workspace[data-view="customers"] .table-row:not(.table-header) {
   grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1.5fr) minmax(210px, 1.4fr) minmax(160px, 1fr) 150px;
   min-height: 72px;
+}
+
+.workspace[data-view="customers"] .table-header {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1.5fr) minmax(210px, 1.4fr) minmax(160px, 1fr) 150px;
+  min-height: 42px;
 }
 
 .customer-details-cell {
@@ -3259,6 +3264,9 @@ body::after {
   max-width: 26px;
   padding: 0;
   margin: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  flex: 0 0 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
