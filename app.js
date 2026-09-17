@@ -3026,6 +3026,8 @@ function renderCreditPayments() {
     <div class="table-row table-header">
       <span>Customer</span>
       <span>Credit Sale</span>
+      <span>Credit Date</span>
+      <span>Item Count</span>
       <span>Credit Amount</span>
     </div>
 
