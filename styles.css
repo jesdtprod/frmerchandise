@@ -3234,7 +3234,24 @@ body::after {
 }
 
 .workspace[data-view="customers"] .table-row {
-  grid-template-columns: minmax(300px, 2.2fr) repeat(3, minmax(135px, 1fr)) 150px;
+  grid-template-columns: minmax(360px, 2.3fr) repeat(3, minmax(150px, 1fr)) 140px;
+}
+
+.customer-details-cell {
+  gap: 3px;
+}
+
+.customer-details-cell .product-meta {
+  display: block;
+}
+
+.customer-status-meta {
+  width: fit-content;
+  margin-top: 3px;
+}
+
+.workspace[data-view="customers"] .row-action-cell .table-actions {
+  justify-content: flex-start;
 }
 
 .workspace[data-view="transfers"] .table-row {
