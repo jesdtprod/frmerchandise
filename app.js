@@ -3999,14 +3999,14 @@ function openForm(type, productId = '') {
     </div>
     ${type === 'customer' && canRecordOpeningCredit ? `
       <div class="form-field-group">
-        <label for="modalCustomerOpeningBalance"><span class="label-text">Opening Credit Balance <span class="optional-label">(migration only)</span></span></label>
+        <label for="modalCustomerOpeningBalance"><span class="label-text">Opening Credit Balance <span class="optional-label">(optional)</span></span></label>
         <input id="modalCustomerOpeningBalance" name="openingBalance" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
-        <p class="field-hint">Creates an audited receivable; it is not a sale.</p>
+        <p class="field-hint">Use only when the customer has an unpaid previous balance.</p>
       </div>
       <div class="form-field-group">
-        <label for="modalCustomerMigrationReference"><span class="label-text">Migration Reference</span></label>
+        <label for="modalCustomerMigrationReference"><span class="label-text">Previous Balance Reference</span></label>
         <input id="modalCustomerMigrationReference" name="migrationReference" placeholder="Required when balance is entered" autocomplete="off" />
-        <p class="field-hint">Example: old ledger, invoice, or cutover date.</p>
+        <p class="field-hint">Example: old ledger, invoice, or prior balance date.</p>
       </div>
     ` : ''}
   `;
@@ -4811,7 +4811,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
       const payload = Object.fromEntries(form);
       const openingBalance = Number(payload.openingBalance || 0);
       if (!Number.isFinite(openingBalance) || openingBalance < 0) throw new Error('Enter a valid opening credit balance.');
-      if (openingBalance > 0 && !String(payload.migrationReference || '').trim()) throw new Error('Enter a migration reference for the opening credit balance.');
+      if (openingBalance > 0 && !String(payload.migrationReference || '').trim()) throw new Error('Enter a previous balance reference.');
       const result = await api('createCustomer', { ...payload, openingBalance, branchId: activeBranchId });
       customers = [...customers, result];
       showToast(openingBalance > 0 ? 'Customer and opening credit balance added.' : 'Customer added successfully.', 'success');
