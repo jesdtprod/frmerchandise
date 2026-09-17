@@ -3002,7 +3002,7 @@ function renderCustomers() {
       <div class="table-row">
         <div class="product-cell customer-details-cell"><div class="customer-name-line"><strong class="product-name">${escapeHtml(displayCustomerName(customer.name))}</strong><span class="customer-status-meta stock-pill ${customer.status === 'Active' ? 'stock-normal' : 'stock-low'}" title="${escapeHtml(customer.status)}" aria-label="${escapeHtml(customer.status)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div><span class="product-meta">${escapeHtml(customer.id)}</span></div>
         <div class="row-middle-cells"><div class="product-cell"><strong class="product-name customer-detail-value">${escapeHtml(customer.phone || 'No phone recorded')}</strong><span class="product-meta">${escapeHtml(customer.address || 'No address recorded')}</span></div><div class="product-cell"><strong class="product-name customer-detail-value">Current Credit: ${money(balancesByCustomer[customer.id]?.current || 0)}</strong><span class="product-meta customer-previous-balance">Previous Balance: ${money(balancesByCustomer[customer.id]?.previous || 0)}</span></div><span class="credit-balance">${money(balancesByCustomer[customer.id]?.remaining || 0)}</span></div>
-        <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${(balancesByCustomer[customer.id]?.accounts || []).map((account) => `${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${account.creditId}" aria-label="Record payment" title="Record payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : ''}<button class="icon-button primary-icon" data-view-payment-history="${account.creditId}" aria-label="Payment history" title="Payment history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`).join('')}</span></div>
+        <div class="row-action-cell"><span class="table-actions"><button class="icon-button" data-edit-customer="${customer.id}" aria-label="Edit ${escapeHtml(displayCustomerName(customer.name))}" title="Edit customer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>${(balancesByCustomer[customer.id]?.accounts || []).map((account) => !account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${account.creditId}" aria-label="Record payment" title="Record payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : '').join('')}<button class="icon-button primary-icon" data-view-payment-history="${customer.id}" aria-label="Payment history" title="Payment history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button></span></div>
       </div>
     `;
     }).join('') || '<div class="empty-state"><p>No customers found</p><small>Add a customer for this branch.</small></div>'}
@@ -3097,33 +3097,47 @@ function renderSalesHistory() {
   }));
 }
 
-function openCreditHistory(creditId) {
-  const account = creditAccounts.find((item) => item.creditId === creditId);
-  const saleRecord = salesHistory.find((item) => item.saleId === creditId);
-  const openingRecord = openingCreditAccounts.find((item) => item.creditId === creditId);
-  const payments = creditPayments.filter((item) => (item.creditId || item.saleId) === creditId);
+function openCreditHistory(historyId) {
+  const customer = customers.find((item) => item.id === historyId);
+  const isCustomerHistory = Boolean(customer);
+  const account = creditAccounts.find((item) => item.creditId === historyId);
+  const saleRecord = salesHistory.find((item) => item.saleId === historyId);
+  const openingRecord = openingCreditAccounts.find((item) => item.creditId === historyId);
+  const customerCreditAccounts = isCustomerHistory
+    ? [
+      ...salesHistory.filter((item) => item.customerId === customer.id && String(item.paymentType || '').toLowerCase() === 'credit').map((item) => ({ creditId: item.saleId, total: item.total })),
+      ...openingCreditAccounts.filter((item) => item.customerId === customer.id).map((item) => ({ creditId: item.creditId, total: item.total })),
+    ]
+    : [];
+  const customerCreditIds = new Set(customerCreditAccounts.map((item) => item.creditId));
+  const payments = isCustomerHistory
+    ? creditPayments.filter((item) => customerCreditIds.has(item.creditId || item.saleId))
+    : creditPayments.filter((item) => (item.creditId || item.saleId) === historyId);
 
-  const customerName = account?.customerName || saleRecord?.customerName || openingRecord?.customerName || payments[0]?.customerName || 'Customer';
-  const customerId = account?.customerId || saleRecord?.customerId || openingRecord?.customerId || payments[0]?.customerId || '';
-  const total = account ? Number(account.total) : Number(saleRecord?.total || openingRecord?.total || 0);
-  const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const balance = account ? Number(account.balance) : Math.max(total - paid, 0);
+  const customerName = customer?.name || account?.customerName || saleRecord?.customerName || openingRecord?.customerName || payments[0]?.customerName || 'Customer';
+  const customerId = customer?.id || account?.customerId || saleRecord?.customerId || openingRecord?.customerId || payments[0]?.customerId || '';
+  const total = isCustomerHistory ? customerCreditAccounts.reduce((sum, item) => sum + Number(item.total || 0), 0) : account ? Number(account.total) : Number(saleRecord?.total || openingRecord?.total || 0);
+  const paid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const balance = isCustomerHistory ? Math.max(total - paid, 0) : account ? Number(account.balance) : Math.max(total - paid, 0);
+  const paymentCreditId = isCustomerHistory ? creditAccounts.find((item) => item.customerId === customer.id && Number(item.balance || 0) > 0.00001)?.creditId : historyId;
   const percentPaid = total > 0 ? Math.min(Math.round((paid / total) * 100), 100) : 0;
 
   const titleEl = $('#creditHistoryCustomerName');
   const subtitleEl = $('#creditHistorySaleSubtitle');
   if (titleEl) titleEl.textContent = displayCustomerName(customerName);
-  if (subtitleEl) subtitleEl.textContent = `${account?.sourceLabel || (openingRecord ? 'Previous Balance' : 'Credit Sale')}: ${account?.reference || openingRecord?.reference || creditId}${customerId ? ` • ${customerId}` : ''}`;
+  if (subtitleEl) subtitleEl.textContent = isCustomerHistory
+    ? `All credit accounts - ${customerId}`
+    : `${account?.sourceLabel || (openingRecord ? 'Previous Balance' : 'Credit Sale')}: ${account?.reference || openingRecord?.reference || historyId}${customerId ? ` - ${customerId}` : ''}`;
 
   const summaryEl = $('#creditHistoryModalSummary');
   if (summaryEl) {
     summaryEl.innerHTML = `
       <div class="credit-modal-stat">
-        <span class="credit-modal-stat-label">Original Amount</span>
+        <span class="credit-modal-stat-label">Total Credit</span>
         <strong class="credit-modal-stat-val">${money(total)}</strong>
       </div>
       <div class="credit-modal-stat emerald">
-        <span class="credit-modal-stat-label">Total Paid (${percentPaid}%)</span>
+        <span class="credit-modal-stat-label">Payments Made (${percentPaid}%)</span>
         <strong class="credit-modal-stat-val emerald">${money(paid)}</strong>
       </div>
       <div class="credit-modal-stat gold">
@@ -3139,7 +3153,7 @@ function openCreditHistory(creditId) {
       listEl.innerHTML = `
         <div class="empty-state" style="padding: 24px 12px;">
           <p>No payments recorded yet</p>
-          <small>No payments have been posted for this credit account.</small>
+          <small>No payments have been posted for this customer credit.</small>
         </div>
       `;
     } else {
@@ -3177,17 +3191,17 @@ function openCreditHistory(creditId) {
 
   const recordBtn = $('#creditHistoryRecordNewBtn');
   if (recordBtn) {
-    recordBtn.style.display = balance > 0 ? 'inline-flex' : 'none';
+    recordBtn.style.display = balance > 0 && paymentCreditId ? 'inline-flex' : 'none';
     recordBtn.onclick = () => {
       $('#creditHistoryDialog').close();
-      openCreditPayment(creditId);
+      openCreditPayment(paymentCreditId);
     };
   }
 
   listEl.querySelectorAll('[data-modal-delete-payment]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await deleteCreditPayment(btn.dataset.modalDeletePayment);
-      openCreditHistory(creditId);
+      openCreditHistory(historyId);
     });
   });
 
