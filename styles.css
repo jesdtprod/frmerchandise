@@ -3253,11 +3253,22 @@ body::after {
 }
 
 .customer-status-meta {
-  width: fit-content;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.customer-detail-value { font-size: 14px; }
+.customer-status-meta svg {
+  width: 14px;
+  height: 14px;
+}
+
+.customer-detail-value { font-size: 13px; }
 
 .customer-previous-balance {
   font-size: 13px;
@@ -3265,7 +3276,7 @@ body::after {
 }
 
 .workspace[data-view="customers"] .credit-balance {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .workspace[data-view="customers"] .row-action-cell .table-actions {
