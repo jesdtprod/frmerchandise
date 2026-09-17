@@ -3234,7 +3234,7 @@ body::after {
 }
 
 .workspace[data-view="customers"] .table-row {
-  grid-template-columns: minmax(360px, 2.3fr) repeat(3, minmax(150px, 1fr)) 140px;
+  grid-template-columns: minmax(360px, 2.4fr) minmax(160px, 1fr) 140px;
 }
 
 .customer-details-cell {
@@ -9068,7 +9068,7 @@ dialog.confirm-dialog {
   }
 
   .workspace[data-view="customers"] .table-row .product-cell { grid-area: prod; }
-  .workspace[data-view="customers"] .table-row .row-middle-cells { grid-area: details; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: center; }
+  .workspace[data-view="customers"] .table-row .row-middle-cells { grid-area: details; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 10px; align-items: center; }
   .workspace[data-view="customers"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
   .workspace[data-view="credits"] .table-row:not(.table-header) {
