@@ -13,6 +13,7 @@ let customers = [];
 let transfers = [];
 let creditAccounts = [];
 let creditPayments = [];
+let openingCreditAccounts = [];
 let pendingCreditAccount = null;
 let salesHistory = [];
 let inventoryReportData = {};
@@ -115,18 +116,25 @@ function saleDateKey(value) {
   return Number.isNaN(date.getTime()) ? '' : formatDateInput(date);
 }
 
-function calculateOutstandingCreditAccounts(sales, payments) {
-  const paidBySale = payments.reduce((totals, payment) => {
-    totals[payment.saleId] = (totals[payment.saleId] || 0) + Number(payment.amount || 0);
+function calculateOutstandingCreditAccounts(sales, payments, openingAccounts = []) {
+  const paidByCredit = payments.reduce((totals, payment) => {
+    const creditId = payment.creditId || payment.saleId;
+    totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
     return totals;
   }, {});
-  return sales
+  const saleAccounts = sales
     .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
     .map((sale) => {
       const total = Number(sale.total || 0);
-      const paid = paidBySale[sale.saleId] || 0;
-      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance: Math.max(total - paid, 0) };
-    })
+      const paid = paidByCredit[sale.saleId] || 0;
+      return { creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', sourceLabel: 'Credit Sale', customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance: Math.max(total - paid, 0) };
+    });
+  const migrationAccounts = openingAccounts.map((account) => {
+    const total = Number(account.total || 0);
+    const paid = paidByCredit[account.creditId] || 0;
+    return { ...account, sourceType: 'opening_balance', sourceLabel: 'Opening Balance', total, paid, balance: Math.max(total - paid, 0) };
+  });
+  return [...saleAccounts, ...migrationAccounts]
     .filter((account) => account.balance > 0.00001)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
@@ -643,11 +651,12 @@ async function getAppData_(branchId) {
     client.from('sales').select('*').eq('branch_id', branchId),
     client.from('sale_items').select('*'),
     client.from('credit_payments').select('*').eq('branch_id', branchId),
+    client.from('customer_credit_accounts').select('*').eq('branch_id', branchId),
     client.from('stock_ins').select('*').eq('branch_id', branchId),
     client.rpc('get_branch_selling_price_batches', { target_branch_id: branchId }),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, stockInRows, sellingPriceBatchRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -673,6 +682,7 @@ async function getAppData_(branchId) {
     };
   });
   const paidBySale = paymentRows.reduce((totals, row) => {
+    if (!row.sale_id) return totals;
     totals[row.sale_id] = (totals[row.sale_id] || 0) + Number(row.amount || 0);
     return totals;
   }, {});
@@ -707,8 +717,8 @@ async function getAppData_(branchId) {
     products: catalogProducts,
     customers: customerRows.map((row) => ({ id: row.customer_id, branchId: row.branch_id, name: row.name, phone: row.phone || '', address: row.address || '', status: row.status || 'Active' })),
     transfers: transferRows.map((row) => ({ id: row.transfer_id, sourceBranchId: row.source_branch_id, destinationBranchId: row.destination_branch_id, sourceBranchName: branchMap[row.source_branch_id]?.name || row.source_branch_id, destinationBranchName: branchMap[row.destination_branch_id]?.name || row.destination_branch_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || '', qty: Number(row.qty), status: row.status, createdAt: row.created_at, dispatchedAt: row.dispatched_at, receivedAt: row.received_at, notes: row.notes || '' })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    creditAccounts: salesHistory.filter((sale) => sale.paymentType === 'credit' && sale.creditBalance > 0).map((sale) => ({ saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total: sale.total, paid: sale.creditPaid, balance: sale.creditBalance })),
-    creditPayments: paymentRows.map((row) => ({ id: row.payment_id, saleId: row.sale_id, customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
+    openingCreditAccounts: openingCreditRows.map((row) => ({ creditId: row.credit_account_id, customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', date: row.occurred_at, total: Number(row.original_amount || 0), reference: row.migration_reference || '' })),
+    creditPayments: paymentRows.map((row) => ({ id: row.payment_id, creditId: row.credit_account_id || row.sale_id, saleId: row.sale_id || '', customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
     salesHistory,
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
@@ -815,10 +825,17 @@ async function api(action, payload = {}) {
     return data;
   }
   if (action === 'createCustomer') {
-    const row = { customer_id: newPosId_('CUS'), branch_id: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active' };
-    const { data, error } = await client.from('customers').insert(row).select().single();
+    const { data, error } = await client.rpc('create_customer_with_opening_balance', {
+      target_branch_id: payload.branchId,
+      customer_name_input: String(payload.name).trim(),
+      customer_phone_input: String(payload.phone || '').trim(),
+      customer_address_input: String(payload.address || '').trim(),
+      customer_status_input: payload.status || 'Active',
+      opening_balance_input: Number(payload.openingBalance || 0),
+      migration_reference_input: String(payload.migrationReference || '').trim(),
+    });
     throwIfError_(error);
-    return { id: data.customer_id, branchId: data.branch_id, name: data.name, phone: data.phone, address: data.address, status: data.status };
+    return { id: data.customerId, branchId: payload.branchId, name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active', openingBalance: Number(data.openingBalance || 0) };
   }
   if (action === 'updateCustomer') {
     const { data, error } = await client.from('customers').update({ name: String(payload.name).trim(), phone: String(payload.phone || '').trim(), address: String(payload.address || '').trim(), status: payload.status || 'Active' }).eq('customer_id', payload.customerId).eq('branch_id', payload.branchId).select().single();
@@ -2967,32 +2984,38 @@ function renderCreditPayments() {
   const table = $('#inventoryTable');
   if (!table) return;
 
-  // Build all credit accounts from salesHistory (including fully-paid ones)
-  const paidBySale = creditPayments.reduce((totals, payment) => {
-    totals[payment.saleId] = (totals[payment.saleId] || 0) + Number(payment.amount || 0);
+  // Include both credit sales and opening balances, including fully-paid accounts.
+  const paidByCredit = creditPayments.reduce((totals, payment) => {
+    const creditId = payment.creditId || payment.saleId;
+    totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
     return totals;
   }, {});
-
-  const allCreditAccounts = salesHistory
+  const saleCreditAccounts = salesHistory
     .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
     .map((sale) => {
       const total = Number(sale.total || 0);
-      const paid = paidBySale[sale.saleId] || 0;
+      const paid = paidByCredit[sale.saleId] || 0;
       const balance = Math.max(total - paid, 0);
-      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance, isPaid: balance <= 0.00001 };
-    })
+      return { creditId: sale.saleId, saleId: sale.saleId, sourceType: 'sale', sourceLabel: 'Credit Sale', customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, paid, balance, isPaid: balance <= 0.00001 };
+    });
+  const allCreditAccounts = [...saleCreditAccounts, ...openingCreditAccounts.map((account) => {
+    const total = Number(account.total || 0);
+    const paid = paidByCredit[account.creditId] || 0;
+    const balance = Math.max(total - paid, 0);
+    return { ...account, sourceType: 'opening_balance', sourceLabel: 'Opening Balance', total, paid, balance, isPaid: balance <= 0.00001 };
+  })]
     .sort((a, b) => {
       // Sort: outstanding first, then by date
       if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
       return new Date(a.date) - new Date(b.date);
     });
 
-  const accounts = allCreditAccounts.filter((account) => `${account.saleId} ${account.customerName}`.toLowerCase().includes(term));
+  const accounts = allCreditAccounts.filter((account) => `${account.creditId} ${account.customerName} ${account.reference || ''}`.toLowerCase().includes(term));
 
   table.innerHTML = `
     <div class="table-row table-header">
       <span>Customer</span>
-      <span>Credit Sale</span>
+      <span>Credit Account</span>
       <span>Original Amount</span>
       <span>Amount Due</span>
       <span>Action</span>
@@ -3001,7 +3024,7 @@ function renderCreditPayments() {
     ${accounts.map((account) => {
       const total = Number(account.total) || 0;
       const balance = Number(account.balance) || 0;
-      const historyCount = creditPayments.filter((p) => p.saleId === account.saleId).length;
+      const historyCount = creditPayments.filter((p) => (p.creditId || p.saleId) === account.creditId).length;
       return `
         <div class="table-row">
           <div class="product-cell">
@@ -3010,27 +3033,27 @@ function renderCreditPayments() {
           </div>
           <div class="row-middle-cells">
             <div class="product-cell">
-              <strong class="product-name">${escapeHtml(account.saleId)}</strong>
-              <span class="product-meta">${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span>
+              <strong class="product-name">${escapeHtml(account.sourceLabel)}</strong>
+              <span class="product-meta">${escapeHtml(account.reference || account.creditId)}${account.date ? ` &bull; ${escapeHtml(new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }))}` : ''}</span>
             </div>
             <span class="price-text">${money(total)}</span>
             <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(balance)}</span>
           </div>
           <div class="row-action-cell">
             <span class="table-actions">
-              ${!account.isPaid ? `<button class="icon-button success-icon" data-credit-sale="${escapeHtml(account.saleId)}" aria-label="Record Payment" title="Record Payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : '<span style="width:32px;"></span>'}
-              <button class="icon-button primary-icon" data-view-payment-history="${escapeHtml(account.saleId)}" aria-label="Payment History (${historyCount})" title="Payment History (${historyCount} recorded)">
+              ${!account.isPaid ? `<button class="icon-button success-icon" data-credit-account="${escapeHtml(account.creditId)}" aria-label="Record Payment" title="Record Payment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M12 15h.01"/></svg></button>` : '<span style="width:32px;"></span>'}
+              <button class="icon-button primary-icon" data-view-payment-history="${escapeHtml(account.creditId)}" aria-label="Payment History (${historyCount})" title="Payment History (${historyCount} recorded)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </button>
             </span>
           </div>
         </div>
       `;
-    }).join('') || '<div class="empty-state"><p>No credit sales found</p><small>Credit sales for the selected branch will appear here.</small></div>'}
+    }).join('') || '<div class="empty-state"><p>No credit accounts found</p><small>Credit sales and opening balances will appear here.</small></div>'}
   `;
 
-  table.querySelectorAll('[data-credit-sale]').forEach((button) => {
-    button.addEventListener('click', () => openCreditPayment(button.dataset.creditSale));
+  table.querySelectorAll('[data-credit-account]').forEach((button) => {
+    button.addEventListener('click', () => openCreditPayment(button.dataset.creditAccount));
   });
 
   table.querySelectorAll('[data-view-payment-history]').forEach((button) => {
@@ -3087,15 +3110,15 @@ function renderSalesHistory() {
   }));
 }
 
-function openCreditHistory(saleId) {
-  const account = creditAccounts.find((item) => item.saleId === saleId);
-  // Fall back to salesHistory to get the original sale for fully-paid accounts
-  const saleRecord = salesHistory.find((item) => item.saleId === saleId);
-  const payments = creditPayments.filter((item) => item.saleId === saleId);
+function openCreditHistory(creditId) {
+  const account = creditAccounts.find((item) => item.creditId === creditId);
+  const saleRecord = salesHistory.find((item) => item.saleId === creditId);
+  const openingRecord = openingCreditAccounts.find((item) => item.creditId === creditId);
+  const payments = creditPayments.filter((item) => (item.creditId || item.saleId) === creditId);
 
-  const customerName = account?.customerName || saleRecord?.customerName || payments[0]?.customerName || 'Customer';
-  const customerId = account?.customerId || saleRecord?.customerId || payments[0]?.customerId || '';
-  const total = account ? Number(account.total) : Number(saleRecord?.total || 0);
+  const customerName = account?.customerName || saleRecord?.customerName || openingRecord?.customerName || payments[0]?.customerName || 'Customer';
+  const customerId = account?.customerId || saleRecord?.customerId || openingRecord?.customerId || payments[0]?.customerId || '';
+  const total = account ? Number(account.total) : Number(saleRecord?.total || openingRecord?.total || 0);
   const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = account ? Number(account.balance) : Math.max(total - paid, 0);
   const percentPaid = total > 0 ? Math.min(Math.round((paid / total) * 100), 100) : 0;
@@ -3103,13 +3126,13 @@ function openCreditHistory(saleId) {
   const titleEl = $('#creditHistoryCustomerName');
   const subtitleEl = $('#creditHistorySaleSubtitle');
   if (titleEl) titleEl.textContent = displayCustomerName(customerName);
-  if (subtitleEl) subtitleEl.textContent = `${saleId}${customerId ? ` • ${customerId}` : ''}`;
+  if (subtitleEl) subtitleEl.textContent = `${account?.sourceLabel || (openingRecord ? 'Opening Balance' : 'Credit Sale')}: ${account?.reference || openingRecord?.reference || creditId}${customerId ? ` • ${customerId}` : ''}`;
 
   const summaryEl = $('#creditHistoryModalSummary');
   if (summaryEl) {
     summaryEl.innerHTML = `
       <div class="credit-modal-stat">
-        <span class="credit-modal-stat-label">Original Sale</span>
+        <span class="credit-modal-stat-label">Original Amount</span>
         <strong class="credit-modal-stat-val">${money(total)}</strong>
       </div>
       <div class="credit-modal-stat emerald">
@@ -3129,7 +3152,7 @@ function openCreditHistory(saleId) {
       listEl.innerHTML = `
         <div class="empty-state" style="padding: 24px 12px;">
           <p>No payments recorded yet</p>
-          <small>No payments have been posted for this credit sale.</small>
+          <small>No payments have been posted for this credit account.</small>
         </div>
       `;
     } else {
@@ -3170,14 +3193,14 @@ function openCreditHistory(saleId) {
     recordBtn.style.display = balance > 0 ? 'inline-flex' : 'none';
     recordBtn.onclick = () => {
       $('#creditHistoryDialog').close();
-      openCreditPayment(saleId);
+      openCreditPayment(creditId);
     };
   }
 
   listEl.querySelectorAll('[data-modal-delete-payment]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await deleteCreditPayment(btn.dataset.modalDeletePayment);
-      openCreditHistory(saleId);
+      openCreditHistory(creditId);
     });
   });
 
@@ -3187,12 +3210,12 @@ function openCreditHistory(saleId) {
   }
 }
 
-function openCreditPayment(saleId) {
-  const account = creditAccounts.find((item) => item.saleId === saleId);
+function openCreditPayment(creditId) {
+  const account = creditAccounts.find((item) => item.creditId === creditId);
   if (!account) return;
   pendingCreditAccount = account;
   $('#creditCustomer').value = displayCustomerName(account.customerName);
-  $('#creditSaleId').value = account.saleId;
+  $('#creditSaleId').value = account.sourceLabel || 'Credit Account';
   $('#creditBalance').value = account.balance.toFixed(2);
   $('#creditAmount').value = '0.00';
   $('#creditAmount').max = account.balance.toFixed(2);
@@ -3218,7 +3241,7 @@ async function deleteCreditPayment(paymentId) {
     await api('deleteCreditPayment', { paymentId, branchId: activeBranchId });
     // Optimistic: remove payment from local array and recalculate credit accounts
     creditPayments = creditPayments.filter((p) => p.id !== paymentId);
-    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     renderInventory();
     showToast('Credit payment deleted. Balance updated.', 'success');
     backgroundRefresh();
@@ -3674,7 +3697,8 @@ async function refresh(showSkeleton = true) {
     transfers = data.transfers || [];
     creditPayments = data.creditPayments || [];
     salesHistory = data.salesHistory || [];
-    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    openingCreditAccounts = data.openingCreditAccounts || [];
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
     stockInHistory = data.stockInHistory || [];
     sellingPriceBatches = data.sellingPriceBatches || [];
@@ -3706,6 +3730,8 @@ function openForm(type, productId = '') {
   const product = products.find((item) => item.id === productId);
   const branch = branches.find((item) => item.id === productId);
   const customer = customers.find((item) => item.id === productId);
+  const permissions = currentSession?.account?.permissions || ['*'];
+  const canRecordOpeningCredit = permissions.includes('*') || permissions.includes('credits');
   editingProductId = productId;
 
   const formMeta = {
@@ -3971,6 +3997,18 @@ function openForm(type, productId = '') {
         <input id="modalCustomerAddress" name="address" placeholder="Street, barangay, city" value="${escapeHtml(customer?.address || '')}" autocomplete="street-address" />
       </div>
     </div>
+    ${type === 'customer' && canRecordOpeningCredit ? `
+      <div class="form-field-group">
+        <label for="modalCustomerOpeningBalance"><span class="label-text">Opening Credit Balance <span class="optional-label">(migration only)</span></span></label>
+        <input id="modalCustomerOpeningBalance" name="openingBalance" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
+        <p class="field-hint">Creates an audited receivable; it is not a sale.</p>
+      </div>
+      <div class="form-field-group">
+        <label for="modalCustomerMigrationReference"><span class="label-text">Migration Reference</span></label>
+        <input id="modalCustomerMigrationReference" name="migrationReference" placeholder="Required when balance is entered" autocomplete="off" />
+        <p class="field-hint">Example: old ledger, invoice, or cutover date.</p>
+      </div>
+    ` : ''}
   `;
 
   const destinationBranches = branches.filter((item) => item.id !== activeBranchId && item.status === 'Active');
@@ -4770,9 +4808,13 @@ $('#modalForm').addEventListener('submit', async (event) => {
       renderBranchSelector();
       showToast('Branch updated successfully.', 'success');
     } else if (activeForm === 'customer') {
-      const result = await api('createCustomer', { ...Object.fromEntries(form), branchId: activeBranchId });
+      const payload = Object.fromEntries(form);
+      const openingBalance = Number(payload.openingBalance || 0);
+      if (!Number.isFinite(openingBalance) || openingBalance < 0) throw new Error('Enter a valid opening credit balance.');
+      if (openingBalance > 0 && !String(payload.migrationReference || '').trim()) throw new Error('Enter a migration reference for the opening credit balance.');
+      const result = await api('createCustomer', { ...payload, openingBalance, branchId: activeBranchId });
       customers = [...customers, result];
-      showToast('Customer added successfully.', 'success');
+      showToast(openingBalance > 0 ? 'Customer and opening credit balance added.' : 'Customer added successfully.', 'success');
     } else if (activeForm === 'editCustomer') {
       const result = await api('updateCustomer', { ...Object.fromEntries(form), customerId: editingProductId, branchId: activeBranchId });
       customers = customers.map((c) => c.id === editingProductId ? { ...c, ...result } : c);
@@ -4926,14 +4968,14 @@ $('#creditPaymentForm').addEventListener('submit', async (event) => {
   try {
     const payment = await api('recordCreditPayment', {
       branchId: activeBranchId,
-      saleId: pendingCreditAccount.saleId,
+      saleId: pendingCreditAccount.creditId,
       amount,
       notes: $('#creditNotes').value.trim(),
     });
     $('#creditPaymentDialog').close();
     // Optimistic: add the payment locally and recalculate balances
-    creditPayments = [{ id: `CPY-OPT-${Date.now()}`, saleId: pendingCreditAccount.saleId, customerId: pendingCreditAccount.customerId, customerName: pendingCreditAccount.customerName, amount, date: new Date().toISOString(), notes: $('#creditNotes').value.trim() }, ...creditPayments];
-    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+    creditPayments = [{ id: `CPY-OPT-${Date.now()}`, creditId: pendingCreditAccount.creditId, saleId: pendingCreditAccount.saleId || '', customerId: pendingCreditAccount.customerId, customerName: pendingCreditAccount.customerName, amount, date: new Date().toISOString(), notes: $('#creditNotes').value.trim() }, ...creditPayments];
+    creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     renderInventory();
     showToast(`Payment recorded. Remaining balance: ${money(payment.balance)}.`, 'success');
     backgroundRefresh();
@@ -5182,7 +5224,7 @@ $('#saleForm').addEventListener('submit', async (event) => {
     await refresh(false);
     salesHistory = [{ ...sale, customerName, customerId, items: receiptItems, status: 'completed' }, ...salesHistory];
     if (values.paymentType === 'credit') {
-      creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments);
+      creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     }
     renderInventory();
     renderCart();

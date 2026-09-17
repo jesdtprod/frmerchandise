@@ -84,6 +84,7 @@ Deno.serve(async (request) => {
       admin.from('stock_transfers').select('*').order('transfer_id'),
       admin.from('sales').select('*').order('sale_id'),
       admin.from('sale_items').select('*').order('sale_item_id'),
+      admin.from('customer_credit_accounts').select('*').order('credit_account_id'),
       admin.from('credit_payments').select('*').order('payment_id'),
       admin.from('inventory_cost_batches').select('*').order('branch_id').order('product_id').order('received_at'),
       admin.from('sale_item_cost_allocations').select('*').order('sale_item_id'),
@@ -99,8 +100,8 @@ Deno.serve(async (request) => {
       createdAt: new Date().toISOString(),
       tables: {
         branches: rows[0], products: rows[1], branchProducts: rows[2], customers: rows[3], inventory: rows[4],
-        stockIns: rows[5], stockTransfers: rows[6], sales: rows[7], saleItems: rows[8], creditPayments: rows[9],
-        inventoryCostBatches: rows[10], saleItemCostAllocations: rows[11], saleItemPriceAllocations: rows[12], transferBatchAllocations: rows[13],
+        stockIns: rows[5], stockTransfers: rows[6], sales: rows[7], saleItems: rows[8], customerCreditAccounts: rows[9], creditPayments: rows[10],
+        inventoryCostBatches: rows[11], saleItemCostAllocations: rows[12], saleItemPriceAllocations: rows[13], transferBatchAllocations: rows[14],
       },
     });
   }

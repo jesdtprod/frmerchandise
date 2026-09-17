@@ -8,6 +8,7 @@ const files = {
   fifoSellingPrices: await readFile(new URL('../supabase/migrations/20260915198000_fifo_batch_selling_prices.sql', import.meta.url), 'utf8'),
   safeArchiving: await readFile(new URL('../supabase/migrations/20260915199000_safe_product_archiving.sql', import.meta.url), 'utf8'),
   transferSellingPrices: await readFile(new URL('../supabase/migrations/20260915200000_transfer_fifo_selling_prices.sql', import.meta.url), 'utf8'),
+  openingCreditBalances: await readFile(new URL('../supabase/migrations/20260917001000_customer_opening_credit_balances.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -25,6 +26,9 @@ const checks = [
   ['catalog price follows the cart batch currently reached', /displayedSellingPrice[\s\S]*breakdown\[breakdown\.length - 1\]/.test(files.app)],
   ['used products are archived instead of deleting historical stock-ins', /stock_ins[\s\S]*Archived product/.test(files.safeArchiving)],
   ['transfers preserve each FIFO selling-price batch', /transfer_batch_allocations[\s\S]*selling_price[\s\S]*Received FIFO selling-price transfer/.test(files.transferSellingPrices)],
+  ['customer migration balances use a separate audited credit account', /customer_credit_accounts[\s\S]*opening_balance[\s\S]*create_customer_with_opening_balance/.test(files.openingCreditBalances)],
+  ['opening balance payments cannot be mistaken for sales', /credit_payments_one_credit_source[\s\S]*record_credit_payment/.test(files.openingCreditBalances)],
+  ['operational backups include opening credit accounts', /customerCreditAccounts/.test(files.accountFunction)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);
