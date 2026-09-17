@@ -3257,7 +3257,16 @@ body::after {
   margin: 0;
 }
 
-.customer-detail-value { font-size: 13px; }
+.customer-detail-value { font-size: 14px; }
+
+.customer-previous-balance {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workspace[data-view="customers"] .credit-balance {
+  font-size: 15px;
+}
 
 .workspace[data-view="customers"] .row-action-cell .table-actions {
   justify-content: flex-start;
