@@ -975,7 +975,7 @@ function renderSkeletonTable() {
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'credits'
-    ? ['Customer', 'Contact', 'Credit Sale', 'Credit Amount', 'Remaining Balance']
+    ? ['Customer', 'Credit Sale', 'Credit Amount']
     : activeView === 'sales'
     ? ['Receipt', 'Date and Time', 'Customer', 'Payment', 'Total', 'Action']
     : activeView === 'staffAccounts'
@@ -1036,7 +1036,6 @@ function renderSkeletonTable() {
       return `
         <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:105px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:70px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line price" style="width:80px;"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line price" style="width:80px;"></div></div>
       `;
     }
     if (activeView === 'sales') {
@@ -1074,7 +1073,7 @@ function renderSkeletonTable() {
     `;
   };
 
-  const hasAction = !['inventory', 'inventoryReports'].includes(activeView);
+  const hasAction = !['inventory', 'inventoryReports', 'credits'].includes(activeView);
 
   const getSkeletonActionCell = () => {
     if (!hasAction) return '';
@@ -3034,10 +3033,8 @@ function renderCreditPayments() {
   table.innerHTML = `
     <div class="table-row table-header">
       <span>Customer</span>
-      <span>Contact</span>
       <span>Credit Sale</span>
       <span>Credit Amount</span>
-      <span>Remaining Balance</span>
     </div>
 
     ${accounts.map((account) => {
@@ -3046,16 +3043,12 @@ function renderCreditPayments() {
         <div class="table-row">
           <div class="product-cell">
             <strong class="product-name">${escapeHtml(displayCustomerName(account.customerName))}</strong>
-            <span class="product-meta">${escapeHtml(account.customerId)}</span>
+            <span class="product-meta">${escapeHtml(account.customerId)} &middot; ${escapeHtml(customer?.phone || 'No phone recorded')}</span>
+            <span class="product-meta">${escapeHtml(customer?.address || 'No address recorded')}</span>
           </div>
           <div class="row-middle-cells">
-            <div class="product-cell">
-              <strong class="product-name customer-detail-value">${escapeHtml(customer?.phone || 'No phone recorded')}</strong>
-              <span class="product-meta">${escapeHtml(customer?.address || 'No address recorded')}</span>
-            </div>
             <div class="product-cell"><strong class="product-name">${escapeHtml(account.saleId)}</strong><span class="product-meta">${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></div>
-            <span class="price-text">${money(account.total)}</span>
-            <span class="credit-balance ${account.isPaid ? 'credit-balance-paid' : ''}">${account.isPaid ? '<span class="credit-paid-pill">PAID</span>' : money(account.balance)}</span>
+            <div class="product-cell"><strong class="price-text">${money(account.total)}</strong><span class="product-meta">${account.isPaid ? 'Remaining Balance: Paid' : `Remaining Balance: ${money(account.balance)}`}</span></div>
           </div>
         </div>
       `;

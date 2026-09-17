@@ -3291,7 +3291,7 @@ body::after {
 }
 
 .workspace[data-view="credits"] .table-row {
-  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr));
+  grid-template-columns: minmax(300px, 2fr) minmax(180px, 1.2fr) minmax(190px, 1fr);
 }
 
 .workspace[data-view="credits"] .row-action-cell {
