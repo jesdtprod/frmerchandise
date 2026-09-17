@@ -975,7 +975,7 @@ function renderSkeletonTable() {
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'credits'
-    ? ['Customer', 'Credit Sale', 'Credit Amount']
+    ? ['Customer', 'Credit Sale', 'Credit Date', 'Item Count', 'Credit Amount']
     : activeView === 'sales'
     ? ['Receipt', 'Date and Time', 'Customer', 'Payment', 'Total', 'Action']
     : activeView === 'staffAccounts'
@@ -1034,7 +1034,9 @@ function renderSkeletonTable() {
     }
     if (activeView === 'credits') {
       return `
-        <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:105px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:70px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line text" style="width:105px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line text" style="width:90px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line qty" style="width:50px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line price" style="width:80px;"></div></div>
       `;
     }
@@ -3014,19 +3016,9 @@ function renderCreditPayments() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-  const paidByCredit = creditPayments.reduce((totals, payment) => {
-    const creditId = payment.creditId || payment.saleId;
-    totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
-    return totals;
-  }, {});
   const accounts = salesHistory
     .filter((sale) => String(sale.paymentType || '').toLowerCase() === 'credit')
-    .map((sale) => {
-      const total = Number(sale.total || 0);
-      const paid = paidByCredit[sale.saleId] || 0;
-      const balance = Math.max(total - paid, 0);
-      return { saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total, balance, isPaid: balance <= 0.00001 };
-    })
+    .map((sale) => ({ saleId: sale.saleId, customerId: sale.customerId, customerName: sale.customerName, date: sale.date, total: Number(sale.total || 0), itemCount: (sale.items || []).reduce((count, item) => count + Number(item.qty || 0), 0) }))
     .filter((sale) => `${sale.saleId} ${sale.customerName}`.toLowerCase().includes(term))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -3038,17 +3030,17 @@ function renderCreditPayments() {
     </div>
 
     ${accounts.map((account) => {
-      const customer = customers.find((item) => item.id === account.customerId);
       return `
         <div class="table-row">
           <div class="product-cell">
             <strong class="product-name">${escapeHtml(displayCustomerName(account.customerName))}</strong>
-            <span class="product-meta">${escapeHtml(account.customerId)} &middot; ${escapeHtml(customer?.phone || 'No phone recorded')}</span>
-            <span class="product-meta">${escapeHtml(customer?.address || 'No address recorded')}</span>
+            <span class="product-meta">${escapeHtml(account.customerId)}</span>
           </div>
           <div class="row-middle-cells">
-            <div class="product-cell"><strong class="product-name">${escapeHtml(account.saleId)}</strong><span class="product-meta">${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></div>
-            <div class="product-cell"><strong class="price-text">${money(account.total)}</strong><span class="product-meta">${account.isPaid ? 'Remaining Balance: Paid' : `Remaining Balance: ${money(account.balance)}`}</span></div>
+            <strong class="product-name">${escapeHtml(account.saleId)}</strong>
+            <span>${escapeHtml(account.date ? new Date(account.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span>
+            <span>${account.itemCount.toLocaleString('en-PH')}</span>
+            <strong class="price-text">${money(account.total)}</strong>
           </div>
         </div>
       `;

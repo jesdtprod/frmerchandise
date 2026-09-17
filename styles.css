@@ -3299,7 +3299,7 @@ body::after {
 }
 
 .workspace[data-view="credits"] .table-row {
-  grid-template-columns: minmax(300px, 2fr) minmax(180px, 1.2fr) minmax(190px, 1fr);
+  grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
 }
 
 .workspace[data-view="credits"] .row-action-cell {
