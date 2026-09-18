@@ -11,6 +11,7 @@ const files = {
   openingCreditBalances: await readFile(new URL('../supabase/migrations/20260917001000_customer_opening_credit_balances.sql', import.meta.url), 'utf8'),
   bundles: await readFile(new URL('../supabase/migrations/20260918000000_bundles_returns_replacements.sql', import.meta.url), 'utf8'),
   multiLineTransfers: await readFile(new URL('../supabase/migrations/20260918003000_multi_line_bundle_transfers.sql', import.meta.url), 'utf8'),
+  transferBatchActions: await readFile(new URL('../supabase/migrations/20260918004000_transfer_batch_actions.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -38,6 +39,7 @@ const checks = [
   ['multi-line transfers validate combined component demand before drafting', /create_transfer_batch[\s\S]*required_components[\s\S]*Insufficient source stock/.test(files.multiLineTransfers)],
   ['bundle transfers enable the destination bundle automatically', /branch_products[\s\S]*destination_branch_id_input[\s\S]*product_row\.bundle_price/.test(files.multiLineTransfers)],
   ['transfer form accepts multiple individual products and bundles', /readTransferLines_[\s\S]*createTransferBatch/.test(files.app)],
+  ['transfer batches dispatch, receive, and cancel all component lines atomically', /process_transfer_batch[\s\S]*dispatch_transfer[\s\S]*receive_transfer[\s\S]*cancel_transfer/.test(files.transferBatchActions)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

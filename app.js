@@ -753,7 +753,7 @@ async function getAppData_(branchId) {
     inventory,
     products: catalogProducts,
     customers: customerRows.map((row) => ({ id: row.customer_id, branchId: row.branch_id, name: row.name, phone: row.phone || '', address: row.address || '', status: row.status || 'Active' })),
-    transfers: transferRows.map((row) => ({ id: row.transfer_id, sourceBranchId: row.source_branch_id, destinationBranchId: row.destination_branch_id, sourceBranchName: branchMap[row.source_branch_id]?.name || row.source_branch_id, destinationBranchName: branchMap[row.destination_branch_id]?.name || row.destination_branch_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || '', qty: Number(row.qty), status: row.status, createdAt: row.created_at, dispatchedAt: row.dispatched_at, receivedAt: row.received_at, notes: row.notes || '' })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    transfers: transferRows.map((row) => ({ id: row.transfer_id, batchId: row.transfer_batch_id || '', sourceBranchId: row.source_branch_id, destinationBranchId: row.destination_branch_id, sourceBranchName: branchMap[row.source_branch_id]?.name || row.source_branch_id, destinationBranchName: branchMap[row.destination_branch_id]?.name || row.destination_branch_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || '', qty: Number(row.qty), status: row.status, createdAt: row.created_at, dispatchedAt: row.dispatched_at, receivedAt: row.received_at, notes: row.notes || '' })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
     openingCreditAccounts: openingCreditRows.map((row) => ({ creditId: row.credit_account_id, sourceType: row.source_type || 'previous_balance', customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', date: row.occurred_at, total: Number(row.original_amount || 0), reference: row.migration_reference || '' })),
     creditPayments: paymentRows.map((row) => ({ id: row.payment_id, creditId: row.credit_account_id || row.sale_id, saleId: row.sale_id || '', customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
     salesHistory,
@@ -865,6 +865,11 @@ async function api(action, payload = {}) {
   if (action === 'dispatchTransfer' || action === 'receiveTransfer' || action === 'cancelTransfer') {
     const rpcName = { dispatchTransfer: 'dispatch_transfer', receiveTransfer: 'receive_transfer', cancelTransfer: 'cancel_transfer' }[action];
     const { data, error } = await client.rpc(rpcName, { target_transfer_id: payload.transferId });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'processTransferBatch') {
+    const { data, error } = await client.rpc('process_transfer_batch', { target_batch_id: payload.batchId, batch_action: payload.batchAction });
     throwIfError_(error);
     return data;
   }
@@ -3326,7 +3331,14 @@ function renderTransfers() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-  const rows = transfers.filter((transfer) => `${transfer.id} ${transfer.sourceBranchName} ${transfer.destinationBranchName} ${transfer.productName} ${transfer.status}`.toLowerCase().includes(term));
+  const grouped = new Map();
+  transfers.forEach((transfer) => {
+    const key = transfer.batchId || transfer.id;
+    const group = grouped.get(key) || { ...transfer, id: key, isBatch: Boolean(transfer.batchId), members: [] };
+    group.members.push(transfer);
+    grouped.set(key, group);
+  });
+  const rows = [...grouped.values()].filter((transfer) => `${transfer.id} ${transfer.sourceBranchName} ${transfer.destinationBranchName} ${transfer.members.map((item) => item.productName).join(' ')} ${transfer.status}`.toLowerCase().includes(term));
   const action = (transfer) => {
     if (transfer.status === 'Draft' && transfer.sourceBranchId === activeBranchId) {
       return `
@@ -3371,8 +3383,8 @@ function renderTransfers() {
         <div class="row-middle-cells">
           <span class="branch-address">${escapeHtml(transfer.sourceBranchName)} to ${escapeHtml(transfer.destinationBranchName)}</span>
           <div class="product-cell">
-            <strong class="product-name">${escapeHtml(transfer.productName)}</strong>
-            <span class="product-meta">${transfer.qty} ${escapeHtml(transfer.unit)}</span>
+            <strong class="product-name">${escapeHtml(transfer.isBatch ? `${transfer.members.length} transfer items` : transfer.productName)}</strong>
+            <span class="product-meta">${escapeHtml(transfer.isBatch ? transfer.members.map((item) => `${item.productName} (${item.qty} ${item.unit})`).join(' • ') : `${transfer.qty} ${transfer.unit}`)}</span>
           </div>
           <span class="stock-pill ${transfer.status === 'Received' ? 'stock-normal' : transfer.status === 'Cancelled' ? 'stock-low' : 'category-badge'}">${escapeHtml(transfer.status)}</span>
         </div>
@@ -3387,7 +3399,8 @@ function renderTransfers() {
 
 async function handleTransferAction(button) {
   const action = button.dataset.transferAction;
-  const transfer = transfers.find((item) => item.id === button.dataset.transferId);
+  const rawTransfer = transfers.find((item) => item.batchId === button.dataset.transferId) || transfers.find((item) => item.id === button.dataset.transferId);
+  const transfer = rawTransfer?.batchId ? { ...rawTransfer, isBatch: true, members: transfers.filter((item) => item.batchId === rawTransfer.batchId) } : rawTransfer;
   if (!transfer || !['dispatch', 'receive', 'cancel'].includes(action)) return;
 
   const copy = {
@@ -3397,7 +3410,7 @@ async function handleTransferAction(button) {
       subtitle: 'Confirm stock departure',
       confirmText: 'Dispatch Transfer',
       confirmType: 'primary',
-      warning: `This will deduct ${transfer.qty} ${transfer.unit} from ${transfer.sourceBranchName} and mark the transfer as In Transit.`
+      warning: transfer.isBatch ? `This will dispatch all ${transfer.members.length} component lines from ${transfer.sourceBranchName}.` : `This will deduct ${transfer.qty} ${transfer.unit} from ${transfer.sourceBranchName} and mark the transfer as In Transit.`
     },
     receive: {
       title: 'Receive Transfer',
@@ -3405,7 +3418,7 @@ async function handleTransferAction(button) {
       subtitle: 'Confirm stock arrival',
       confirmText: 'Receive Stock',
       confirmType: 'success',
-      warning: `This will add ${transfer.qty} ${transfer.unit} to ${transfer.destinationBranchName} inventory.`
+      warning: transfer.isBatch ? `This will receive all ${transfer.members.length} component lines into ${transfer.destinationBranchName}.` : `This will add ${transfer.qty} ${transfer.unit} to ${transfer.destinationBranchName} inventory.`
     },
     cancel: {
       title: 'Cancel Transfer',
@@ -3414,7 +3427,7 @@ async function handleTransferAction(button) {
       confirmText: 'Cancel Transfer',
       confirmType: 'danger',
       warning: transfer.status === 'In Transit'
-        ? `This will return ${transfer.qty} ${transfer.unit} back to ${transfer.sourceBranchName} inventory.`
+        ? (transfer.isBatch ? `This will return all ${transfer.members.length} component lines to ${transfer.sourceBranchName} inventory.` : `This will return ${transfer.qty} ${transfer.unit} back to ${transfer.sourceBranchName} inventory.`)
         : 'This will cancel the draft transfer. No stock has been moved.'
     }
   }[action];
@@ -3423,7 +3436,7 @@ async function handleTransferAction(button) {
     title: copy.title,
     eyebrow: copy.eyebrow,
     subtitle: copy.subtitle,
-    message: `Are you sure you want to ${action} <strong class="confirm-highlight-name">${escapeHtml(transfer.productName)}</strong> (${transfer.qty} ${escapeHtml(transfer.unit)})?`,
+    message: `Are you sure you want to ${action} <strong class="confirm-highlight-name">${escapeHtml(transfer.isBatch ? transfer.id : transfer.productName)}</strong>${transfer.isBatch ? ` (${transfer.members.length} component lines)` : ` (${transfer.qty} ${escapeHtml(transfer.unit)})`}?`,
     warning: copy.warning,
     confirmText: copy.confirmText,
     confirmType: copy.confirmType
@@ -3431,13 +3444,14 @@ async function handleTransferAction(button) {
 
   if (!confirmed) return;
 
-  const endpoint = { dispatch: 'dispatchTransfer', receive: 'receiveTransfer', cancel: 'cancelTransfer' }[action];
   try {
-    const result = await api(endpoint, { transferId: transfer.id, branchId: activeBranchId });
+    const result = transfer.isBatch
+      ? await api('processTransferBatch', { batchId: transfer.batchId, batchAction: action })
+      : await api({ dispatch: 'dispatchTransfer', receive: 'receiveTransfer', cancel: 'cancelTransfer' }[action], { transferId: transfer.id, branchId: activeBranchId });
     // Optimistic: update transfer status locally and re-render immediately
     const statusMap = { dispatch: 'In Transit', receive: 'Received', cancel: 'Cancelled' };
     const newStatus = statusMap[action];
-    transfers = transfers.map((t) => t.id === transfer.id ? { ...t, status: newStatus } : t);
+    transfers = transfers.map((t) => (transfer.isBatch ? t.batchId === transfer.batchId : t.id === transfer.id) ? { ...t, status: newStatus } : t);
     renderInventory();
     showToast(`Transfer ${action === 'receive' ? 'received' : action === 'dispatch' ? 'dispatched' : 'cancelled'}.`, 'success');
     backgroundRefresh();
