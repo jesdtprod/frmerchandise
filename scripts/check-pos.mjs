@@ -10,6 +10,7 @@ const files = {
   transferSellingPrices: await readFile(new URL('../supabase/migrations/20260915200000_transfer_fifo_selling_prices.sql', import.meta.url), 'utf8'),
   openingCreditBalances: await readFile(new URL('../supabase/migrations/20260917001000_customer_opening_credit_balances.sql', import.meta.url), 'utf8'),
   bundles: await readFile(new URL('../supabase/migrations/20260918000000_bundles_returns_replacements.sql', import.meta.url), 'utf8'),
+  multiLineTransfers: await readFile(new URL('../supabase/migrations/20260918003000_multi_line_bundle_transfers.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -34,6 +35,9 @@ const checks = [
   ['bundle availability is calculated from component stock', /get_branch_bundle_availability[\s\S]*floor\(coalesce\(inventory\.qty/.test(files.bundles)],
   ['product form saves bundle price and component recipes', /save_bundle_components[\s\S]*bundleComponents/.test(files.app)],
   ['virtual bundles cannot be stocked in directly', /filter\(\(item\) => item\.productType !== 'bundle'\)/.test(files.app)],
+  ['multi-line transfers validate combined component demand before drafting', /create_transfer_batch[\s\S]*required_components[\s\S]*Insufficient source stock/.test(files.multiLineTransfers)],
+  ['bundle transfers enable the destination bundle automatically', /branch_products[\s\S]*destination_branch_id_input[\s\S]*product_row\.bundle_price/.test(files.multiLineTransfers)],
+  ['transfer form accepts multiple individual products and bundles', /readTransferLines_[\s\S]*createTransferBatch/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

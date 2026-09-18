@@ -5674,6 +5674,8 @@ dialog form {
 
 .bundle-components-list { display: grid; gap: 8px; }
 
+.transfer-lines { display: grid; gap: 8px; }
+
 .bundle-component-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px 34px;
@@ -5685,10 +5687,18 @@ dialog form {
   width: 34px;
   height: 34px;
   padding: 0;
-  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
-  display: grid;
-  place-items: center;
+}
+
+.bundle-component-row .icon-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .form-grid .full-field {

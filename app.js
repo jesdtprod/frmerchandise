@@ -111,6 +111,16 @@ function readBundleComponents_(formEl, productType) {
   return rows;
 }
 
+function readTransferLines_(formEl) {
+  const lines = [...formEl.querySelectorAll('[data-transfer-line]')].map((row) => ({
+    productId: row.querySelector('[name="transferProduct"]')?.value || '',
+    qty: Number(row.querySelector('[name="transferQty"]')?.value || 0),
+  }));
+  if (!lines.length || lines.some((line) => !line.productId || !Number.isFinite(line.qty) || line.qty <= 0)) throw new Error('Add at least one valid transfer line.');
+  if (new Set(lines.map((line) => line.productId)).size !== lines.length) throw new Error('Add each product or bundle only once per transfer.');
+  return lines;
+}
+
 function formatDateInput(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -844,6 +854,11 @@ async function api(action, payload = {}) {
   }
   if (action === 'createTransfer') {
     const { data, error } = await client.rpc('create_transfer', { source_branch_id_input: payload.sourceBranchId, destination_branch_id_input: payload.destinationBranchId, target_product_id: payload.productId, transfer_qty: Number(payload.qty), transfer_notes: payload.notes || '' });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'createTransferBatch') {
+    const { data, error } = await client.rpc('create_transfer_batch', { source_branch_id_input: payload.sourceBranchId, destination_branch_id_input: payload.destinationBranchId, transfer_lines: payload.lines, transfer_notes: payload.notes || '' });
     throwIfError_(error);
     return data;
   }
@@ -3892,7 +3907,7 @@ function openForm(type, productId = '') {
         ${bundleOptions.replace(`value="${escapeHtml(item.productId)}"`, `value="${escapeHtml(item.productId)}" selected`)}
       </select>
       <input name="bundleComponentQty" type="number" min="0.001" step="0.001" value="${escapeHtml(item.qty)}" required aria-label="Component quantity" />
-      <button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component">&times;</button>
+      <button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>`).join('');
 
   const productFields = `
@@ -4097,11 +4112,12 @@ function openForm(type, productId = '') {
   `;
 
   const destinationBranches = branches.filter((item) => item.id !== activeBranchId && item.status === 'Active');
+  const transferProducts = sortByName_(products.filter((item) => item.status === 'Active' && Number(item.qty || 0) > 0));
+  const transferOptions = transferProducts.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.productType === 'bundle' ? ' (Bundle / Set)' : ''} - Available: ${Number(item.qty || 0)} ${escapeHtml(item.unit || 'unit')}</option>`).join('');
   const transferFields = `
     <div class="form-field-group full-field"><label for="modalTransferDestination"><span class="label-text">Destination Branch <span class="required">*</span></span></label><select id="modalTransferDestination" name="destinationBranchId" required ${destinationBranches.length ? '' : 'disabled'}><option value="" disabled selected>${destinationBranches.length ? 'Select destination branch' : 'Create another active branch first'}</option>${destinationBranches.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select></div>
-    <div class="form-field-group full-field"><label for="modalTransferProduct"><span class="label-text">Shared Product <span class="required">*</span></span></label><select id="modalTransferProduct" name="productId" required><option value="" disabled selected>Select destination branch first</option></select></div>
-    <div class="form-field-group"><label for="modalTransferQty"><span class="label-text">Transfer Quantity <span class="required">*</span></span></label><input id="modalTransferQty" name="qty" type="number" min="1" step="1" placeholder="0" required /></div>
-    <div class="form-field-group"><label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label><input id="modalTransferNotes" name="notes" placeholder="Optional reference" autocomplete="off" /></div>
+    <div class="form-field-group full-field"><div class="bundle-components-head"><div><span class="label-text">Transfer Items <span class="required">*</span></span><p class="field-hint">Add individual products or Bundle / Set items. Bundles automatically transfer their components.</p></div><button type="button" class="button button-secondary transfer-line-add">Add Item</button></div><div class="transfer-lines"><div class="bundle-component-row" data-transfer-line><select name="transferProduct" required><option value="" disabled selected>${transferProducts.length ? 'Select product or bundle' : 'No available source products'}</option>${transferOptions}</select><input name="transferQty" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" /><button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div></div></div>
+    <div class="form-field-group full-field"><label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label><input id="modalTransferNotes" name="notes" placeholder="Optional reference" autocomplete="off" /></div>
   `;
 
   const menuOptions = [
@@ -4338,7 +4354,7 @@ function openForm(type, productId = '') {
     const row = document.createElement('div');
     row.className = 'bundle-component-row';
     row.dataset.bundleComponentRow = '';
-    row.innerHTML = `<select name="bundleComponentProduct" required><option value="" disabled selected>Select component</option>${bundleOptions}</select><input name="bundleComponentQty" type="number" min="0.001" step="0.001" value="1" required aria-label="Component quantity" /><button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component">&times;</button>`;
+    row.innerHTML = `<select name="bundleComponentProduct" required><option value="" disabled selected>Select component</option>${bundleOptions}</select><input name="bundleComponentQty" type="number" min="0.001" step="0.001" value="1" required aria-label="Component quantity" /><button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>`;
     componentList.appendChild(row);
     initCustomDropdowns(row);
     setBundleFields();
@@ -4353,23 +4369,20 @@ function openForm(type, productId = '') {
   });
   setBundleFields();
 
-  const transferDestination = $('#modalTransferDestination');
-  const transferProduct = $('#modalTransferProduct');
-  if (transferDestination && transferProduct) {
-    transferDestination.addEventListener('change', async () => {
-      transferProduct.innerHTML = '<option value="" disabled selected>Loading shared products...</option>';
-      updateCustomDropdown(transferProduct);
-      try {
-        const sharedProducts = await api('getTransferProducts', { sourceBranchId: activeBranchId, destinationBranchId: transferDestination.value }, 'GET');
-        transferProduct.innerHTML = `<option value="" disabled selected>${sharedProducts.length ? 'Select a product shared by both branches' : 'No shared active products in these branches'}</option>${sharedProducts.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (Available: ${item.qty} ${escapeHtml(item.unit)})</option>`).join('')}`;
-        updateCustomDropdown(transferProduct);
-      } catch (error) {
-        transferProduct.innerHTML = '<option value="" disabled selected>Unable to load shared products</option>';
-        updateCustomDropdown(transferProduct);
-        $('#formError').textContent = error.message;
-      }
-    });
-  }
+  const transferLineList = container.querySelector('.transfer-lines');
+  container.querySelector('.transfer-line-add')?.addEventListener('click', () => {
+    if (!transferLineList) return;
+    const row = document.createElement('div');
+    row.className = 'bundle-component-row'; row.dataset.transferLine = '';
+    row.innerHTML = `<select name="transferProduct" required><option value="" disabled selected>Select product or bundle</option>${transferOptions}</select><input name="transferQty" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" /><button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>`;
+    transferLineList.appendChild(row); initCustomDropdowns(row);
+  });
+  transferLineList?.addEventListener('click', (event) => {
+    const button = event.target.closest('.transfer-line-remove');
+    if (!button) return;
+    if (transferLineList.querySelectorAll('[data-transfer-line]').length === 1) return showToast('A transfer needs at least one item.', 'error');
+    button.closest('[data-transfer-line]')?.remove();
+  });
 
   // Initialize smooth number steppers
   container.querySelectorAll('[data-step-target]').forEach((btn) => {
@@ -4748,6 +4761,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
     return;
   }
   let productBundleComponents = [];
+  let transferLines = [];
   if (activeForm === 'product' || activeForm === 'edit') {
     try {
       productBundleComponents = readBundleComponents_(formEl, String(form.get('productType') || 'individual'));
@@ -4755,6 +4769,9 @@ $('#modalForm').addEventListener('submit', async (event) => {
       showToast(error.message, 'error');
       return;
     }
+  }
+  if (activeForm === 'transfer') {
+    try { transferLines = readTransferLines_(formEl); } catch (error) { showToast(error.message, 'error'); return; }
   }
 
   let confirmConfig = {
@@ -4864,16 +4881,13 @@ $('#modalForm').addEventListener('submit', async (event) => {
       ? { title: 'Add Administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm full system access', message: `Are you sure you want to make <strong class="confirm-highlight-name">${escapeHtml(name)}</strong> an administrator?`, warning: 'This account will have access to all branches and all menus.', confirmText: 'Add Administrator', confirmType: 'primary' }
       : { title: 'Save Administrator Changes', eyebrow: 'ADMINISTRATION', subtitle: 'Confirm profile update', message: 'Are you sure you want to save these administrator profile changes?', confirmText: 'Save Changes', confirmType: 'primary' };
   } else if (activeForm === 'transfer') {
-    const prodId = form.get('productId');
-    const prod = products.find((p) => p.id === prodId);
-    const qty = form.get('qty') || '0';
     const destId = form.get('destinationBranchId');
     const dest = branches.find((b) => b.id === destId);
     confirmConfig = {
       title: 'Create Stock Transfer',
       eyebrow: 'STOCK TRANSFERS',
       subtitle: 'Draft stock transfer',
-      message: `Are you sure you want to transfer <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> of <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'product')}</strong> to <strong>${escapeHtml(dest?.name || 'destination branch')}</strong>?`,
+      message: `Create a draft transfer with <strong>${transferLines.length} item${transferLines.length === 1 ? '' : 's'}</strong> to <strong>${escapeHtml(dest?.name || 'destination branch')}</strong>?`,
       confirmText: 'Create Draft',
       confirmType: 'primary'
     };
@@ -4970,9 +4984,8 @@ $('#modalForm').addEventListener('submit', async (event) => {
       }
       showToast('Administrator profile updated.', 'success');
     } else if (activeForm === 'transfer') {
-      const result = await api('createTransfer', { ...Object.fromEntries(form), sourceBranchId: activeBranchId });
-      if (result) transfers = [result, ...transfers];
-      showToast('Stock transfer draft created.', 'success');
+      const result = await api('createTransferBatch', { destinationBranchId: form.get('destinationBranchId'), notes: form.get('notes') || '', lines: transferLines, sourceBranchId: activeBranchId });
+      if (result?.transfers?.length) showToast(`Transfer draft ${result.batchId} created with ${result.transfers.length} component line${result.transfers.length === 1 ? '' : 's'}.`, 'success');
     } else {
       // stockIn
       const productId = form.get('productId');
