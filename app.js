@@ -202,13 +202,14 @@ function generateSalesPdf() {
   };
   const returnMatchesTerm = (record) => {
     const sale = salesHistory.find((item) => item.saleId === record.saleId);
-    return !term || `${record.id} ${record.saleId} ${sale?.customerName || ''} ${record.type} ${record.reason}`.toLowerCase().includes(term);
+    const actions = saleReturnItems.filter((item) => item.returnId === record.id).map((item) => item.actionType).join(' ');
+    return !term || `${record.id} ${record.saleId} ${sale?.customerName || ''} ${actions} ${record.reason}`.toLowerCase().includes(term);
   };
   const returnsInPeriod = saleReturns.filter((record) => {
     return returnMatchesTerm(record) && eventInPeriod(record.createdAt);
   });
-  const completedRefunds = saleReturns.filter((record) => record.type === 'refund' && record.refundResolvedAt && returnMatchesTerm(record) && eventInPeriod(record.refundResolvedAt));
-  const releasedReplacements = saleReturns.filter((record) => record.type === 'replacement' && record.replacementReleasedAt && returnMatchesTerm(record) && eventInPeriod(record.replacementReleasedAt));
+  const completedRefunds = saleReturns.filter((record) => saleReturnItems.some((item) => item.returnId === record.id && item.actionType === 'refund') && record.refundResolvedAt && returnMatchesTerm(record) && eventInPeriod(record.refundResolvedAt));
+  const releasedReplacements = saleReturns.filter((record) => saleReturnItems.some((item) => item.returnId === record.id && item.actionType === 'replacement') && record.replacementReleasedAt && returnMatchesTerm(record) && eventInPeriod(record.replacementReleasedAt));
   const returnItemsInPeriod = returnsInPeriod.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id));
 
   const printDoc = $('#salesPrintDocument');
@@ -444,8 +445,11 @@ function generateSalesPdf() {
               const itemText = lines.map((line) => `${allProducts.find((product) => product.id === line.productId)?.name || line.productId} (${Number(line.qty).toLocaleString('en-PH')})`).join(', ');
               const outcomes = lines.reduce((totals, line) => { totals[line.condition] = (totals[line.condition] || 0) + Number(line.qty || 0); return totals; }, {});
               const outcomeText = Object.entries(outcomes).map(([state, qty]) => `${state.replace('_', ' ')}: ${Number(qty).toLocaleString('en-PH')}`).join(', ');
-              const financial = record.type === 'refund' ? (record.refundResolvedAt ? `Refunded ${money(record.refundAmount)}` : `Refund pending ${money(record.refundAmount)}`) : (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending');
-              return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(record.type === 'refund' ? 'Refund' : 'Replacement')}</td><td>${escapeHtml(itemText)}</td><td>${escapeHtml(outcomeText || 'Quarantine')}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
+              const actionLabels = [...new Set(lines.map((line) => line.actionType || 'return'))].map((action) => ({ refund: 'Refund', replacement: 'Replace', return: 'Return Only' }[action] || 'Return Only'));
+              const refundStatus = lines.some((line) => line.actionType === 'refund') ? (record.refundResolvedAt ? `Refunded ${money(record.refundAmount)}` : `Refund pending ${money(record.refundAmount)}`) : '';
+              const replacementStatus = lines.some((line) => line.actionType === 'replacement') ? (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending') : '';
+              const financial = [refundStatus, replacementStatus].filter(Boolean).join(' · ') || 'No financial action';
+              return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(actionLabels.join(' + '))}</td><td>${escapeHtml(itemText)}</td><td>${escapeHtml(outcomeText || 'Quarantine')}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
             }).join('')}
           </tbody></table></div>
         `}
@@ -843,7 +847,7 @@ async function getAppData_(branchId) {
     })),
     saleReturnItems: saleReturnItemRows.map((row) => ({
       id: row.return_item_id, returnId: row.return_id, saleItemId: row.original_sale_item_id, productId: row.product_id, qty: Number(row.qty || 0),
-      condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
+      actionType: row.action_type || 'return', refundAmount: Number(row.refund_amount || 0), condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
     })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
@@ -1278,7 +1282,7 @@ function renderSkeletonTable() {
         </div>
       `;
     }
-    if (activeView === 'products') {
+    if (activeView === 'products' || activeView === 'sales') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -3273,12 +3277,14 @@ function renderSalesHistory() {
             <span class="price-text">${money(sale.total)}</span>
           </div>
           <div class="row-action-cell">
-            <button class="icon-button" data-view-sale="${escapeHtml(sale.saleId)}" aria-label="View sale receipt" title="View sale receipt">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-            <button class="icon-button" data-manage-sale-return="${escapeHtml(sale.saleId)}" aria-label="Return, refund, or replace sale" title="Return, refund, or replace sale">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
-            </button>
+            <span class="table-actions">
+              <button class="icon-button" data-view-sale="${escapeHtml(sale.saleId)}" aria-label="View sale receipt" title="View sale receipt">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="icon-button" data-manage-sale-return="${escapeHtml(sale.saleId)}" aria-label="Return, refund, or replace sale" title="Return, refund, or replace sale">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
+              </button>
+            </span>
           </div>
         </div>
       `;
@@ -3311,26 +3317,44 @@ function renderSaleReturnExisting_(sale) {
   const returns = saleReturns.filter((item) => item.saleId === sale.saleId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   if (!returns.length) { container.innerHTML = ''; return; }
   container.innerHTML = `
-    <div class="sale-return-section-head"><span>Recorded returns</span><small>Complete the refund/replacement and inspect quarantine stock.</small></div>
+    <div class="sale-return-section-head">
+      <span class="label-text">Recorded Returns</span>
+      <p class="field-hint">Complete the refund/replacement and inspect quarantine stock.</p>
+    </div>
     <div class="sale-return-existing-list">
       ${returns.map((record) => {
         const lines = saleReturnItems.filter((item) => item.returnId === record.id);
         const unresolved = lines.filter((item) => item.condition === 'quarantine');
-        const financialAction = record.type === 'refund' && !record.refundResolvedAt
-          ? `<button class="button button-secondary sale-return-action" type="button" data-complete-return-refund="${escapeHtml(record.id)}">Complete ${money(record.refundAmount)} Refund</button>`
-          : record.type === 'replacement' && !record.replacementReleasedAt
-            ? `<button class="button button-secondary sale-return-action" type="button" data-release-replacement="${escapeHtml(record.id)}">Release Replacement</button>` : '';
+        const hasRefund = lines.some((item) => item.actionType === 'refund');
+        const hasReplacement = lines.some((item) => item.actionType === 'replacement');
+        const financialAction = `${hasRefund && !record.refundResolvedAt ? `<button class="button button-secondary sale-return-action" type="button" data-complete-return-refund="${escapeHtml(record.id)}">Complete ${money(record.refundAmount)} Refund</button>` : ''}${hasReplacement && !record.replacementReleasedAt ? `<button class="button button-secondary sale-return-action" type="button" data-release-replacement="${escapeHtml(record.id)}">Release Replacement</button>` : ''}`;
         return `<article class="sale-return-record">
-          <div class="sale-return-record-head"><div><strong>${escapeHtml(record.id)}</strong><span>${escapeHtml(record.type === 'refund' ? 'Refund' : 'Replacement')} · ${escapeHtml(record.status)}</span></div><small>${escapeHtml(record.reason || 'No reason recorded')}</small></div>
+          <div class="sale-return-record-head">
+            <div class="sale-return-record-meta">
+              <span class="sale-return-record-id">${escapeHtml(record.id)}</span>
+              <span class="sale-type-pill return">${escapeHtml([hasRefund ? 'Refund' : '', hasReplacement ? 'Replacement' : '', lines.some((item) => item.actionType === 'return') ? 'Return Only' : ''].filter(Boolean).join(' + '))}</span>
+              <span class="sale-return-record-status">${escapeHtml(record.status)}</span>
+            </div>
+            <span class="sale-return-record-reason">${escapeHtml(record.reason || 'No reason recorded')}</span>
+          </div>
           ${financialAction}
           ${unresolved.map((line) => {
             const name = allProducts.find((product) => product.id === line.productId)?.name || line.productId;
-            return `<div class="sale-return-resolution"><span>${escapeHtml(name)} · ${Number(line.qty).toLocaleString('en-PH')} in quarantine</span><div>
-              <button type="button" class="icon-button" title="Restock" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">✓</button>
-              <button type="button" class="icon-button" title="Mark for supplier return" aria-label="Mark for supplier return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">↗</button>
-              <button type="button" class="icon-button danger-icon" title="Dispose" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">×</button>
-            </div></div>`;
-          }).join('') || '<small class="sale-return-complete">All returned items have been inspected.</small>'}
+            return `<div class="sale-return-resolution">
+              <span class="sale-return-resolution-name">${escapeHtml(name)} <span class="quarantine-chip">${Number(line.qty).toLocaleString('en-PH')} in quarantine</span></span>
+              <div class="sale-return-resolution-actions">
+                <button type="button" class="icon-button resolve-btn restock-btn" title="Restock item" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                </button>
+                <button type="button" class="icon-button resolve-btn supplier-btn" title="Mark for supplier return" aria-label="Mark for supplier return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M17 17V7H7"/></svg>
+                </button>
+                <button type="button" class="icon-button resolve-btn danger-icon" title="Dispose item" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>`;
+          }).join('') || '<div class="sale-return-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>'}
         </article>`;
       }).join('')}
     </div>`;
@@ -3339,22 +3363,20 @@ function renderSaleReturnExisting_(sale) {
   container.querySelectorAll('[data-resolve-sale-return]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnItem_(sale, button.dataset.resolveSaleReturn, button.dataset.resolution)));
 }
 
-function updateSaleReturnType_(sale) {
-  const type = $('#saleReturnType')?.value || 'refund';
-  document.querySelectorAll('.sale-return-refund-field').forEach((field) => { field.hidden = type !== 'refund'; });
-  $('#saleReturnRefundAmount').required = type === 'refund';
-  document.querySelectorAll('[data-replacement-field]').forEach((field) => { field.hidden = type !== 'replacement'; });
-  document.querySelectorAll('[data-sale-return-qty]').forEach((input) => input.dispatchEvent(new Event('input')));
-  if (type === 'refund') updateSaleReturnRefund_(sale);
-}
-
-function updateSaleReturnRefund_(sale) {
-  const amount = (sale.items || []).reduce((total, item) => {
-    const qty = Number(document.querySelector(`[data-sale-return-qty="${item.saleItemId}"]`)?.value || 0);
-    return total + qty * Number(item.price || 0);
-  }, 0);
-  const refundInput = $('#saleReturnRefundAmount');
-  if (refundInput && document.activeElement !== refundInput) refundInput.value = amount.toFixed(2);
+function updateSaleReturnLineAction_(sale, saleItemId) {
+  const qty = Number(document.querySelector(`[data-sale-return-qty="${saleItemId}"]`)?.value || 0);
+  const action = document.querySelector(`[data-return-action="${saleItemId}"]`)?.value || '';
+  const line = document.querySelector(`[data-sale-return-line="${saleItemId}"]`);
+  const refundField = document.querySelector(`[data-refund-field="${saleItemId}"]`);
+  const replacementField = document.querySelector(`[data-replacement-field="${saleItemId}"]`);
+  if (line) line.classList.toggle('is-selected', qty > 0 && Boolean(action));
+  if (refundField) refundField.hidden = action !== 'refund' || qty <= 0;
+  if (replacementField) replacementField.hidden = action !== 'replacement' || qty <= 0;
+  const saleItem = sale.items.find((item) => item.saleItemId === saleItemId);
+  const refundInput = document.querySelector(`[data-refund-amount="${saleItemId}"]`);
+  if (refundInput && document.activeElement !== refundInput) refundInput.value = (qty * Number(saleItem?.price || 0)).toFixed(2);
+  const replacementQty = document.querySelector(`[data-replacement-qty="${saleItemId}"]`);
+  if (replacementQty && (!Number(replacementQty.value) || Number(replacementQty.value) === 0)) replacementQty.value = qty > 0 ? String(qty) : '0';
 }
 
 function openSaleReturnDialog(sale) {
@@ -3362,28 +3384,80 @@ function openSaleReturnDialog(sale) {
   if (!dialog) return;
   $('#saleReturnTitle').textContent = `Return ${sale.saleId}`;
   $('#saleReturnSubtitle').textContent = `${displayCustomerName(sale.customerName)} · returned stock starts in quarantine.`;
-  $('#saleReturnSummary').innerHTML = `<strong>${escapeHtml(sale.saleId)}</strong><span>${escapeHtml(sale.paymentType === 'credit' ? `Credit sale · balance ${money(sale.creditBalance)}` : `Cash sale · total ${money(sale.total)}`)}</span>`;
+  $('#saleReturnSummary').innerHTML = `
+    <div class="sale-return-summary-card">
+      <div class="sale-return-summary-info">
+        <div class="sale-return-id-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sale-return-id-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <strong class="sale-return-id-text">${escapeHtml(sale.saleId)}</strong>
+          <span class="sale-type-pill ${sale.paymentType === 'credit' ? 'credit' : 'cash'}">${escapeHtml(sale.paymentType === 'credit' ? 'Credit' : 'Cash')}</span>
+        </div>
+        <span class="sale-return-summary-cust">${escapeHtml(displayCustomerName(sale.customerName))}</span>
+      </div>
+      <div class="sale-return-summary-totals">
+        <div class="sale-return-total-col">
+          <span class="sale-return-total-label">Total Sale</span>
+          <strong class="sale-return-total-val">${money(sale.total)}</strong>
+        </div>
+        ${sale.paymentType === 'credit' ? `
+        <div class="sale-return-total-col balance">
+          <span class="sale-return-total-label">Credit Balance</span>
+          <strong class="sale-return-total-val text-gold">${money(sale.creditBalance)}</strong>
+        </div>` : ''}
+      </div>
+    </div>`;
   const options = saleReturnProductOptions_();
   $('#saleReturnLines').innerHTML = (sale.items || []).map((item) => {
     const availableQty = saleReturnAvailableQty_(item);
-    return `<div class="sale-return-line"><div><strong>${escapeHtml(item.name)}</strong><small>Sold: ${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)} · available to return: ${availableQty.toLocaleString('en-PH')}</small></div>
-      <div class="sale-return-line-controls"><input data-sale-return-qty="${escapeHtml(item.saleItemId)}" data-max-qty="${availableQty}" data-sale-item-id="${escapeHtml(item.saleItemId)}" type="number" min="0" max="${availableQty}" step="0.001" value="0" aria-label="Returned quantity for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}/>
-        <div data-replacement-field hidden><select data-replacement-product="${escapeHtml(item.saleItemId)}" aria-label="Replacement product for ${escapeHtml(item.name)}"><option value="">Select replacement</option>${options}</select><input data-replacement-qty="${escapeHtml(item.saleItemId)}" type="number" min="0.001" step="0.001" value="0" aria-label="Replacement quantity for ${escapeHtml(item.name)}"/></div>
-      </div></div>`;
+    return `<div class="sale-return-line ${availableQty <= 0 ? 'is-exhausted' : ''}" data-sale-return-line="${escapeHtml(item.saleItemId)}">
+      <div class="sale-return-line-header">
+        <div class="sale-return-item-info">
+          <strong class="sale-return-item-name">${escapeHtml(item.name)}</strong>
+        </div>
+        <div class="sale-return-item-chips">
+          <span class="sale-return-chip sold">Sold: ${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)}</span>
+          <span class="sale-return-chip ${availableQty > 0 ? 'available' : 'zero'}">Avail to return: ${availableQty.toLocaleString('en-PH')}</span>
+        </div>
+      </div>
+      <div class="sale-return-line-controls">
+        <div class="sale-return-qty-wrap">
+          <label class="sale-return-control-label" for="return-qty-${escapeHtml(item.saleItemId)}">Return Qty</label>
+          <input id="return-qty-${escapeHtml(item.saleItemId)}" class="sale-return-qty-input" data-sale-return-qty="${escapeHtml(item.saleItemId)}" data-max-qty="${availableQty}" data-sale-item-id="${escapeHtml(item.saleItemId)}" type="number" min="0" max="${availableQty}" step="0.001" value="0" aria-label="Returned quantity for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}/>
+        </div>
+        <div class="sale-return-action-wrap">
+          <label class="sale-return-control-label">Action</label>
+          <select data-return-action="${escapeHtml(item.saleItemId)}" aria-label="Return action for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}><option value="">Select action</option><option value="refund">Refund</option><option value="replacement">Replace</option><option value="return">Return Only</option></select>
+        </div>
+        <div data-refund-field="${escapeHtml(item.saleItemId)}" class="sale-return-refund-item-field" hidden>
+          <label class="sale-return-control-label">Refund Amount</label>
+          <div class="input-with-prefix"><span class="input-prefix">PHP</span><input class="sale-return-qty-input" data-refund-amount="${escapeHtml(item.saleItemId)}" type="number" min="0.01" step="0.01" value="0.00" aria-label="Refund amount for ${escapeHtml(item.name)}" /></div>
+        </div>
+        <div data-replacement-field="${escapeHtml(item.saleItemId)}" class="sale-return-replacement-field" hidden>
+          <div class="sale-return-repl-divider" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="repl-arrow-icon"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+          <div class="sale-return-repl-select-wrap">
+            <label class="sale-return-control-label">Replace With</label>
+            <select data-replacement-product="${escapeHtml(item.saleItemId)}" aria-label="Replacement product for ${escapeHtml(item.name)}"><option value="">Select replacement</option>${options}</select>
+          </div>
+          <div class="sale-return-repl-qty-wrap">
+            <label class="sale-return-control-label">Repl Qty</label>
+            <input class="sale-return-qty-input" data-replacement-qty="${escapeHtml(item.saleItemId)}" type="number" min="0.001" step="0.001" value="0" aria-label="Replacement quantity for ${escapeHtml(item.name)}"/>
+          </div>
+        </div>
+      </div>
+    </div>`;
   }).join('') || '<div class="empty-state"><p>No sale items recorded</p></div>';
   $('#saleReturnReason').value = '';
-  $('#saleReturnType').value = 'refund';
   $('#saleReturnError').textContent = '';
   $('#saleReturnLines').querySelectorAll('[data-sale-return-qty]').forEach((input) => input.addEventListener('input', () => {
     const max = Number(input.dataset.maxQty || 0);
     if (Number(input.value || 0) > max) input.value = max;
-    const replacementQty = document.querySelector(`[data-replacement-qty="${input.dataset.saleItemId}"]`);
-    if (replacementQty && (!Number(replacementQty.value) || Number(replacementQty.value) === 0)) replacementQty.value = Number(input.value || 0).toString();
-    updateSaleReturnRefund_(sale);
+    updateSaleReturnLineAction_(sale, input.dataset.saleItemId);
   }));
-  $('#saleReturnType').onchange = () => updateSaleReturnType_(sale);
+  $('#saleReturnLines').querySelectorAll('[data-return-action]').forEach((input) => input.addEventListener('change', () => updateSaleReturnLineAction_(sale, input.dataset.returnAction)));
   renderSaleReturnExisting_(sale);
-  updateSaleReturnType_(sale);
+  (sale.items || []).forEach((item) => updateSaleReturnLineAction_(sale, item.saleItemId));
   initCustomDropdowns(dialog);
   if (!dialog.open) dialog.showModal();
 }
@@ -5541,7 +5615,6 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
   const saleId = $('#saleReturnTitle')?.textContent?.replace(/^Return\s+/, '') || '';
   const sale = salesHistory.find((item) => item.saleId === saleId);
   if (!sale) return;
-  const returnType = $('#saleReturnType').value;
   const lines = [...document.querySelectorAll('[data-sale-return-qty]')]
     .map((input) => {
       const qty = Number(input.value || 0);
@@ -5549,6 +5622,8 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
       return {
         saleItemId,
         qty,
+        actionType: document.querySelector(`[data-return-action="${saleItemId}"]`)?.value || '',
+        refundAmount: Number(document.querySelector(`[data-refund-amount="${saleItemId}"]`)?.value || 0),
         replacementProductId: document.querySelector(`[data-replacement-product="${saleItemId}"]`)?.value || '',
         replacementQty: Number(document.querySelector(`[data-replacement-qty="${saleItemId}"]`)?.value || 0),
       };
@@ -5557,16 +5632,17 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
   const error = $('#saleReturnError');
   if (!lines.length) { error.textContent = 'Enter at least one returned item quantity.'; return; }
   if (!reason) { error.textContent = 'Enter the reason for this return.'; return; }
-  if (returnType === 'replacement' && lines.some((line) => !line.replacementProductId || line.replacementQty <= 0)) { error.textContent = 'Select a replacement product and quantity for every returned item.'; return; }
-  const refundAmount = Number($('#saleReturnRefundAmount').value || 0);
-  if (returnType === 'refund' && refundAmount <= 0) { error.textContent = 'Enter a valid refund amount.'; return; }
+  if (lines.some((line) => !line.actionType)) { error.textContent = 'Choose Refund, Replace, or Return Only for every returned item.'; return; }
+  if (lines.some((line) => line.actionType === 'replacement' && (!line.replacementProductId || line.replacementQty <= 0))) { error.textContent = 'Select a replacement product and quantity for every replacement item.'; return; }
+  if (lines.some((line) => line.actionType === 'refund' && line.refundAmount <= 0)) { error.textContent = 'Enter a valid refund amount for every refunded item.'; return; }
+  const refundAmount = lines.filter((line) => line.actionType === 'refund').reduce((sum, line) => sum + line.refundAmount, 0);
   const submit = $('#saleReturnSubmit');
   const original = submit.innerHTML;
   submit.disabled = true;
   submit.innerHTML = '<span class="btn-spinner"></span><span>Receiving return...</span>';
   error.textContent = '';
   try {
-    await api('receiveSaleReturn', { saleId: sale.saleId, returnType, lines, reason, refundAmount: returnType === 'refund' ? refundAmount : 0 });
+    await api('receiveSaleReturn', { saleId: sale.saleId, returnType: 'return', lines, reason, refundAmount });
     await refresh(false);
     openSaleReturnDialog(sale);
     showToast('Return received into quarantine. Complete the next action below.', 'success');

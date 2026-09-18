@@ -640,7 +640,7 @@
       <form id="saleReturnForm" novalidate>
         <div class="modal-head">
           <div class="modal-title-wrap">
-            <div class="modal-icon-badge">
+            <div class="modal-icon-badge sale-return-badge">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
             </div>
             <div class="modal-title-content">
@@ -654,28 +654,24 @@
         <div class="sale-return-body">
           <div class="sale-return-summary" id="saleReturnSummary"></div>
           <div class="form-grid sale-return-form-grid">
-            <div class="form-field-group">
-              <label for="saleReturnType"><span class="label-text">Customer request <span class="required">*</span></span></label>
-              <select id="saleReturnType" required><option value="refund">Refund</option><option value="replacement">Replacement</option></select>
-            </div>
-            <div class="form-field-group sale-return-refund-field">
-              <label for="saleReturnRefundAmount"><span class="label-text">Refund amount <span class="required">*</span></span></label>
-              <input id="saleReturnRefundAmount" type="number" min="0.01" step="0.01" required />
-            </div>
             <div class="form-field-group full-field">
               <label for="saleReturnReason"><span class="label-text">Reason <span class="required">*</span></span></label>
               <textarea id="saleReturnReason" rows="2" maxlength="500" placeholder="Example: damaged item, wrong item, or customer request" required></textarea>
+              <p class="field-hint">Choose Refund, Replace, or Return Only for each returned item below.</p>
             </div>
           </div>
           <div class="sale-return-items-wrap">
-            <div class="sale-return-section-head"><span>Returned items</span><small>Select quantities to receive into quarantine.</small></div>
+            <div class="sale-return-section-head">
+              <span class="label-text">Returned Items</span>
+              <p class="field-hint">Select quantities to receive into quarantine.</p>
+            </div>
             <div id="saleReturnLines" class="sale-return-lines"></div>
           </div>
           <div id="saleReturnExisting" class="sale-return-existing"></div>
           <p class="form-error" id="saleReturnError" role="alert"></p>
         </div>
         <div class="modal-actions">
-          <button class="button modal-cancel-btn" type="button" data-close="saleReturnDialog">Close</button>
+          <button class="button modal-cancel-btn" type="button" data-close="saleReturnDialog">Cancel</button>
           <button class="button modal-save-btn" type="submit" id="saleReturnSubmit"><span class="button-text">Receive to Quarantine</span></button>
         </div>
       </form>

@@ -58,6 +58,15 @@
 }
 
 /* Sales return intake and inspection use the shared modal and control styling. */
+/* Mixed return actions: keep the intake modal spacious and controls aligned. */
+dialog.sale-return-dialog { width: min(860px, calc(100vw - 32px)) !important; }
+.sale-return-action-wrap,
+.sale-return-refund-item-field { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sale-return-action-wrap select,
+.sale-return-action-wrap .custom-dropdown { width: 142px; min-width: 142px; }
+.sale-return-refund-item-field[hidden] { display: none !important; }
+.sale-return-refund-item-field .input-with-prefix { width: 130px; }
+.sale-return-refund-item-field input[data-refund-amount] { width: 100%; min-width: 0; padding-left: 42px; text-align: right; }
 dialog.sale-return-dialog {
   width: min(680px, calc(100vw - 32px));
   max-height: min(90vh, 760px);

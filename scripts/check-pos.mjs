@@ -13,6 +13,7 @@ const files = {
   multiLineTransfers: await readFile(new URL('../supabase/migrations/20260918003000_multi_line_bundle_transfers.sql', import.meta.url), 'utf8'),
   transferBatchActions: await readFile(new URL('../supabase/migrations/20260918004000_transfer_batch_actions.sql', import.meta.url), 'utf8'),
   salesReturns: await readFile(new URL('../supabase/migrations/20260918005000_complete_sales_return_workflow.sql', import.meta.url), 'utf8'),
+  mixedSalesReturns: await readFile(new URL('../supabase/migrations/20260918007000_mixed_sales_return_actions.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -47,6 +48,8 @@ const checks = [
   ['sales history exposes return, refund, and replacement actions', /data-manage-sale-return/.test(files.app) && /receiveSaleReturn/.test(files.app) && /releaseSaleReplacement/.test(files.app)],
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
+  ['a single return visit supports per-item refund, replacement, and return-only actions', /action_type[\s\S]*refund[\s\S]*replacement[\s\S]*return/.test(files.mixedSalesReturns) && /data-return-action[\s\S]*data-refund-amount[\s\S]*data-replacement-field/.test(files.app)],
+  ['cumulative refunds cannot exceed the original sale', /prior_refunds[\s\S]*remaining refundable amount/.test(files.mixedSalesReturns)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);
