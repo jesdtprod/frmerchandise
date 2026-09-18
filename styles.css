@@ -9937,6 +9937,10 @@ dialog.confirm-dialog {
     color: #d97706;
   }
 
+  .report-kpi-card .kpi-val.text-discount {
+    color: #dc2626;
+  }
+
   .report-kpi-card .kpi-sub {
     font-size: 8.5px;
     color: #94a3b8;
@@ -10132,6 +10136,42 @@ dialog.confirm-dialog {
     font-size: 9.5px;
     color: #64748b;
   }
+
+  .report-sale-return-note {
+    padding: 5px 12px;
+    border-top: 1px solid #e2e8f0;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 9.5px;
+    line-height: 1.35;
+  }
+
+  .report-return-ledger {
+    margin-top: 14px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .report-return-table-wrap {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .report-return-table { font-size: 9.5px; }
+  .report-return-table td { vertical-align: top; }
+  .report-return-table td span { color: #64748b; font-size: 8.5px; }
+
+  .report-return-outcomes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 7px;
+    color: #475569;
+    font-size: 9.5px;
+  }
+
+  .report-return-outcomes strong { color: #0f172a; }
 
   .tx-foot-details strong {
     color: #334155;

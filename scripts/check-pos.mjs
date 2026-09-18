@@ -45,6 +45,8 @@ const checks = [
   ['sales-return restocks create FIFO batches from quarantine lots', /resolve_return_item[\s\S]*inventory_cost_batches[\s\S]*lot\.unit_cost/.test(files.salesReturns)],
   ['replacement releases use FIFO inventory allocation', /release_sale_replacement[\s\S]*inventory_cost_batches[\s\S]*qty_remaining/.test(files.salesReturns)],
   ['sales history exposes return, refund, and replacement actions', /data-manage-sale-return/.test(files.app) && /receiveSaleReturn/.test(files.app) && /releaseSaleReplacement/.test(files.app)],
+  ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
+  ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

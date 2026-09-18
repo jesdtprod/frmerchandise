@@ -196,6 +196,20 @@ function generateSalesPdf() {
     const saleDate = saleDateKey(sale.date);
     return matchesTerm && (!dateFrom || saleDate >= dateFrom) && (!dateTo || saleDate <= dateTo);
   });
+  const eventInPeriod = (value) => {
+    const eventDate = saleDateKey(value);
+    return eventDate && (!dateFrom || eventDate >= dateFrom) && (!dateTo || eventDate <= dateTo);
+  };
+  const returnMatchesTerm = (record) => {
+    const sale = salesHistory.find((item) => item.saleId === record.saleId);
+    return !term || `${record.id} ${record.saleId} ${sale?.customerName || ''} ${record.type} ${record.reason}`.toLowerCase().includes(term);
+  };
+  const returnsInPeriod = saleReturns.filter((record) => {
+    return returnMatchesTerm(record) && eventInPeriod(record.createdAt);
+  });
+  const completedRefunds = saleReturns.filter((record) => record.type === 'refund' && record.refundResolvedAt && returnMatchesTerm(record) && eventInPeriod(record.refundResolvedAt));
+  const releasedReplacements = saleReturns.filter((record) => record.type === 'replacement' && record.replacementReleasedAt && returnMatchesTerm(record) && eventInPeriod(record.replacementReleasedAt));
+  const returnItemsInPeriod = returnsInPeriod.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id));
 
   const printDoc = $('#salesPrintDocument');
   if (!printDoc) {
@@ -210,6 +224,17 @@ function generateSalesPdf() {
   const totalCash = cashSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
   const totalCredit = creditSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
   const totalDiscounts = sales.reduce((sum, s) => sum + Number(s.discount || 0), 0);
+  const totalRefunds = completedRefunds.reduce((sum, record) => sum + Number(record.refundAmount || 0), 0);
+  const cashRefunds = completedRefunds.filter((record) => salesHistory.find((sale) => sale.saleId === record.saleId)?.paymentType === 'cash').reduce((sum, record) => sum + Number(record.refundAmount || 0), 0);
+  const creditRefunds = totalRefunds - cashRefunds;
+  const netCashCollected = totalCash - cashRefunds;
+  const netSales = totalSales - totalRefunds;
+  const returnedUnits = returnItemsInPeriod.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const replacementUnits = releasedReplacements.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id)).reduce((sum, item) => sum + Number(item.replacementQty || 0), 0);
+  const returnOutcomes = returnItemsInPeriod.reduce((totals, item) => {
+    totals[item.condition] = (totals[item.condition] || 0) + Number(item.qty || 0);
+    return totals;
+  }, { quarantine: 0, restocked: 0, supplier_return: 0, disposed: 0 });
 
   const formatDate = (value) => value
     ? new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -234,8 +259,8 @@ function generateSalesPdf() {
           </div>
           <div>
             <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
-            <h1 class="report-title">Branch Sales & Inventory Ledger</h1>
-            <p class="report-subtitle">Official Transaction & Itemized Line-Item Audit Report</p>
+            <h1 class="report-title">Branch Sales, Returns & Inventory Ledger</h1>
+            <p class="report-subtitle">Official sales, refund, replacement, and returned-stock audit report</p>
           </div>
         </div>
 
@@ -263,19 +288,39 @@ function generateSalesPdf() {
           <span class="kpi-sub">${sales.length} transactions</span>
         </div>
         <div class="report-kpi-card">
-          <span class="kpi-label">Cash Collected</span>
-          <strong class="kpi-val text-success">${money(totalCash)}</strong>
-          <span class="kpi-sub">${cashSales.length} paid cash</span>
+          <span class="kpi-label">Net Cash Collected</span>
+          <strong class="kpi-val text-success">${money(netCashCollected)}</strong>
+          <span class="kpi-sub">${cashSales.length} cash sale${cashSales.length === 1 ? '' : 's'} less ${money(cashRefunds)} refunds</span>
         </div>
         <div class="report-kpi-card">
           <span class="kpi-label">Credit Charged</span>
           <strong class="kpi-val text-amber">${money(totalCredit)}</strong>
-          <span class="kpi-sub">${creditSales.length} on credit</span>
+          <span class="kpi-sub">${creditSales.length} on credit · ${money(creditRefunds)} adjusted</span>
         </div>
         <div class="report-kpi-card">
           <span class="kpi-label">Total Units Sold</span>
           <strong class="kpi-val">${totalItemsCount}</strong>
           <span class="kpi-sub">Items dispensed</span>
+        </div>
+        <div class="report-kpi-card">
+          <span class="kpi-label">Refunds Completed</span>
+          <strong class="kpi-val text-discount">-${money(totalRefunds)}</strong>
+          <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="report-kpi-card">
+          <span class="kpi-label">Net Sales</span>
+          <strong class="kpi-val text-success">${money(netSales)}</strong>
+          <span class="kpi-sub">Gross sales less refunds</span>
+        </div>
+        <div class="report-kpi-card">
+          <span class="kpi-label">Returned Units</span>
+          <strong class="kpi-val text-amber">${returnedUnits.toLocaleString('en-PH')}</strong>
+          <span class="kpi-sub">${returnsInPeriod.length} return case${returnsInPeriod.length === 1 ? '' : 's'} received</span>
+        </div>
+        <div class="report-kpi-card">
+          <span class="kpi-label">Replacement Units</span>
+          <strong class="kpi-val">${replacementUnits.toLocaleString('en-PH')}</strong>
+          <span class="kpi-sub">${releasedReplacements.length} replacement release${releasedReplacements.length === 1 ? '' : 's'}</span>
         </div>
       </section>
 
@@ -299,6 +344,7 @@ function generateSalesPdf() {
                 ? new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
                 : 'N/A';
               const customerDisplay = displayCustomerName(sale.customerName || 'Walk-in customer');
+              const linkedReturns = saleReturns.filter((record) => record.saleId === sale.saleId);
 
               return `
                 <article class="report-tx-card">
@@ -377,6 +423,7 @@ function generateSalesPdf() {
                       <span class="tx-items-count">${items.length} item${items.length === 1 ? '' : 's'} (${items.reduce((acc, i) => acc + Number(i.qty || 1), 0)} units)</span>
                     </div>
                   </footer>
+                  ${linkedReturns.length ? `<div class="report-sale-return-note">${linkedReturns.map((record) => `${escapeHtml(record.id)}: ${escapeHtml(record.type === 'refund' ? `Refund ${money(record.refundAmount)}` : 'Replacement')} · ${escapeHtml(record.status)}`).join(' &bull; ')}</div>` : ''}
                 </article>
               `;
             }).join('')}
@@ -384,11 +431,32 @@ function generateSalesPdf() {
         `}
       </section>
 
+      <section class="report-ledger-body report-return-ledger">
+        <div class="report-section-title-wrap">
+          <h2 class="report-section-title">Return & Replacement Activity</h2>
+          <span class="report-count-badge">${returnsInPeriod.length} return case${returnsInPeriod.length === 1 ? '' : 's'}</span>
+        </div>
+        ${returnsInPeriod.length === 0 ? `<div class="report-empty-state"><p>No return activity recorded for the selected period.</p></div>` : `
+          <div class="report-return-table-wrap"><table class="report-items-table report-return-table"><thead><tr><th>Return</th><th>Original Sale</th><th>Customer</th><th>Request</th><th>Returned Items</th><th>Inventory Outcome</th><th>Financial Outcome</th></tr></thead><tbody>
+            ${returnsInPeriod.map((record) => {
+              const originalSale = salesHistory.find((sale) => sale.saleId === record.saleId);
+              const lines = saleReturnItems.filter((item) => item.returnId === record.id);
+              const itemText = lines.map((line) => `${allProducts.find((product) => product.id === line.productId)?.name || line.productId} (${Number(line.qty).toLocaleString('en-PH')})`).join(', ');
+              const outcomes = lines.reduce((totals, line) => { totals[line.condition] = (totals[line.condition] || 0) + Number(line.qty || 0); return totals; }, {});
+              const outcomeText = Object.entries(outcomes).map(([state, qty]) => `${state.replace('_', ' ')}: ${Number(qty).toLocaleString('en-PH')}`).join(', ');
+              const financial = record.type === 'refund' ? (record.refundResolvedAt ? `Refunded ${money(record.refundAmount)}` : `Refund pending ${money(record.refundAmount)}`) : (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending');
+              return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(record.type === 'refund' ? 'Refund' : 'Replacement')}</td><td>${escapeHtml(itemText)}</td><td>${escapeHtml(outcomeText || 'Quarantine')}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
+            }).join('')}
+          </tbody></table></div>
+        `}
+        <div class="report-return-outcomes"><span>Quarantine: <strong>${Number(returnOutcomes.quarantine || 0).toLocaleString('en-PH')}</strong></span><span>Restocked: <strong>${Number(returnOutcomes.restocked || 0).toLocaleString('en-PH')}</strong></span><span>Supplier Return: <strong>${Number(returnOutcomes.supplier_return || 0).toLocaleString('en-PH')}</strong></span><span>Disposed: <strong>${Number(returnOutcomes.disposed || 0).toLocaleString('en-PH')}</strong></span></div>
+      </section>
+
       <!-- Grand Totals Box & Sign-off Block -->
       <footer class="report-document-footer">
         <div class="report-final-totals">
           <div class="final-row">
-            <span>Total Gross Sales:</span>
+            <span>Sales Before Discounts:</span>
             <strong>${money(totalSales + totalDiscounts)}</strong>
           </div>
           ${totalDiscounts > 0 ? `
@@ -398,8 +466,16 @@ function generateSalesPdf() {
             </div>
           ` : ''}
           <div class="final-row final-grand-total">
-            <span>Net Revenue Recorded:</span>
-            <strong class="grand-total-val">${money(totalSales)}</strong>
+            <span>Gross Sales After Discounts:</span>
+            <strong>${money(totalSales)}</strong>
+          </div>
+          <div class="final-row text-discount">
+            <span>Less: Completed Refunds:</span>
+            <strong>-${money(totalRefunds)}</strong>
+          </div>
+          <div class="final-row final-grand-total">
+            <span>Net Sales:</span>
+            <strong class="grand-total-val">${money(netSales)}</strong>
           </div>
         </div>
 
@@ -763,7 +839,7 @@ async function getAppData_(branchId) {
     salesHistory,
     saleReturns: saleReturnRows.map((row) => ({
       id: row.return_id, saleId: row.original_sale_id, type: row.return_type, status: row.status, reason: row.reason || '', refundAmount: Number(row.refund_amount || 0),
-      refundResolvedAt: row.refund_resolved_at || null, replacementReleasedAt: row.replacement_released_at || null, createdAt: row.created_at,
+      refundResolvedAt: row.refund_resolved_at || null, replacementReleasedAt: row.replacement_released_at || null, resolvedAt: row.resolved_at || null, createdAt: row.created_at,
     })),
     saleReturnItems: saleReturnItemRows.map((row) => ({
       id: row.return_item_id, returnId: row.return_id, saleItemId: row.original_sale_item_id, productId: row.product_id, qty: Number(row.qty || 0),
