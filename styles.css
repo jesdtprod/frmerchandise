@@ -5687,6 +5687,8 @@ dialog form {
   padding: 0;
   font-size: 20px;
   line-height: 1;
+  display: grid;
+  place-items: center;
 }
 
 .form-grid .full-field {
