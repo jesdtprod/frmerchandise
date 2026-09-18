@@ -3952,7 +3952,7 @@ function openForm(type, productId = '') {
         </div>
       </div>
     </div>
-    <div class="form-field-group">
+    <div class="form-field-group${isBundle ? '' : ' full-field'}" data-product-status-field>
       <label for="modalProdStatus">
         <span class="label-text">Status</span>
       </label>
@@ -4324,6 +4324,7 @@ function openForm(type, productId = '') {
     container.querySelectorAll('[data-bundle-field]').forEach((field) => { field.hidden = !bundle; });
     const price = $('#modalBundlePrice');
     if (price) { price.disabled = !bundle; price.required = bundle; }
+    container.querySelector('[data-product-status-field]')?.classList.toggle('full-field', !bundle);
     container.querySelectorAll('[name="bundleComponentProduct"], [name="bundleComponentQty"]').forEach((input) => { input.disabled = !bundle; input.required = bundle; });
   };
   productTypeSelect?.addEventListener('change', setBundleFields);
