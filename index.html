@@ -635,6 +635,52 @@
       </div>
     </dialog>
 
+    <!-- Sales Return Dialog -->
+    <dialog id="saleReturnDialog" class="pepsi-dialog sale-return-dialog">
+      <form id="saleReturnForm" novalidate>
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow">SALES RETURN</span>
+              <h2 id="saleReturnTitle">Return sale</h2>
+              <p class="modal-subtitle" id="saleReturnSubtitle">Returned items are held in quarantine for inspection.</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="saleReturnDialog" aria-label="Close sales return" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="sale-return-body">
+          <div class="sale-return-summary" id="saleReturnSummary"></div>
+          <div class="form-grid sale-return-form-grid">
+            <div class="form-field-group">
+              <label for="saleReturnType"><span class="label-text">Customer request <span class="required">*</span></span></label>
+              <select id="saleReturnType" required><option value="refund">Refund</option><option value="replacement">Replacement</option></select>
+            </div>
+            <div class="form-field-group sale-return-refund-field">
+              <label for="saleReturnRefundAmount"><span class="label-text">Refund amount <span class="required">*</span></span></label>
+              <input id="saleReturnRefundAmount" type="number" min="0.01" step="0.01" required />
+            </div>
+            <div class="form-field-group full-field">
+              <label for="saleReturnReason"><span class="label-text">Reason <span class="required">*</span></span></label>
+              <textarea id="saleReturnReason" rows="2" maxlength="500" placeholder="Example: damaged item, wrong item, or customer request" required></textarea>
+            </div>
+          </div>
+          <div class="sale-return-items-wrap">
+            <div class="sale-return-section-head"><span>Returned items</span><small>Select quantities to receive into quarantine.</small></div>
+            <div id="saleReturnLines" class="sale-return-lines"></div>
+          </div>
+          <div id="saleReturnExisting" class="sale-return-existing"></div>
+          <p class="form-error" id="saleReturnError" role="alert"></p>
+        </div>
+        <div class="modal-actions">
+          <button class="button modal-cancel-btn" type="button" data-close="saleReturnDialog">Close</button>
+          <button class="button modal-save-btn" type="submit" id="saleReturnSubmit"><span class="button-text">Receive to Quarantine</span></button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Sale Receipt Dialog -->
     <dialog id="receiptDialog" class="pepsi-dialog receipt-dialog">
       <div class="receipt-wrap">

@@ -57,6 +57,104 @@
   --dialog-shadow: 0 25px 65px -10px rgba(0, 3, 10, 0.85), 0 0 32px rgba(0, 102, 245, 0.2);
 }
 
+/* Sales return intake and inspection use the shared modal and control styling. */
+dialog.sale-return-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(90vh, 760px);
+}
+
+.sale-return-dialog form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sale-return-body {
+  display: grid;
+  gap: 16px;
+  overflow: auto;
+  padding: 0 24px 18px;
+}
+
+.sale-return-summary,
+.sale-return-record {
+  border: 1px solid var(--border-card);
+  border-radius: 11px;
+  background: rgba(7, 14, 28, .72);
+}
+
+.sale-return-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+}
+
+.sale-return-summary strong,
+.sale-return-record strong,
+.sale-return-line strong { color: var(--text-pure); }
+.sale-return-summary span,
+.sale-return-record small,
+.sale-return-line small,
+.sale-return-complete { color: var(--text-secondary); font-size: 12px; }
+
+.sale-return-form-grid { padding: 0; }
+
+.sale-return-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sale-return-section-head small { color: var(--text-muted); font-weight: 500; }
+.sale-return-lines,
+.sale-return-existing-list { display: grid; gap: 8px; margin-top: 8px; }
+
+.sale-return-line,
+.sale-return-resolution,
+.sale-return-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sale-return-line {
+  padding: 11px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: rgba(10, 18, 34, .72);
+}
+
+.sale-return-line > div:first-child,
+.sale-return-record-head > div { display: grid; gap: 2px; min-width: 0; }
+.sale-return-line-controls { display: flex; align-items: center; gap: 8px; }
+.sale-return-line-controls > input { width: 82px; }
+.sale-return-line-controls [data-replacement-field] { display: flex; align-items: center; gap: 8px; }
+.sale-return-line-controls [data-replacement-field] select { width: 175px; }
+.sale-return-line-controls [data-replacement-field] input { width: 76px; }
+
+.sale-return-record { display: grid; gap: 10px; padding: 12px; }
+.sale-return-record-head small { text-align: right; }
+.sale-return-resolution { padding-top: 9px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); }
+.sale-return-resolution > div { display: flex; gap: 6px; }
+.sale-return-action { justify-self: start; min-height: 34px; font-size: 12px; }
+
+@media (max-width: 640px) {
+  .sale-return-body { padding: 0 16px 16px; }
+  .sale-return-summary,
+  .sale-return-line,
+  .sale-return-record-head { align-items: flex-start; flex-direction: column; }
+  .sale-return-line-controls,
+  .sale-return-line-controls [data-replacement-field] { width: 100%; }
+  .sale-return-line-controls > input { width: 90px; }
+  .sale-return-line-controls [data-replacement-field] select { flex: 1; width: auto; }
+}
+
 /* Base Reset & Typography */
 * {
   box-sizing: border-box;

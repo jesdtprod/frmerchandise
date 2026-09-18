@@ -12,6 +12,7 @@ const files = {
   bundles: await readFile(new URL('../supabase/migrations/20260918000000_bundles_returns_replacements.sql', import.meta.url), 'utf8'),
   multiLineTransfers: await readFile(new URL('../supabase/migrations/20260918003000_multi_line_bundle_transfers.sql', import.meta.url), 'utf8'),
   transferBatchActions: await readFile(new URL('../supabase/migrations/20260918004000_transfer_batch_actions.sql', import.meta.url), 'utf8'),
+  salesReturns: await readFile(new URL('../supabase/migrations/20260918005000_complete_sales_return_workflow.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -40,6 +41,10 @@ const checks = [
   ['bundle transfers enable the destination bundle automatically', /branch_products[\s\S]*destination_branch_id_input[\s\S]*product_row\.bundle_price/.test(files.multiLineTransfers)],
   ['transfer form accepts multiple individual products and bundles', /readTransferLines_[\s\S]*createTransferBatch/.test(files.app)],
   ['transfer batches dispatch, receive, and cancel all component lines atomically', /process_transfer_batch[\s\S]*dispatch_transfer[\s\S]*receive_transfer[\s\S]*cancel_transfer/.test(files.transferBatchActions)],
+  ['sales returns enter quarantine before inventory disposition', /receive_sale_return[\s\S]*inventory_return_lots[\s\S]*quarantine/.test(files.salesReturns)],
+  ['sales-return restocks create FIFO batches from quarantine lots', /resolve_return_item[\s\S]*inventory_cost_batches[\s\S]*lot\.unit_cost/.test(files.salesReturns)],
+  ['replacement releases use FIFO inventory allocation', /release_sale_replacement[\s\S]*inventory_cost_batches[\s\S]*qty_remaining/.test(files.salesReturns)],
+  ['sales history exposes return, refund, and replacement actions', /data-manage-sale-return/.test(files.app) && /receiveSaleReturn/.test(files.app) && /releaseSaleReplacement/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

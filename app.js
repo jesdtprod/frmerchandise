@@ -16,6 +16,8 @@ let creditPayments = [];
 let openingCreditAccounts = [];
 let pendingCreditAccount = null;
 let salesHistory = [];
+let saleReturns = [];
+let saleReturnItems = [];
 let inventoryReportData = {};
 let stockInHistory = [];
 let sellingPriceBatches = [];
@@ -685,9 +687,11 @@ async function getAppData_(branchId) {
     client.rpc('get_branch_selling_price_batches', { target_branch_id: branchId }),
     client.from('product_bundle_components').select('*'),
     client.rpc('get_branch_bundle_availability', { target_branch_id: branchId }),
+    client.from('sale_returns').select('*').eq('branch_id', branchId),
+    client.from('sale_return_items').select('*'),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -734,7 +738,7 @@ async function getAppData_(branchId) {
       cashTendered: Number(sale.cash_tendered || 0), change: Number(sale.change || 0),
       creditPaid: paymentType === 'credit' ? paid : total, creditBalance: paymentType === 'credit' ? Math.max(total - paid, 0) : 0,
       items: saleItemRows.filter((item) => item.sale_id === sale.sale_id).map((item) => ({
-        productId: item.product_id, name: productMap[item.product_id]?.name || 'Unknown product', unit: productMap[item.product_id]?.unit || 'unit',
+        saleItemId: item.sale_item_id, productId: item.product_id, name: productMap[item.product_id]?.name || 'Unknown product', unit: productMap[item.product_id]?.unit || 'unit',
         qty: Number(item.qty || 0), price: Number(item.price || 0),
       })),
     };
@@ -757,6 +761,14 @@ async function getAppData_(branchId) {
     openingCreditAccounts: openingCreditRows.map((row) => ({ creditId: row.credit_account_id, sourceType: row.source_type || 'previous_balance', customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', date: row.occurred_at, total: Number(row.original_amount || 0), reference: row.migration_reference || '' })),
     creditPayments: paymentRows.map((row) => ({ id: row.payment_id, creditId: row.credit_account_id || row.sale_id, saleId: row.sale_id || '', customerId: row.customer_id, customerName: customerMap[row.customer_id]?.name || 'Unknown customer', amount: Number(row.amount || 0), date: row.occurred_at, notes: row.notes || '' })).sort((a, b) => new Date(b.date) - new Date(a.date)),
     salesHistory,
+    saleReturns: saleReturnRows.map((row) => ({
+      id: row.return_id, saleId: row.original_sale_id, type: row.return_type, status: row.status, reason: row.reason || '', refundAmount: Number(row.refund_amount || 0),
+      refundResolvedAt: row.refund_resolved_at || null, replacementReleasedAt: row.replacement_released_at || null, createdAt: row.created_at,
+    })),
+    saleReturnItems: saleReturnItemRows.map((row) => ({
+      id: row.return_item_id, returnId: row.return_id, saleItemId: row.original_sale_item_id, productId: row.product_id, qty: Number(row.qty || 0),
+      condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
+    })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
       id: row.stock_in_id,
@@ -839,6 +851,32 @@ async function api(action, payload = {}) {
       discount_input: Number(payload.discount || 0),
       cash_tendered_input: Number(payload.cashTendered || 0),
     });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'receiveSaleReturn') {
+    const { data, error } = await client.rpc('receive_sale_return', {
+      original_sale_id_input: payload.saleId,
+      return_type_input: payload.returnType,
+      return_lines: payload.lines,
+      reason_input: payload.reason || '',
+      refund_amount_input: Number(payload.refundAmount || 0),
+    });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'resolveSaleReturnItem') {
+    const { data, error } = await client.rpc('resolve_return_item', { target_return_item_id: payload.returnItemId, resolution: payload.resolution });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'completeSaleRefund') {
+    const { data, error } = await client.rpc('resolve_sale_return_financially', { target_return_id: payload.returnId });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'releaseSaleReplacement') {
+    const { data, error } = await client.rpc('release_sale_replacement', { target_return_id: payload.returnId });
     throwIfError_(error);
     return data;
   }
@@ -3162,6 +3200,9 @@ function renderSalesHistory() {
             <button class="icon-button" data-view-sale="${escapeHtml(sale.saleId)}" aria-label="View sale receipt" title="View sale receipt">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
+            <button class="icon-button" data-manage-sale-return="${escapeHtml(sale.saleId)}" aria-label="Return, refund, or replace sale" title="Return, refund, or replace sale">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
+            </button>
           </div>
         </div>
       `;
@@ -3171,6 +3212,120 @@ function renderSalesHistory() {
     const sale = salesHistory.find((item) => item.saleId === button.dataset.viewSale);
     if (sale) showSaleReceipt({ sale, items: sale.items, customerName: sale.customerName });
   }));
+  table.querySelectorAll('[data-manage-sale-return]').forEach((button) => button.addEventListener('click', () => {
+    const sale = salesHistory.find((item) => item.saleId === button.dataset.manageSaleReturn);
+    if (sale) openSaleReturnDialog(sale);
+  }));
+}
+
+function saleReturnProductOptions_(selectedId = '') {
+  return products.filter((product) => product.status === 'Active' && Number(product.qty || 0) > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((product) => `<option value="${escapeHtml(product.id)}"${product.id === selectedId ? ' selected' : ''}>${escapeHtml(product.name)}${product.productType === 'bundle' ? ' (Bundle / Set)' : ''}</option>`).join('');
+}
+
+function saleReturnAvailableQty_(saleItem) {
+  const alreadyReturned = saleReturnItems.filter((item) => item.saleItemId === saleItem.saleItemId).reduce((total, item) => total + Number(item.qty || 0), 0);
+  return Math.max(Number(saleItem.qty || 0) - alreadyReturned, 0);
+}
+
+function renderSaleReturnExisting_(sale) {
+  const container = $('#saleReturnExisting');
+  if (!container) return;
+  const returns = saleReturns.filter((item) => item.saleId === sale.saleId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (!returns.length) { container.innerHTML = ''; return; }
+  container.innerHTML = `
+    <div class="sale-return-section-head"><span>Recorded returns</span><small>Complete the refund/replacement and inspect quarantine stock.</small></div>
+    <div class="sale-return-existing-list">
+      ${returns.map((record) => {
+        const lines = saleReturnItems.filter((item) => item.returnId === record.id);
+        const unresolved = lines.filter((item) => item.condition === 'quarantine');
+        const financialAction = record.type === 'refund' && !record.refundResolvedAt
+          ? `<button class="button button-secondary sale-return-action" type="button" data-complete-return-refund="${escapeHtml(record.id)}">Complete ${money(record.refundAmount)} Refund</button>`
+          : record.type === 'replacement' && !record.replacementReleasedAt
+            ? `<button class="button button-secondary sale-return-action" type="button" data-release-replacement="${escapeHtml(record.id)}">Release Replacement</button>` : '';
+        return `<article class="sale-return-record">
+          <div class="sale-return-record-head"><div><strong>${escapeHtml(record.id)}</strong><span>${escapeHtml(record.type === 'refund' ? 'Refund' : 'Replacement')} · ${escapeHtml(record.status)}</span></div><small>${escapeHtml(record.reason || 'No reason recorded')}</small></div>
+          ${financialAction}
+          ${unresolved.map((line) => {
+            const name = allProducts.find((product) => product.id === line.productId)?.name || line.productId;
+            return `<div class="sale-return-resolution"><span>${escapeHtml(name)} · ${Number(line.qty).toLocaleString('en-PH')} in quarantine</span><div>
+              <button type="button" class="icon-button" title="Restock" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">✓</button>
+              <button type="button" class="icon-button" title="Mark for supplier return" aria-label="Mark for supplier return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">↗</button>
+              <button type="button" class="icon-button danger-icon" title="Dispose" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">×</button>
+            </div></div>`;
+          }).join('') || '<small class="sale-return-complete">All returned items have been inspected.</small>'}
+        </article>`;
+      }).join('')}
+    </div>`;
+  container.querySelectorAll('[data-complete-return-refund]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnFinancial_(sale, button.dataset.completeReturnRefund)));
+  container.querySelectorAll('[data-release-replacement]').forEach((button) => button.addEventListener('click', () => releaseSaleReplacement_(sale, button.dataset.releaseReplacement)));
+  container.querySelectorAll('[data-resolve-sale-return]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnItem_(sale, button.dataset.resolveSaleReturn, button.dataset.resolution)));
+}
+
+function updateSaleReturnType_(sale) {
+  const type = $('#saleReturnType')?.value || 'refund';
+  document.querySelectorAll('.sale-return-refund-field').forEach((field) => { field.hidden = type !== 'refund'; });
+  $('#saleReturnRefundAmount').required = type === 'refund';
+  document.querySelectorAll('[data-replacement-field]').forEach((field) => { field.hidden = type !== 'replacement'; });
+  document.querySelectorAll('[data-sale-return-qty]').forEach((input) => input.dispatchEvent(new Event('input')));
+  if (type === 'refund') updateSaleReturnRefund_(sale);
+}
+
+function updateSaleReturnRefund_(sale) {
+  const amount = (sale.items || []).reduce((total, item) => {
+    const qty = Number(document.querySelector(`[data-sale-return-qty="${item.saleItemId}"]`)?.value || 0);
+    return total + qty * Number(item.price || 0);
+  }, 0);
+  const refundInput = $('#saleReturnRefundAmount');
+  if (refundInput && document.activeElement !== refundInput) refundInput.value = amount.toFixed(2);
+}
+
+function openSaleReturnDialog(sale) {
+  const dialog = $('#saleReturnDialog');
+  if (!dialog) return;
+  $('#saleReturnTitle').textContent = `Return ${sale.saleId}`;
+  $('#saleReturnSubtitle').textContent = `${displayCustomerName(sale.customerName)} · returned stock starts in quarantine.`;
+  $('#saleReturnSummary').innerHTML = `<strong>${escapeHtml(sale.saleId)}</strong><span>${escapeHtml(sale.paymentType === 'credit' ? `Credit sale · balance ${money(sale.creditBalance)}` : `Cash sale · total ${money(sale.total)}`)}</span>`;
+  const options = saleReturnProductOptions_();
+  $('#saleReturnLines').innerHTML = (sale.items || []).map((item) => {
+    const availableQty = saleReturnAvailableQty_(item);
+    return `<div class="sale-return-line"><div><strong>${escapeHtml(item.name)}</strong><small>Sold: ${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)} · available to return: ${availableQty.toLocaleString('en-PH')}</small></div>
+      <div class="sale-return-line-controls"><input data-sale-return-qty="${escapeHtml(item.saleItemId)}" data-max-qty="${availableQty}" data-sale-item-id="${escapeHtml(item.saleItemId)}" type="number" min="0" max="${availableQty}" step="0.001" value="0" aria-label="Returned quantity for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}/>
+        <div data-replacement-field hidden><select data-replacement-product="${escapeHtml(item.saleItemId)}" aria-label="Replacement product for ${escapeHtml(item.name)}"><option value="">Select replacement</option>${options}</select><input data-replacement-qty="${escapeHtml(item.saleItemId)}" type="number" min="0.001" step="0.001" value="0" aria-label="Replacement quantity for ${escapeHtml(item.name)}"/></div>
+      </div></div>`;
+  }).join('') || '<div class="empty-state"><p>No sale items recorded</p></div>';
+  $('#saleReturnReason').value = '';
+  $('#saleReturnType').value = 'refund';
+  $('#saleReturnError').textContent = '';
+  $('#saleReturnLines').querySelectorAll('[data-sale-return-qty]').forEach((input) => input.addEventListener('input', () => {
+    const max = Number(input.dataset.maxQty || 0);
+    if (Number(input.value || 0) > max) input.value = max;
+    const replacementQty = document.querySelector(`[data-replacement-qty="${input.dataset.saleItemId}"]`);
+    if (replacementQty && (!Number(replacementQty.value) || Number(replacementQty.value) === 0)) replacementQty.value = Number(input.value || 0).toString();
+    updateSaleReturnRefund_(sale);
+  }));
+  $('#saleReturnType').onchange = () => updateSaleReturnType_(sale);
+  renderSaleReturnExisting_(sale);
+  updateSaleReturnType_(sale);
+  initCustomDropdowns(dialog);
+  if (!dialog.open) dialog.showModal();
+}
+
+async function resolveSaleReturnItem_(sale, returnItemId, resolution) {
+  const labels = { restocked: 'restock this item', supplier_return: 'mark this item for supplier return', disposed: 'dispose this item' };
+  if (!await askConfirmation({ title: 'Resolve Returned Item', eyebrow: 'SALES RETURN', subtitle: 'Confirm inventory disposition', message: `Do you want to ${labels[resolution]}?`, warning: 'This action removes the item from quarantine and is recorded in the audit history.', confirmText: 'Confirm', confirmType: resolution === 'disposed' ? 'danger' : 'primary' })) return;
+  try { await api('resolveSaleReturnItem', { returnItemId, resolution }); await refresh(false); openSaleReturnDialog(sale); showToast('Returned item resolved.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
+}
+
+async function resolveSaleReturnFinancial_(sale, returnId) {
+  if (!await askConfirmation({ title: 'Complete Refund', eyebrow: 'SALES RETURN', subtitle: 'Confirm financial adjustment', message: 'Confirm that the customer refund has been completed.', warning: 'For credit sales, this reduces the outstanding customer balance. Cash refunds are recorded in the audit trail.', confirmText: 'Complete Refund', confirmType: 'primary' })) return;
+  try { await api('completeSaleRefund', { returnId }); await refresh(false); openSaleReturnDialog(sale); showToast('Refund completed.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
+}
+
+async function releaseSaleReplacement_(sale, returnId) {
+  if (!await askConfirmation({ title: 'Release Replacement', eyebrow: 'SALES RETURN', subtitle: 'Confirm zero-value replacement release', message: 'Release the selected replacement stock to the customer?', warning: 'Replacement stock is deducted using FIFO and remains linked to this return.', confirmText: 'Release Replacement', confirmType: 'primary' })) return;
+  try { await api('releaseSaleReplacement', { returnId }); await refresh(false); openSaleReturnDialog(sale); showToast('Replacement released.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
 }
 
 function openCreditHistory(historyId) {
@@ -3783,6 +3938,8 @@ async function refresh(showSkeleton = true) {
     transfers = data.transfers || [];
     creditPayments = data.creditPayments || [];
     salesHistory = data.salesHistory || [];
+    saleReturns = data.saleReturns || [];
+    saleReturnItems = data.saleReturnItems || [];
     openingCreditAccounts = data.openingCreditAccounts || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
@@ -5301,6 +5458,48 @@ function showSaleReceipt({ sale, items, customerName }) {
 
 $('#receiptPrintBtn')?.addEventListener('click', () => {
   window.print();
+});
+
+$('#saleReturnForm')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const saleId = $('#saleReturnTitle')?.textContent?.replace(/^Return\s+/, '') || '';
+  const sale = salesHistory.find((item) => item.saleId === saleId);
+  if (!sale) return;
+  const returnType = $('#saleReturnType').value;
+  const lines = [...document.querySelectorAll('[data-sale-return-qty]')]
+    .map((input) => {
+      const qty = Number(input.value || 0);
+      const saleItemId = input.dataset.saleItemId;
+      return {
+        saleItemId,
+        qty,
+        replacementProductId: document.querySelector(`[data-replacement-product="${saleItemId}"]`)?.value || '',
+        replacementQty: Number(document.querySelector(`[data-replacement-qty="${saleItemId}"]`)?.value || 0),
+      };
+    }).filter((line) => line.qty > 0);
+  const reason = $('#saleReturnReason').value.trim();
+  const error = $('#saleReturnError');
+  if (!lines.length) { error.textContent = 'Enter at least one returned item quantity.'; return; }
+  if (!reason) { error.textContent = 'Enter the reason for this return.'; return; }
+  if (returnType === 'replacement' && lines.some((line) => !line.replacementProductId || line.replacementQty <= 0)) { error.textContent = 'Select a replacement product and quantity for every returned item.'; return; }
+  const refundAmount = Number($('#saleReturnRefundAmount').value || 0);
+  if (returnType === 'refund' && refundAmount <= 0) { error.textContent = 'Enter a valid refund amount.'; return; }
+  const submit = $('#saleReturnSubmit');
+  const original = submit.innerHTML;
+  submit.disabled = true;
+  submit.innerHTML = '<span class="btn-spinner"></span><span>Receiving return...</span>';
+  error.textContent = '';
+  try {
+    await api('receiveSaleReturn', { saleId: sale.saleId, returnType, lines, reason, refundAmount: returnType === 'refund' ? refundAmount : 0 });
+    await refresh(false);
+    openSaleReturnDialog(sale);
+    showToast('Return received into quarantine. Complete the next action below.', 'success');
+  } catch (requestError) {
+    error.textContent = requestError.message;
+  } finally {
+    submit.disabled = false;
+    submit.innerHTML = original;
+  }
 });
 
 $('#checkoutButton').addEventListener('click', openSaleCheckout);
