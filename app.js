@@ -94,6 +94,10 @@ function displayCustomerName(value) {
   return String(value ?? '').toUpperCase();
 }
 
+function sortByName_(rows, key = 'name') {
+  return [...rows].sort((left, right) => String(left[key] || '').localeCompare(String(right[key] || ''), 'en', { sensitivity: 'base' }));
+}
+
 function readBundleComponents_(formEl, productType) {
   if (productType !== 'bundle') return [];
   const rows = [...formEl.querySelectorAll('[data-bundle-component-row]')].map((row) => ({
@@ -1980,7 +1984,7 @@ document.addEventListener('scroll', repositionOpenDropdowns, true);
    ========================================================================== */
 function getInventoryReportRows() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
-  return products.filter((product) => `${product.name} ${product.category} ${product.sku || ''}`.toLowerCase().includes(term));
+  return sortByName_(products.filter((product) => `${product.name} ${product.category} ${product.sku || ''}`.toLowerCase().includes(term)));
 }
 
 function getInventoryReportStatus(product) {
@@ -2108,7 +2112,7 @@ function renderStaffAccounts() {
   const table = $('#inventoryTable');
   if (!table) return;
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
-  const rows = staffAccounts.filter((staff) => `${staff.fullName} ${staff.username}`.toLowerCase().includes(term));
+  const rows = sortByName_(staffAccounts.filter((staff) => `${staff.fullName} ${staff.username}`.toLowerCase().includes(term)), 'fullName');
   table.innerHTML = `
     <div class="table-row table-header"><span>Staff Account</span><span>Assigned Branch</span><span>Menu Access</span><span>Status</span><span>Action</span></div>
     ${rows.map((staff) => {
@@ -2208,7 +2212,7 @@ function renderAdminAccount() {
       </div>
     </div>
   `;
-  table.innerHTML = `<div class="table-row table-header"><span>Administrator</span><span>Username</span><span>Access</span><span>Status</span><span>Action</span></div>${adminAccounts.map((account) => `<div class="table-row">
+  table.innerHTML = `<div class="table-row table-header"><span>Administrator</span><span>Username</span><span>Access</span><span>Status</span><span>Action</span></div>${sortByName_(adminAccounts, 'fullName').map((account) => `<div class="table-row">
     <div class="product-cell"><strong class="product-name">${escapeHtml(account.fullName)}</strong><span class="product-meta">Administrator account</span></div>
     <div class="row-middle-cells">
       <span>${escapeHtml(account.username)}</span>
@@ -2807,7 +2811,7 @@ function renderInventory() {
   if (activeView === 'staffAccounts') { renderStaffAccounts(); return; }
   if (activeView === 'adminAccount') { renderAdminAccount(); return; }
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
-  const rows = products.filter((product) => `${product.name} ${product.category} ${product.sku || ''}`.toLowerCase().includes(term));
+  const rows = sortByName_(products.filter((product) => `${product.name} ${product.category} ${product.sku || ''}`.toLowerCase().includes(term)));
   const table = $('#inventoryTable');
   if (!table) return;
 
@@ -2999,7 +3003,7 @@ function renderBranches() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-  const rows = branches.filter((branch) => `${branch.name} ${branch.type} ${branch.address}`.toLowerCase().includes(term));
+  const rows = sortByName_(branches.filter((branch) => `${branch.name} ${branch.type} ${branch.address}`.toLowerCase().includes(term)));
   table.innerHTML = `
     <div class="table-row table-header">
       <span>Branch</span><span>Type</span><span>Address</span><span>Status</span><span>Action</span>
@@ -3023,7 +3027,7 @@ function renderCustomers() {
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-  const rows = customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.address}`.toLowerCase().includes(term));
+  const rows = sortByName_(customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.address}`.toLowerCase().includes(term)));
   const paidByCredit = creditPayments.reduce((totals, payment) => {
     const creditId = payment.creditId || payment.saleId;
     totals[creditId] = (totals[creditId] || 0) + Number(payment.amount || 0);
