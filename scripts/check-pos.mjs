@@ -9,6 +9,7 @@ const files = {
   safeArchiving: await readFile(new URL('../supabase/migrations/20260915199000_safe_product_archiving.sql', import.meta.url), 'utf8'),
   transferSellingPrices: await readFile(new URL('../supabase/migrations/20260915200000_transfer_fifo_selling_prices.sql', import.meta.url), 'utf8'),
   openingCreditBalances: await readFile(new URL('../supabase/migrations/20260917001000_customer_opening_credit_balances.sql', import.meta.url), 'utf8'),
+  bundles: await readFile(new URL('../supabase/migrations/20260918000000_bundles_returns_replacements.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -29,6 +30,10 @@ const checks = [
   ['customer migration balances use a separate audited credit account', /customer_credit_accounts[\s\S]*opening_balance[\s\S]*create_customer_with_opening_balance/.test(files.openingCreditBalances)],
   ['opening balance payments cannot be mistaken for sales', /credit_payments_one_credit_source[\s\S]*record_credit_payment/.test(files.openingCreditBalances)],
   ['operational backups include opening credit accounts', /customerCreditAccounts/.test(files.accountFunction)],
+  ['bundle recipes accept only individual component products', /Bundle components must be active individual products/.test(files.bundles)],
+  ['bundle availability is calculated from component stock', /get_branch_bundle_availability[\s\S]*floor\(coalesce\(inventory\.qty/.test(files.bundles)],
+  ['product form saves bundle price and component recipes', /save_bundle_components[\s\S]*bundleComponents/.test(files.app)],
+  ['virtual bundles cannot be stocked in directly', /filter\(\(item\) => item\.productType !== 'bundle'\)/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

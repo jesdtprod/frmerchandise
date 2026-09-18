@@ -4276,7 +4276,7 @@ dialog.credit-history-dialog {
 }
 
 .workspace[data-view="customers"] .skeleton-row {
-  grid-template-columns: minmax(220px, 1.8fr) 150px minmax(180px, 1.6fr) 100px 64px;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1.5fr) minmax(210px, 1.4fr) minmax(160px, 1fr) 150px;
 }
 
 .workspace[data-view="transfers"] .skeleton-row {
@@ -4284,7 +4284,7 @@ dialog.credit-history-dialog {
 }
 
 .workspace[data-view="credits"] .skeleton-row {
-  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(130px, 1fr) 85px;
+  grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
 }
 
 .workspace[data-view="sales"] .skeleton-row {
@@ -5647,6 +5647,46 @@ dialog form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px 12px;
+}
+
+.bundle-components-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.bundle-components-head .label-text {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.bundle-components-head .field-hint { margin: 3px 0 0; }
+
+.bundle-components-head .button {
+  min-height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.bundle-components-list { display: grid; gap: 8px; }
+
+.bundle-component-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.bundle-component-row .icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
 }
 
 .form-grid .full-field {

@@ -19,6 +19,8 @@ let salesHistory = [];
 let inventoryReportData = {};
 let stockInHistory = [];
 let sellingPriceBatches = [];
+let bundleComponents = [];
+let bundleAvailability = {};
 let cart = [];
 let activeForm = '';
 let activeView = 'pos';
@@ -90,6 +92,19 @@ function escapeHtml(value) {
 
 function displayCustomerName(value) {
   return String(value ?? '').toUpperCase();
+}
+
+function readBundleComponents_(formEl, productType) {
+  if (productType !== 'bundle') return [];
+  const rows = [...formEl.querySelectorAll('[data-bundle-component-row]')].map((row) => ({
+    productId: row.querySelector('[name="bundleComponentProduct"]')?.value || '',
+    qty: Number(row.querySelector('[name="bundleComponentQty"]')?.value || 0),
+  }));
+  if (!rows.length || rows.some((item) => !item.productId || !Number.isFinite(item.qty) || item.qty <= 0)) {
+    throw new Error('Add at least one component and enter a quantity for each one.');
+  }
+  if (new Set(rows.map((item) => item.productId)).size !== rows.length) throw new Error('A component can only be added once to a bundle.');
+  return rows;
 }
 
 function formatDateInput(date) {
@@ -654,17 +669,25 @@ async function getAppData_(branchId) {
     client.from('customer_credit_accounts').select('*').eq('branch_id', branchId),
     client.from('stock_ins').select('*').eq('branch_id', branchId),
     client.rpc('get_branch_selling_price_batches', { target_branch_id: branchId }),
+    client.from('product_bundle_components').select('*'),
+    client.rpc('get_branch_bundle_availability', { target_branch_id: branchId }),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
   const branchProducts = Object.fromEntries(branchProductRows.map((row) => [row.product_id, row]));
   const quantities = Object.fromEntries(inventoryRows.map((row) => [row.product_id, Number(row.qty || 0)]));
+  const bundleComponentsByProduct = bundleComponentRows.reduce((groups, row) => {
+    (groups[row.bundle_product_id] ||= []).push({ productId: row.component_product_id, qty: Number(row.qty || 0) });
+    return groups;
+  }, {});
+  const availableBundles = Object.fromEntries(bundleAvailabilityRows.map((row) => [row.product_id, Number(row.qty_available || 0)]));
   const products = productRows.map((row) => ({
     id: row.product_id, sku: row.sku || row.product_id, name: row.name, unit: row.unit,
     price: Number(row.price), category: row.category, lowStockLevel: Number(row.low_stock_level || 5), status: row.status || 'Active', archivedAt: row.archived_at || null,
+    productType: row.product_type || 'individual', bundlePrice: row.bundle_price === null ? null : Number(row.bundle_price), components: bundleComponentsByProduct[row.product_id] || [],
   }));
   const batchesByProduct = sellingPriceBatchRows.reduce((groups, batch) => {
     (groups[batch.product_id] ||= []).push({ qty: Number(batch.qty_remaining), sellingPrice: Number(batch.selling_price) });
@@ -675,10 +698,10 @@ async function getAppData_(branchId) {
     const branchProduct = branchProducts[product.id];
     return {
       ...product,
-      price: batchesByProduct[product.id]?.[0]?.sellingPrice ?? (branchProduct.price_override === null ? product.price : Number(branchProduct.price_override)),
+      price: product.productType === 'bundle' ? Number(product.bundlePrice || 0) : (batchesByProduct[product.id]?.[0]?.sellingPrice ?? (branchProduct.price_override === null ? product.price : Number(branchProduct.price_override))),
       lowStockLevel: branchProduct.low_stock_level === null ? product.lowStockLevel : Number(branchProduct.low_stock_level),
       status: branchProduct.status || product.status,
-      qty: quantities[product.id] || 0,
+      qty: product.productType === 'bundle' ? (availableBundles[product.id] || 0) : (quantities[product.id] || 0),
     };
   });
   const paidBySale = paymentRows.reduce((totals, row) => {
@@ -733,6 +756,8 @@ async function getAppData_(branchId) {
       date: row.occurred_at,
     })).sort((a, b) => new Date(b.date) - new Date(a.date)),
     sellingPriceBatches: sellingPriceBatchRows.map((row) => ({ productId: row.product_id, qty: Number(row.qty_remaining), sellingPrice: Number(row.selling_price) })),
+    bundleComponents: bundleComponentRows.map((row) => ({ bundleProductId: row.bundle_product_id, productId: row.component_product_id, qty: Number(row.qty || 0) })),
+    bundleAvailability: availableBundles,
   };
 }
 
@@ -861,12 +886,19 @@ async function api(action, payload = {}) {
     return { id: data.branch_id, name: data.name, type: data.type, address: data.address, status: data.status };
   }
   if (action === 'createProduct') {
-    const product = { product_id: newPosId_('PRD'), sku: newSku_(), name: String(payload.name).trim(), unit: payload.unit, price: 0, category: payload.category, low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' };
+    const productType = payload.productType === 'bundle' ? 'bundle' : 'individual';
+    const bundlePrice = productType === 'bundle' ? Number(payload.bundlePrice) : null;
+    if (productType === 'bundle' && (!Number.isFinite(bundlePrice) || bundlePrice < 0)) throw new Error('Enter a valid bundle selling price.');
+    const product = { product_id: newPosId_('PRD'), sku: newSku_(), name: String(payload.name).trim(), unit: payload.unit, price: 0, category: payload.category, low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active', product_type: productType, bundle_price: bundlePrice };
     const { data, error } = await client.from('products').insert(product).select().single();
     throwIfError_(error);
     const { error: branchError } = await client.from('branch_products').insert({ branch_id: payload.branchId, product_id: data.product_id, price_override: data.price, low_stock_level: data.low_stock_level, status: data.status });
     throwIfError_(branchError);
-    return { id: data.product_id, sku: data.sku, name: data.name, unit: data.unit, price: Number(data.price), category: data.category, lowStockLevel: Number(data.low_stock_level), status: data.status };
+    if (productType === 'bundle') {
+      const { error: componentError } = await client.rpc('save_bundle_components', { target_bundle_product_id: data.product_id, components: payload.bundleComponents || [] });
+      throwIfError_(componentError);
+    }
+    return { id: data.product_id, sku: data.sku, name: data.name, unit: data.unit, price: Number(data.price), category: data.category, lowStockLevel: Number(data.low_stock_level), status: data.status, productType, bundlePrice, components: payload.bundleComponents || [] };
   }
   if (action === 'addProductToBranch') {
     const product = allProducts.find((item) => item.id === payload.productId);
@@ -878,11 +910,18 @@ async function api(action, payload = {}) {
     return { ...product, price, lowStockLevel, status: payload.status || 'Active' };
   }
   if (action === 'updateProduct') {
-    const { error: productError } = await client.from('products').update({ name: String(payload.name).trim(), category: payload.category, unit: payload.unit }).eq('product_id', payload.productId);
+    const productType = payload.productType === 'bundle' ? 'bundle' : 'individual';
+    const bundlePrice = productType === 'bundle' ? Number(payload.bundlePrice) : null;
+    if (productType === 'bundle' && (!Number.isFinite(bundlePrice) || bundlePrice < 0)) throw new Error('Enter a valid bundle selling price.');
+    const { error: productError } = await client.from('products').update({ name: String(payload.name).trim(), category: payload.category, unit: payload.unit, bundle_price: bundlePrice }).eq('product_id', payload.productId);
     throwIfError_(productError);
+    if (productType === 'bundle') {
+      const { error: componentError } = await client.rpc('save_bundle_components', { target_bundle_product_id: payload.productId, components: payload.bundleComponents || [] });
+      throwIfError_(componentError);
+    }
     const { data, error } = await client.from('branch_products').update({ low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
     throwIfError_(error);
-    return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: Number(data.price_override || 0), lowStockLevel: Number(data.low_stock_level), status: data.status };
+    return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: productType === 'bundle' ? bundlePrice : Number(data.price_override || 0), lowStockLevel: Number(data.low_stock_level), status: data.status, productType, bundlePrice, components: payload.bundleComponents || [] };
   }
   if (action === 'deleteProduct') {
     const { data, error } = await client.rpc('delete_product', { target_product_id: payload.productId });
@@ -1022,7 +1061,7 @@ function renderSkeletonTable() {
       return `
         <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:110px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:150px;"></div></div>
         <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:120px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:105px;"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line price" style="width:85px;height:18px;"></div></div>
       `;
     }
     if (activeView === 'transfers') {
@@ -1090,7 +1129,18 @@ function renderSkeletonTable() {
         </div>
       `;
     }
-    if (activeView === 'credits' || activeView === 'products') {
+    if (activeView === 'customers') {
+      return `
+        <div class="row-action-cell skeleton-action-cell">
+          <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
+          </span>
+        </div>
+      `;
+    }
+    if (activeView === 'products') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -2790,7 +2840,7 @@ function renderInventory() {
     const productCell = `
       <div class="product-cell">
         <strong class="product-name">${escapeHtml(product.name)}</strong>
-        <span class="product-meta">${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit)}</span>
+        <span class="product-meta">${escapeHtml(product.sku || product.id)} &bull; ${product.productType === 'bundle' ? `Bundle / Set &bull; ${product.components?.length || 0} components` : escapeHtml(product.unit)}</span>
       </div>
     `;
 
@@ -3705,6 +3755,8 @@ async function refresh(showSkeleton = true) {
     inventoryReportData = data.inventoryReport || {};
     stockInHistory = data.stockInHistory || [];
     sellingPriceBatches = data.sellingPriceBatches || [];
+    bundleComponents = data.bundleComponents || [];
+    bundleAvailability = data.bundleAvailability || {};
     allProducts = data.products;
     if (activeView === 'staffAccounts') staffAccounts = await api('getStaffAccounts', {}, 'GET');
     if (activeView === 'adminAccount') { adminAccount = await api('getAdminAccount', {}, 'GET'); adminAccounts = await api('getAdminAccounts', {}, 'GET'); }
@@ -3824,6 +3876,20 @@ function openForm(type, productId = '') {
 
   const selected = (value, expected) => (value === expected ? ' selected' : '');
   const staff = staffAccounts.find((item) => item.id === productId);
+  const productType = product?.productType || 'individual';
+  const isBundle = productType === 'bundle';
+  const bundleItems = product?.components?.length ? product.components : [{ productId: '', qty: 1 }];
+  const bundleOptions = allProducts.filter((item) => item.productType === 'individual' && item.status === 'Active' && item.id !== productId)
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.unit || 'unit')})</option>`).join('');
+  const bundleRows = bundleItems.map((item) => `
+    <div class="bundle-component-row" data-bundle-component-row>
+      <select name="bundleComponentProduct" required>
+        <option value="" disabled${item.productId ? '' : ' selected'}>Select component</option>
+        ${bundleOptions.replace(`value="${escapeHtml(item.productId)}"`, `value="${escapeHtml(item.productId)}" selected`)}
+      </select>
+      <input name="bundleComponentQty" type="number" min="0.001" step="0.001" value="${escapeHtml(item.qty)}" required aria-label="Component quantity" />
+      <button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component">&times;</button>
+    </div>`).join('');
 
   const productFields = `
     <div class="form-field-group full-field">
@@ -3854,6 +3920,22 @@ function openForm(type, productId = '') {
       </select>
     </div>
     <div class="form-field-group">
+      <label for="modalProductType"><span class="label-text">Product Type <span class="required">*</span></span></label>
+      ${type === 'edit' ? `<input type="hidden" name="productType" value="${productType}" /><select id="modalProductType" disabled><option value="${productType}">${isBundle ? 'Bundle / Set' : 'Individual Item'}</option></select>` : `<select id="modalProductType" name="productType" required><option value="individual"${selected(productType, 'individual')}>Individual Item</option><option value="bundle"${selected(productType, 'bundle')}>Bundle / Set</option></select>`}
+      ${type === 'edit' ? '<p class="field-hint">Product type is locked after creation to preserve stock history.</p>' : ''}
+    </div>
+    <div class="form-field-group" data-bundle-field${isBundle ? '' : ' hidden'}>
+      <label for="modalBundlePrice"><span class="label-text">Bundle Selling Price (PHP) <span class="required">*</span></span></label>
+      <div class="input-with-prefix"><span class="input-prefix">PHP</span><input id="modalBundlePrice" name="bundlePrice" type="number" min="0" step="0.01" value="${isBundle ? escapeHtml(product?.bundlePrice ?? '') : ''}" ${isBundle ? 'required' : 'disabled'} placeholder="0.00" /></div>
+    </div>
+    <div class="form-field-group full-field" data-bundle-field${isBundle ? '' : ' hidden'}>
+      <div class="bundle-components-head">
+        <div><span class="label-text">Bundle Components <span class="required">*</span></span><p class="field-hint">Only individual items can be used. Bundle stock is calculated from these quantities.</p></div>
+        <button type="button" class="button button-secondary bundle-component-add">Add Component</button>
+      </div>
+      <div class="bundle-components-list">${bundleRows}</div>
+    </div>
+    <div class="form-field-group">
       <label for="modalProdLowStock">
         <span class="label-text">Low Stock Warning Level <span class="required">*</span></span>
       </label>
@@ -3881,7 +3963,7 @@ function openForm(type, productId = '') {
     </div>
   `;
 
-  const stockProductList = (allProducts && allProducts.length ? allProducts : products);
+  const stockProductList = (allProducts && allProducts.length ? allProducts : products).filter((item) => item.productType !== 'bundle');
   const stockFields = `
     <div class="form-field-group full-field">
       <label for="modalStockProduct">
@@ -4235,6 +4317,36 @@ function openForm(type, productId = '') {
       $('#modalLinkLowStock').value = option?.dataset.lowStock || 5;
     });
   }
+
+  const productTypeSelect = $('#modalProductType');
+  const setBundleFields = () => {
+    const bundle = productTypeSelect?.value === 'bundle';
+    container.querySelectorAll('[data-bundle-field]').forEach((field) => { field.hidden = !bundle; });
+    const price = $('#modalBundlePrice');
+    if (price) { price.disabled = !bundle; price.required = bundle; }
+    container.querySelectorAll('[name="bundleComponentProduct"], [name="bundleComponentQty"]').forEach((input) => { input.disabled = !bundle; input.required = bundle; });
+  };
+  productTypeSelect?.addEventListener('change', setBundleFields);
+  const componentList = container.querySelector('.bundle-components-list');
+  const addBundleComponent = () => {
+    if (!componentList) return;
+    const row = document.createElement('div');
+    row.className = 'bundle-component-row';
+    row.dataset.bundleComponentRow = '';
+    row.innerHTML = `<select name="bundleComponentProduct" required><option value="" disabled selected>Select component</option>${bundleOptions}</select><input name="bundleComponentQty" type="number" min="0.001" step="0.001" value="1" required aria-label="Component quantity" /><button type="button" class="icon-button danger-icon bundle-component-remove" aria-label="Remove component" title="Remove component">&times;</button>`;
+    componentList.appendChild(row);
+    initCustomDropdowns(row);
+    setBundleFields();
+  };
+  container.querySelector('.bundle-component-add')?.addEventListener('click', addBundleComponent);
+  componentList?.addEventListener('click', (event) => {
+    const button = event.target.closest('.bundle-component-remove');
+    if (!button) return;
+    const rows = componentList.querySelectorAll('[data-bundle-component-row]');
+    if (rows.length === 1) return showToast('A bundle needs at least one component.', 'error');
+    button.closest('[data-bundle-component-row]')?.remove();
+  });
+  setBundleFields();
 
   const transferDestination = $('#modalTransferDestination');
   const transferProduct = $('#modalTransferProduct');
@@ -4630,6 +4742,15 @@ $('#modalForm').addEventListener('submit', async (event) => {
     showToast('Password and confirmation do not match.', 'error');
     return;
   }
+  let productBundleComponents = [];
+  if (activeForm === 'product' || activeForm === 'edit') {
+    try {
+      productBundleComponents = readBundleComponents_(formEl, String(form.get('productType') || 'individual'));
+    } catch (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+  }
 
   let confirmConfig = {
     title: 'Confirm Changes',
@@ -4781,7 +4902,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
     if (activeForm === 'product') {
       const payload = Object.fromEntries(form);
       if (!payload.status) payload.status = 'Active';
-      const result = await api('createProduct', { ...payload, branchId: activeBranchId });
+      const result = await api('createProduct', { ...payload, bundleComponents: productBundleComponents, branchId: activeBranchId });
       products = [{ ...result, qty: 0, sku: result.sku || '' }, ...products];
       allProducts = [{ ...result }, ...allProducts];
       showToast('Product added successfully.', 'success');
@@ -4789,7 +4910,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
       const current = products.find((p) => p.id === editingProductId);
       const payload = { ...Object.fromEntries(form), productId: editingProductId };
       if (!payload.status) payload.status = current?.status || 'Active';
-      const result = await api('updateProduct', { ...payload, branchId: activeBranchId });
+      const result = await api('updateProduct', { ...payload, bundleComponents: productBundleComponents, branchId: activeBranchId });
       products = products.map((p) => p.id === editingProductId ? { ...p, ...result } : p);
       showToast('Product updated successfully.', 'success');
     } else if (activeForm === 'linkProduct') {
