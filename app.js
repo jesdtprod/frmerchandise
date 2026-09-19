@@ -435,21 +435,24 @@ function generateSalesPdf() {
       <section class="report-ledger-body report-return-ledger">
         <div class="report-section-title-wrap">
           <h2 class="report-section-title">Return & Replacement Activity</h2>
-          <span class="report-count-badge">${returnsInPeriod.length} return case${returnsInPeriod.length === 1 ? '' : 's'}</span>
+          <span class="report-count-badge">${returnItemsInPeriod.length} returned item${returnItemsInPeriod.length === 1 ? '' : 's'}</span>
         </div>
         ${returnsInPeriod.length === 0 ? `<div class="report-empty-state"><p>No return activity recorded for the selected period.</p></div>` : `
-          <div class="report-return-table-wrap"><table class="report-items-table report-return-table"><thead><tr><th>Return</th><th>Original Sale</th><th>Customer</th><th>Request</th><th>Returned Items</th><th>Inventory Outcome</th><th>Financial Outcome</th></tr></thead><tbody>
-            ${returnsInPeriod.map((record) => {
+          <div class="report-return-table-wrap"><table class="report-items-table report-return-table"><thead><tr><th>Return</th><th>Original Sale</th><th>Customer</th><th>Request</th><th>Returned Item</th><th>Inventory Outcome</th><th>Financial Outcome</th></tr></thead><tbody>
+            ${returnsInPeriod.flatMap((record) => {
               const originalSale = salesHistory.find((sale) => sale.saleId === record.saleId);
               const lines = saleReturnItems.filter((item) => item.returnId === record.id);
-              const itemText = lines.map((line) => `${allProducts.find((product) => product.id === line.productId)?.name || line.productId} (${Number(line.qty).toLocaleString('en-PH')})`).join(', ');
-              const outcomes = lines.reduce((totals, line) => { totals[line.condition] = (totals[line.condition] || 0) + Number(line.qty || 0); return totals; }, {});
-              const outcomeText = Object.entries(outcomes).map(([state, qty]) => `${state.replace('_', ' ')}: ${Number(qty).toLocaleString('en-PH')}`).join(', ');
-              const actionLabels = [...new Set(lines.map((line) => line.actionType || 'return'))].map((action) => ({ refund: 'Refund', replacement: 'Replace', return: 'Return Only' }[action] || 'Return Only'));
-              const refundStatus = lines.some((line) => line.actionType === 'refund') ? (record.refundResolvedAt ? `Refunded ${money(record.refundAmount)}` : `Refund pending ${money(record.refundAmount)}`) : '';
-              const replacementStatus = lines.some((line) => line.actionType === 'replacement') ? (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending') : '';
-              const financial = [refundStatus, replacementStatus].filter(Boolean).join(' · ') || 'No financial action';
-              return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(actionLabels.join(' + '))}</td><td>${escapeHtml(itemText)}</td><td>${escapeHtml(outcomeText || 'Quarantine')}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
+              return lines.map((line) => {
+                const product = allProducts.find((item) => item.id === line.productId);
+                const request = ({ refund: 'Refund', replacement: 'Replace', return: 'Return Only' }[line.actionType] || 'Return Only');
+                const financial = line.actionType === 'refund'
+                  ? (record.refundResolvedAt ? `Refunded ${money(line.refundAmount)}` : `Refund pending ${money(line.refundAmount)}`)
+                  : line.actionType === 'replacement'
+                    ? (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending')
+                    : 'No financial action';
+                const inventoryOutcome = `${String(line.condition || 'quarantine').replace('_', ' ')}: ${Number(line.qty || 0).toLocaleString('en-PH')}`;
+                return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(request)}</td><td><strong>${escapeHtml(product?.name || line.productId)}</strong><br><span>${Number(line.qty || 0).toLocaleString('en-PH')} ${escapeHtml(product?.unit || 'unit')}</span></td><td>${escapeHtml(inventoryOutcome)}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
+              });
             }).join('')}
           </tbody></table></div>
         `}
@@ -3307,12 +3310,6 @@ function renderSalesHistory() {
   }));
 }
 
-function saleReturnProductOptions_(selectedId = '') {
-  return products.filter((product) => product.status === 'Active' && Number(product.qty || 0) > 0)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((product) => `<option value="${escapeHtml(product.id)}"${product.id === selectedId ? ' selected' : ''}>${escapeHtml(product.name)}${product.productType === 'bundle' ? ' (Bundle / Set)' : ''}</option>`).join('');
-}
-
 function saleReturnAvailableQty_(saleItem) {
   const alreadyReturned = saleReturnItems.filter((item) => item.saleItemId === saleItem.saleItemId).reduce((total, item) => total + Number(item.qty || 0), 0);
   return Math.max(Number(saleItem.qty || 0) - alreadyReturned, 0);
@@ -3356,17 +3353,17 @@ function renderSaleReturnExisting_(sale) {
             const name = allProducts.find((product) => product.id === line.productId)?.name || line.productId;
             return `<div class="sale-return-resolution">
               <div class="sale-return-resolution-product">
-                  <span class="resolve-btn-text">Restock</span>
                 <strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>
                 <span class="quarantine-chip">${Number(line.qty).toLocaleString('en-PH')} in quarantine</span>
               </div>
-                  <span class="resolve-btn-text">Supplier Return</span>
               <div class="sale-return-resolution-actions">
                 <button type="button" class="resolve-btn restock-btn" title="Restock item to active inventory" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span class="resolve-btn-text">Restock</span>
                 </button>
                 <button type="button" class="resolve-btn supplier-btn" title="Return item to supplier" aria-label="Supplier Return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M17 17V7H7"/></svg>
+                  <span class="resolve-btn-text">Supplier Return</span>
                 </button>
                 <button type="button" class="resolve-btn danger-icon" title="Dispose / scrap damaged item" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -3411,9 +3408,8 @@ function openSaleReturnDialog(sale) {
     <div class="sale-return-summary-card">
       <div class="sale-return-summary-info">
         <div class="sale-return-id-row">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sale-return-id-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <strong class="sale-return-id-text">${escapeHtml(sale.saleId)}</strong>
-          <span class="sale-type-pill ${sale.paymentType === 'credit' ? 'credit' : 'cash'}">${escapeHtml(sale.paymentType === 'credit' ? 'Credit' : 'Cash')}</span>
+          <span class="sale-return-id-badge">${escapeHtml(sale.saleId)}</span>
+          <span class="sale-type-pill ${sale.paymentType === 'credit' ? 'credit' : 'cash'}">${escapeHtml(sale.paymentType === 'credit' ? 'Credit Sale' : 'Cash Sale')}</span>
         </div>
         <span class="sale-return-summary-cust">${escapeHtml(displayCustomerName(sale.customerName))}</span>
       </div>
@@ -3452,7 +3448,7 @@ function openSaleReturnDialog(sale) {
         </div>
         <div data-refund-field="${escapeHtml(item.saleItemId)}" class="sale-return-refund-item-field" hidden>
           <label class="sale-return-control-label">Refund Amount</label>
-          <div class="input-with-prefix"><span class="input-prefix">PHP</span><input class="sale-return-qty-input" data-refund-amount="${escapeHtml(item.saleItemId)}" type="number" min="0.01" step="0.01" value="0.00" aria-label="Refund amount for ${escapeHtml(item.name)}" /></div>
+          <div class="input-with-prefix"><span class="input-prefix">PHP</span><input class="sale-return-amount-input" data-refund-amount="${escapeHtml(item.saleItemId)}" type="number" min="0.01" step="0.01" value="0.00" aria-label="Refund amount for ${escapeHtml(item.name)}" /></div>
         </div>
         <div data-replacement-field="${escapeHtml(item.saleItemId)}" class="sale-return-replacement-field" hidden>
           <div class="sale-return-repl-divider" aria-hidden="true">
@@ -3483,6 +3479,8 @@ function openSaleReturnDialog(sale) {
   (sale.items || []).forEach((item) => updateSaleReturnLineAction_(sale, item.saleItemId));
   initCustomDropdowns(dialog);
   if (!dialog.open) dialog.showModal();
+  const returnBody = dialog.querySelector('.sale-return-body');
+  if (returnBody) returnBody.scrollTop = 0;
 }
 
 async function resolveSaleReturnItem_(sale, returnItemId, resolution) {
