@@ -3346,10 +3346,6 @@ function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', mod
     <div class="sale-return-existing-list">
       ${returns.map((record) => {
         const lines = saleReturnItems.filter((item) => item.returnId === record.id);
-        const unresolved = lines.filter((item) => {
-          const isBundle = allProducts.find((product) => product.id === item.productId)?.productType === 'bundle';
-          return isBundle ? inventoryReturnLots.some((lot) => lot.returnItemId === item.id && lot.state === 'quarantine') : item.condition === 'quarantine';
-        });
         const hasRefund = lines.some((item) => item.actionType === 'refund');
         const hasReplacement = lines.some((item) => item.actionType === 'replacement');
         const pendingActions = [];
@@ -3427,8 +3423,7 @@ function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', mod
                 </div>
               </div>
             </div>`;
-          }).join('') || '<div class="sale-return-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>'}
-          ${unresolved.length === 0 && lines.length > 0 ? '<div class="sale-return-complete" style="margin-top:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>' : ''}
+          }).join('')}
         </article>`;
       }).join('')}
     </div>`;
