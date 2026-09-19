@@ -2508,15 +2508,22 @@ function renderDashboard() {
     current.total += Number(item.qty || 0) * Number(item.price || 0);
     productTotals.set(item.productId, current);
   }));
-  const topProducts = [...productTotals.values()].sort((a, b) => b.qty - a.qty).slice(0, 10);
+  const topProducts = [...productTotals.values()].sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name)).slice(0, 5);
   const maxProductQty = topProducts.length > 0 ? Math.max(...topProducts.map((p) => p.qty), 1) : 1;
 
-  const lowStockItems = products.filter((item) => item.status === 'Active' && Number(item.qty) <= Number(item.lowStockLevel || 0));
+  const lowStockItems = products
+    .filter((item) => item.status === 'Active' && Number(item.qty) <= Number(item.lowStockLevel || 0))
+    .sort((a, b) => Number(a.qty) - Number(b.qty) || a.name.localeCompare(b.name));
   const outOfStockCount = lowStockItems.filter((item) => Number(item.qty) <= 0).length;
   const lowStockCount = lowStockItems.filter((item) => Number(item.qty) > 0).length;
   const attentionStock = lowStockItems.slice(0, 5);
-  const pendingTransfers = transfers.filter((item) => !['Received', 'Cancelled'].includes(item.status)).slice(0, 5);
-  const recentSales = completedSales.slice(0, 10);
+  const pendingTransfers = transfers
+    .filter((item) => !['Received', 'Cancelled'].includes(item.status))
+    .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+    .slice(0, 5);
+  const recentSales = [...completedSales]
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 5);
   const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || 'Selected Branch';
   const permissions = currentSession?.account?.permissions || ['*'];
   const canAccess = (view) => permissions.includes('*') || permissions.includes(view);

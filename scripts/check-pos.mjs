@@ -50,6 +50,7 @@ const checks = [
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['a single return visit supports per-item refund, replacement, and return-only actions', /action_type[\s\S]*refund[\s\S]*replacement[\s\S]*return/.test(files.mixedSalesReturns) && /data-return-action[\s\S]*data-refund-amount[\s\S]*data-replacement-field/.test(files.app)],
   ['cumulative refunds cannot exceed the original sale', /prior_refunds[\s\S]*remaining refundable amount/.test(files.mixedSalesReturns)],
+  ['dashboard operational lists are limited to five ordered records', /topProducts[\s\S]*slice\(0, 5\)[\s\S]*attentionStock[\s\S]*slice\(0, 5\)[\s\S]*pendingTransfers[\s\S]*slice\(0, 5\)[\s\S]*recentSales[\s\S]*slice\(0, 5\)/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);
