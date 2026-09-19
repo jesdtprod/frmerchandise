@@ -19,6 +19,8 @@ let salesHistory = [];
 let saleReturns = [];
 let saleReturnItems = [];
 let inventoryReturnLots = [];
+let inventoryQuarantineCases = [];
+let inventoryQuarantineItems = [];
 let inventoryReportData = {};
 let stockInHistory = [];
 let sellingPriceBatches = [];
@@ -35,6 +37,7 @@ let editingProductId = '';
 let pendingActionConfirmResolver = null;
 let toastTimer = null;
 let refreshInFlight = false;
+let pendingTransferReceipt = null;
 
 // Utility: debounce — delays fn execution until after `wait` ms of silence
 function debounce(fn, wait = 150) {
@@ -774,9 +777,11 @@ async function getAppData_(branchId) {
     client.from('sale_returns').select('*').eq('branch_id', branchId),
     client.from('sale_return_items').select('*'),
     client.from('inventory_return_lots').select('*').eq('branch_id', branchId),
+    client.from('inventory_quarantine_cases').select('*').eq('branch_id', branchId),
+    client.from('inventory_quarantine_items').select('*'),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows, quarantineCaseRows, quarantineItemRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -855,6 +860,8 @@ async function getAppData_(branchId) {
       actionType: row.action_type || 'return', refundAmount: Number(row.refund_amount || 0), condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
     })),
     inventoryReturnLots: returnLotRows.map((row) => ({ id: row.return_lot_id, returnItemId: row.return_item_id, productId: row.product_id, qty: Number(row.qty || 0), state: row.state || 'quarantine' })),
+    inventoryQuarantineCases: quarantineCaseRows.map((row) => ({ id: row.case_id, branchId: row.branch_id, sourceType: row.source_type, reference: row.source_reference, sourceBranchId: row.source_branch_id || '', sourceBranchName: branchMap[row.source_branch_id]?.name || '', supplierReference: row.supplier_reference || '', reason: row.reason || '', status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at || null })),
+    inventoryQuarantineItems: quarantineItemRows.map((row) => ({ id: row.quarantine_item_id, caseId: row.case_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || 'unit', qty: Number(row.qty || 0), sellingPrice: row.selling_price === null ? null : Number(row.selling_price), resolution: row.resolution || 'quarantine', resolvedAt: row.resolved_at || null })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
       id: row.stock_in_id,
@@ -924,6 +931,15 @@ async function api(action, payload = {}) {
       quantity: Number(payload.qty),
       selling_price_input: Number(payload.sellingPrice),
       supplier_reference_input: payload.supplierReference || '',
+    });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'receiveStockIn') {
+    const { data, error } = await client.rpc('receive_stock_in_with_quarantine', {
+      target_branch_id: payload.branchId, target_product_id: payload.productId, received_qty: Number(payload.qty),
+      quarantine_qty: Number(payload.quarantineQty || 0), selling_price_input: Number(payload.sellingPrice),
+      supplier_reference_input: payload.supplierReference || '', reason_input: payload.quarantineReason || '',
     });
     throwIfError_(error);
     return data;
@@ -999,6 +1015,21 @@ async function api(action, payload = {}) {
   }
   if (action === 'processTransferBatch') {
     const { data, error } = await client.rpc('process_transfer_batch', { target_batch_id: payload.batchId, batch_action: payload.batchAction });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'receiveTransferWithQuarantine') {
+    const { data, error } = await client.rpc('receive_transfer_with_quarantine', { target_transfer_id: payload.transferId, accepted_qty_input: Number(payload.acceptedQty), quarantine_qty_input: Number(payload.quarantineQty), reason_input: payload.reason || '' });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'receiveTransferBatchWithQuarantine') {
+    const { data, error } = await client.rpc('receive_transfer_batch_with_quarantine', { target_batch_id: payload.batchId, receipt_lines: payload.lines, reason_input: payload.reason || '' });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'resolveInventoryQuarantineItem') {
+    const { data, error } = await client.rpc('resolve_inventory_quarantine_item', { target_quarantine_item_id: payload.itemId, resolution_input: payload.resolution });
     throwIfError_(error);
     return data;
   }
@@ -2929,6 +2960,7 @@ function renderDashboardSkeleton() {
 
 function renderInventory() {
   if (activeView === 'dashboard') { renderDashboard(); return; }
+  if (activeView === 'quarantine') { renderQuarantinedItems(); return; }
   if (activeView === 'inventoryReports') {
     renderInventoryReports();
     return;
@@ -3070,6 +3102,43 @@ function renderInventory() {
   });
   table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => openForm('edit', button.dataset.edit)));
   table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
+}
+
+function renderQuarantinedItems() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const cases = inventoryQuarantineCases
+    .filter((item) => `${item.id} ${item.reference} ${item.sourceType} ${item.supplierReference} ${item.sourceBranchName} ${item.reason} ${item.status}`.toLowerCase().includes(term))
+    .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+  const sourceLabel = (source) => source === 'stock_in' ? 'Stock-In Receipt' : 'Stock Transfer Receipt';
+  const resolutionLabel = (resolution) => ({ restocked: 'Restock', supplier_return: 'Return to Supplier', return_to_source: 'Return to Source Branch', disposed: 'Dispose' }[resolution] || resolution);
+  const actionButtons = (item, source) => {
+    if (item.resolution !== 'quarantine') return `<span class="sale-return-resolved-pill">${escapeHtml(resolutionLabel(item.resolution))}</span>`;
+    const buttons = source === 'stock_in'
+      ? [['restocked', 'Restock'], ['supplier_return', 'Return to Supplier'], ['disposed', 'Dispose']]
+      : [['restocked', 'Restock'], ['return_to_source', 'Return to Source Branch'], ['disposed', 'Dispose']];
+    return `<span class="table-actions quarantine-actions">${buttons.map(([resolution, label]) => `<button class="button button-secondary quarantine-resolution${resolution === 'disposed' ? ' danger' : ''}" data-quarantine-resolution="${resolution}" data-quarantine-item="${item.id}" type="button">${label}</button>`).join('')}</span>`;
+  };
+  table.innerHTML = `<div class="quarantine-summary"><strong>Inspection holding area</strong><span>Items listed here are not part of available or sellable stock. Resolve each item only after inspection.</span></div>${cases.map((caseItem) => {
+    const items = inventoryQuarantineItems.filter((item) => item.caseId === caseItem.id);
+    return `<section class="quarantine-case-card">
+      <header class="quarantine-case-header"><div><span class="category-badge">${escapeHtml(sourceLabel(caseItem.sourceType))}</span><strong>${escapeHtml(caseItem.id)}</strong><span class="product-meta">Reference: ${escapeHtml(caseItem.reference)} · ${escapeHtml(caseItem.createdAt ? formatDateTime(caseItem.createdAt) : '')}</span></div><span class="stock-pill ${caseItem.status === 'Resolved' ? 'stock-normal' : caseItem.status === 'Partially Resolved' ? 'category-badge' : 'stock-low'}">${escapeHtml(caseItem.status)}</span></header>
+      <div class="quarantine-case-details"><span><b>${caseItem.sourceType === 'stock_in' ? 'Supplier / reference' : 'Source branch'}</b> ${escapeHtml(caseItem.sourceType === 'stock_in' ? (caseItem.supplierReference || 'Not recorded') : (caseItem.sourceBranchName || caseItem.sourceBranchId || 'Not recorded'))}</span><span><b>Inspection reason</b> ${escapeHtml(caseItem.reason || 'Not recorded')}</span></div>
+      <div class="quarantine-items">${items.map((item) => `<div class="quarantine-item-row"><div class="product-cell"><strong class="product-name">${escapeHtml(item.productName)}</strong><span class="product-meta">${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)}${item.sellingPrice === null ? '' : ` · Receipt price ${money(item.sellingPrice)}`}</span></div><div class="quarantine-item-action">${actionButtons(item, caseItem.sourceType)}</div></div>`).join('') || '<div class="empty-state"><p>No quarantine items found</p></div>'}</div>
+    </section>`;
+  }).join('') || '<div class="empty-state"><p>No quarantined items</p><small>Stock received into quarantine will appear here for inspection and disposition.</small></div>'}`;
+  table.querySelectorAll('[data-quarantine-item]').forEach((button) => button.addEventListener('click', () => resolveInventoryQuarantineItem_(button.dataset.quarantineItem, button.dataset.quarantineResolution)));
+}
+
+async function resolveInventoryQuarantineItem_(itemId, resolution) {
+  const labels = { restocked: 'restock this item into available inventory', supplier_return: 'return this item to the supplier', return_to_source: 'send this item back to the source branch as a new in-transit transfer', disposed: 'dispose this item' };
+  if (!await askConfirmation({ title: 'Resolve Quarantined Item', eyebrow: 'QUARANTINED ITEMS', subtitle: 'Confirm final inventory disposition', message: `Do you want to ${labels[resolution] || 'resolve this item'}?`, warning: 'This action is permanent and is recorded in the inventory audit history.', confirmText: resolution === 'disposed' ? 'Dispose Item' : 'Confirm', confirmType: resolution === 'disposed' ? 'danger' : 'primary' })) return;
+  try {
+    const result = await api('resolveInventoryQuarantineItem', { itemId, resolution });
+    showToast(result?.returnTransferId ? `Item marked for return. New transfer ${result.returnTransferId} is in transit.` : 'Quarantined item resolved.', 'success');
+    await refresh(false);
+  } catch (error) { showToast(error.message || 'Unable to resolve quarantined item.', 'error'); }
 }
 
 function renderStockInHistoryTable(filterTerm = '') {
@@ -3798,6 +3867,10 @@ async function handleTransferAction(button) {
   const rawTransfer = transfers.find((item) => item.batchId === button.dataset.transferId) || transfers.find((item) => item.id === button.dataset.transferId);
   const transfer = rawTransfer?.batchId ? { ...rawTransfer, isBatch: true, members: transfers.filter((item) => item.batchId === rawTransfer.batchId) } : rawTransfer;
   if (!transfer || !['dispatch', 'receive', 'cancel'].includes(action)) return;
+  if (action === 'receive') {
+    openTransferReceiptDialog_(transfer);
+    return;
+  }
 
   const copy = {
     dispatch: {
@@ -3854,6 +3927,21 @@ async function handleTransferAction(button) {
   } catch (error) {
     showToast(error.message || 'Failed to process transfer.', 'error');
   }
+}
+
+function openTransferReceiptDialog_(transfer) {
+  pendingTransferReceipt = transfer;
+  activeForm = 'receiveTransfer';
+  const lines = transfer.isBatch ? transfer.members : [transfer];
+  $('#modalEyebrow').textContent = 'STOCK TRANSFERS';
+  $('#dialogTitle').textContent = 'Receive transfer';
+  $('#modalSubtitle').textContent = 'Inspect each line before it enters available inventory.';
+  $('#modalIconWrap').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>';
+  $('#formSubmit').innerHTML = '<span class="button-text">Receive stock</span>';
+  $('#formError').textContent = '';
+  $('#formDialog').dataset.formLayout = 'scrollable';
+  $('#formFields').innerHTML = `<div class="form-field-group full-field"><div class="quarantine-summary"><strong>${escapeHtml(transfer.id)}</strong><span>Accepted units become available inventory. Quarantined units stay held for inspection.</span></div></div>${lines.map((line) => `<div class="form-field-group full-field transfer-receipt-line" data-receipt-transfer="${escapeHtml(line.id)}" data-receipt-total="${line.qty}"><div class="bundle-components-head"><div><strong>${escapeHtml(line.productName)}</strong><p class="field-hint">Transferred: ${Number(line.qty).toLocaleString('en-PH')} ${escapeHtml(line.unit)}</p></div><span class="stock-pill category-badge">In Transit</span></div><div class="transfer-receipt-quantities"><label>Available inventory<input name="acceptedQty" type="number" min="0" max="${line.qty}" step="0.001" value="${line.qty}" required></label><label>Quarantine<input name="quarantineQty" type="number" min="0" max="${line.qty}" step="0.001" value="0" required></label></div></div>`).join('')}<div class="form-field-group full-field"><label for="transferQuarantineReason"><span class="label-text">Inspection reason</span></label><input id="transferQuarantineReason" name="quarantineReason" placeholder="Required when any units are quarantined" autocomplete="off"><p class="field-hint">Use this for damaged, incorrect, or questionable transferred items.</p></div>`;
+  $('#formDialog').showModal();
 }
 
 function renderBranchSelector() {
@@ -4182,6 +4270,8 @@ async function refresh(showSkeleton = true) {
     saleReturns = data.saleReturns || [];
     saleReturnItems = data.saleReturnItems || [];
     inventoryReturnLots = data.inventoryReturnLots || [];
+    inventoryQuarantineCases = data.inventoryQuarantineCases || [];
+    inventoryQuarantineItems = data.inventoryQuarantineItems || [];
     openingCreditAccounts = data.openingCreditAccounts || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
@@ -4413,7 +4503,7 @@ function openForm(type, productId = '') {
     </div>
     <div class="form-field-group full-field">
       <label for="modalStockQty">
-        <span class="label-text">Quantity to Add <span class="required">*</span></span>
+        <span class="label-text">Total Quantity Received <span class="required">*</span></span>
       </label>
       <div class="number-stepper">
         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14"/><path d="m19 9-7 7-7-7"/><circle cx="12" cy="21" r="1"/></svg>
@@ -4427,6 +4517,11 @@ function openForm(type, productId = '') {
           </button>
         </div>
       </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalStockQuarantineQty"><span class="label-text">Send to Quarantine</span></label>
+      <input id="modalStockQuarantineQty" name="quarantineQty" type="number" min="0" step="1" value="0" inputmode="decimal" />
+      <p class="field-hint">Damaged or questionable units stay out of sellable inventory until inspected.</p>
     </div>
     <div class="form-field-group">
       <label for="modalStockUnitCost">
@@ -4445,6 +4540,10 @@ function openForm(type, productId = '') {
         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
         <input id="modalStockSupplierReference" name="supplierReference" placeholder="Supplier or invoice number" autocomplete="off" />
       </div>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalStockQuarantineReason"><span class="label-text">Quarantine Reason</span></label>
+      <input id="modalStockQuarantineReason" name="quarantineReason" placeholder="Required when units are quarantined" autocomplete="off" />
     </div>
   `;
 
@@ -4857,9 +4956,10 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
-  if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(view)) view = permissions[0] || 'pos';
+  const requiredPermission = view === 'quarantine' ? 'inventory' : view;
+  if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(requiredPermission)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
   localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
@@ -4868,6 +4968,7 @@ function setView(view, preserveSidebarOpen = false) {
     pos: ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'],
     products: ['CATALOG', 'Product Registration', 'PRODUCT CATALOG', 'Registered Products'],
     inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch Stock'],
+    quarantine: ['INVENTORY CONTROL', 'Quarantined Items', 'INSPECTION HOLDING AREA', 'Items Awaiting Disposition'],
     branches: ['BRANCH OPERATIONS', 'Branches', 'LOCATION DIRECTORY', 'Main and Satellite Branches'],
     customers: ['CUSTOMER ACCOUNTS', 'Customers', 'CUSTOMER DIRECTORY', 'Customers in the Selected Branch'],
     credits: ['CUSTOMER ACCOUNTS', 'Credit History', 'ACCOUNT RECEIVABLES', 'Customer Credit History'],
@@ -4906,6 +5007,7 @@ function setView(view, preserveSidebarOpen = false) {
     pos: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
     products: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>`,
     inventory: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>`,
+    quarantine: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`,
     branches: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 7h4M10 12h4M10 17h4"/></svg>`,
     customers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>`,
     credits: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
@@ -4928,7 +5030,7 @@ function setView(view, preserveSidebarOpen = false) {
   if (dashboard) dashboard.hidden = !isDashboard;
   if (catalog) catalog.hidden = isDashboard;
   const sectionActions = $('#sectionActions');
-  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' ? 'none' : 'flex';
+  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' || view === 'quarantine' ? 'none' : 'flex';
   const addBtn = $('#addProductButton');
   if (addBtn) addBtn.hidden = view !== 'products';
   const addExistingProductBtn = $('#addExistingProductButton');
@@ -5169,6 +5271,33 @@ $('#modalForm').addEventListener('submit', async (event) => {
     return;
   }
   const form = new FormData(formEl);
+  if (activeForm === 'receiveTransfer') {
+    const transfer = pendingTransferReceipt;
+    const lines = transfer ? (transfer.isBatch ? transfer.members : [transfer]) : [];
+    const receiptLines = [...formEl.querySelectorAll('[data-receipt-transfer]')].map((row) => ({
+      transferId: row.dataset.receiptTransfer,
+      acceptedQty: Number(row.querySelector('[name="acceptedQty"]')?.value || 0),
+      quarantineQty: Number(row.querySelector('[name="quarantineQty"]')?.value || 0),
+      total: Number(row.dataset.receiptTotal || 0),
+    }));
+    const invalid = !transfer || receiptLines.length !== lines.length || receiptLines.some((line) => !Number.isFinite(line.acceptedQty) || !Number.isFinite(line.quarantineQty) || line.acceptedQty < 0 || line.quarantineQty < 0 || Math.abs(line.acceptedQty + line.quarantineQty - line.total) > 0.0001);
+    const quarantineQty = receiptLines.reduce((total, line) => total + line.quarantineQty, 0);
+    const reason = String(form.get('quarantineReason') || '').trim();
+    if (invalid) { showToast('For every line, available inventory plus quarantine must equal the transferred quantity.', 'error'); return; }
+    if (quarantineQty > 0 && !reason) { showToast('Enter the inspection reason for quarantined units.', 'error'); return; }
+    if (!await askConfirmation({ title: 'Receive Transfer', eyebrow: 'STOCK TRANSFERS', subtitle: 'Confirm inspection result', message: `Receive <strong>${receiptLines.length}</strong> transfer line${receiptLines.length === 1 ? '' : 's'} with <strong>${quarantineQty}</strong> unit${quarantineQty === 1 ? '' : 's'} held for inspection?`, warning: 'Only accepted units become available inventory. Quarantined units can be resolved later from Quarantined Items.', confirmText: 'Receive Stock', confirmType: 'success' })) return;
+    const submitBtn = $('#formSubmit'); const originalText = submitBtn.querySelector('.button-text')?.textContent || 'Receive stock';
+    submitBtn.disabled = true; submitBtn.innerHTML = '<span class="btn-spinner"></span><span>Receiving...</span>';
+    try {
+      if (transfer.isBatch) await api('receiveTransferBatchWithQuarantine', { batchId: transfer.batchId, lines: receiptLines, reason });
+      else await api('receiveTransferWithQuarantine', { ...receiptLines[0], reason });
+      $('#formDialog').close(); pendingTransferReceipt = null;
+      showToast(quarantineQty > 0 ? 'Transfer received; quarantined units are ready for inspection.' : 'Transfer received successfully.', 'success');
+      await refresh(false);
+    } catch (error) { $('#formError').textContent = error.message || 'Unable to receive transfer.'; showToast(error.message || 'Unable to receive transfer.', 'error'); }
+    finally { submitBtn.disabled = false; submitBtn.innerHTML = `<span class="button-text">${originalText}</span>`; }
+    return;
+  }
   if (activeForm === 'admin' && form.get('password') !== form.get('confirmPassword')) {
     showToast('Password and confirmation do not match.', 'error');
     return;
@@ -5305,14 +5434,24 @@ $('#modalForm').addEventListener('submit', async (event) => {
       confirmType: 'primary'
     };
   } else {
-    const prod = products.find((p) => p.id === editingProductId);
+    const prod = products.find((p) => p.id === form.get('productId')) || allProducts.find((p) => p.id === form.get('productId'));
     const qty = form.get('qty') || '0';
+    const quarantineQty = Number(form.get('quarantineQty') || 0);
     const sellingPrice = form.get('sellingPrice') || '0';
+    if (!Number.isFinite(quarantineQty) || quarantineQty < 0 || quarantineQty > Number(qty)) {
+      showToast('Quarantine quantity must be between zero and the received quantity.', 'error');
+      return;
+    }
+    if (quarantineQty > 0 && !String(form.get('quarantineReason') || '').trim()) {
+      showToast('Enter the reason for the quarantined units.', 'error');
+      return;
+    }
+    const acceptedQty = Number(qty) - quarantineQty;
     confirmConfig = {
       title: 'Confirm Stock In',
       eyebrow: 'INVENTORY STOCK',
       subtitle: 'Add physical inventory stock',
-      message: `Are you sure you want to add <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> to <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong> at a selling price of <strong>PHP ${escapeHtml(sellingPrice)}</strong> per unit?`,
+      message: `Receive <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> for <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong>? <strong>${acceptedQty}</strong> will become available inventory${quarantineQty ? ` and <strong>${quarantineQty}</strong> will be held in quarantine` : ''}.`,
       confirmText: 'Update Stock',
       confirmType: 'primary'
     };
@@ -5414,7 +5553,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
           status: 'Active',
         });
       }
-      const result = await api('stockIn', { ...Object.fromEntries(form), branchId });
+      const result = await api('receiveStockIn', { ...Object.fromEntries(form), branchId });
       if (result?.productId) {
         const branchItem = products.find((p) => p.id === result.productId);
         if (branchItem) {
@@ -5424,7 +5563,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
           products = [{ ...(cat || {}), id: result.productId, qty: Number(result.qty || 0), status: 'Active' }, ...products];
         }
       }
-      showToast('Stock updated successfully.', 'success');
+      showToast(Number(result?.quarantineQty || 0) > 0 ? 'Stock received; quarantined units are ready for inspection.' : 'Stock received successfully.', 'success');
     }
     $('#formDialog').close();
     renderInventory();
@@ -5861,7 +6000,8 @@ function applySession(session, useRoleDefaultView = false) {
   const account = session.account;
   const permittedViews = account.permissions || [];
   document.querySelectorAll('[data-view]').forEach((item) => {
-    const allowed = item.dataset.view === 'dashboard' || permittedViews.includes('*') || permittedViews.includes(item.dataset.view);
+    const requiredPermission = item.dataset.view === 'quarantine' ? 'inventory' : item.dataset.view;
+    const allowed = item.dataset.view === 'dashboard' || permittedViews.includes('*') || permittedViews.includes(requiredPermission);
     item.hidden = !allowed;
   });
   document.querySelectorAll('.side-nav .nav-label').forEach((label) => {

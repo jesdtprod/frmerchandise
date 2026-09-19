@@ -7074,6 +7074,26 @@ dialog.receipt-dialog {
   }
 }
 
+/* Quarantined receiving and resolution use the same card, badge, and button language as stock and sales. */
+.quarantine-summary { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; margin-bottom:14px; border:1px solid rgba(37,99,235,.32); border-radius:10px; background:rgba(15,35,70,.48); color:var(--text-muted); font-size:13px; }
+.quarantine-summary strong { color:var(--text-primary); }
+.quarantine-case-card { margin-bottom:14px; border:1px solid rgba(37,99,235,.35); border-radius:12px; overflow:hidden; background:rgba(10,25,51,.72); }
+.quarantine-case-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 16px; border-bottom:1px solid rgba(71,103,150,.22); }
+.quarantine-case-header > div { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.quarantine-case-header strong { color:var(--text-primary); font-size:14px; }
+.quarantine-case-details { display:flex; gap:24px; flex-wrap:wrap; padding:10px 16px; color:var(--text-muted); font-size:12px; border-bottom:1px solid rgba(71,103,150,.16); }
+.quarantine-case-details b { color:var(--text-secondary); margin-right:5px; }
+.quarantine-items { padding:8px 16px; }
+.quarantine-item-row { min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid rgba(71,103,150,.16); }
+.quarantine-item-row:last-child { border-bottom:0; }
+.quarantine-item-action { display:flex; justify-content:flex-end; }
+.quarantine-actions { flex-wrap:wrap; justify-content:flex-end; }
+.quarantine-resolution { min-height:32px; padding:0 10px; font-size:12px; white-space:nowrap; }
+.quarantine-resolution.danger { color:var(--danger); border-color:rgba(239,68,68,.42); }
+.transfer-receipt-quantities { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+.transfer-receipt-quantities label { display:grid; gap:6px; color:var(--text-muted); font-size:12px; font-weight:700; }
+@media (max-width: 640px) { .quarantine-summary, .quarantine-case-header, .quarantine-item-row { align-items:flex-start; flex-direction:column; } .quarantine-item-action { width:100%; justify-content:flex-start; } .quarantine-actions { justify-content:flex-start; } }
+
 .form-section-banner {
   grid-column: 1 / -1;
   display: flex;
