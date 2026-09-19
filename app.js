@@ -3271,6 +3271,7 @@ function renderSalesHistory() {
         ? 'No items recorded'
         : items.map((i) => `${i.name || 'Item'} (${i.qty}×)`).join(', ');
       const isCash = sale.paymentType === 'cash';
+      const hasReturnHistory = saleReturns.some((item) => item.saleId === sale.saleId);
       return `
         <div class="table-row">
           <div class="product-cell">
@@ -3294,9 +3295,9 @@ function renderSalesHistory() {
               <button class="icon-button" data-manage-sale-return="${escapeHtml(sale.saleId)}" aria-label="Return, refund, or replace sale" title="Return, refund, or replace sale">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
               </button>
-              <button class="icon-button" data-view-sale-returns="${escapeHtml(sale.saleId)}" aria-label="View return history" title="View return history">
+              ${hasReturnHistory ? `<button class="icon-button" data-view-sale-returns="${escapeHtml(sale.saleId)}" aria-label="View return history" title="View return history">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-              </button>
+              </button>` : ''}
             </span>
           </div>
         </div>
