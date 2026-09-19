@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   app: await readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  index: await readFile(new URL('../index.html', import.meta.url), 'utf8'),
   accountFunction: await readFile(new URL('../supabase/functions/manage-account/index.ts', import.meta.url), 'utf8'),
   branchLock: await readFile(new URL('../supabase/migrations/20260915193000_lock_staff_branch.sql', import.meta.url), 'utf8'),
   backupRestore: await readFile(new URL('../supabase/migrations/20260915194000_operational_backup_restore.sql', import.meta.url), 'utf8'),
@@ -47,6 +48,7 @@ const checks = [
   ['sales-return restocks create FIFO batches from quarantine lots', /resolve_return_item[\s\S]*inventory_cost_batches[\s\S]*lot\.unit_cost/.test(files.salesReturns)],
   ['replacement releases use FIFO inventory allocation', /release_sale_replacement[\s\S]*inventory_cost_batches[\s\S]*qty_remaining/.test(files.salesReturns)],
   ['sales history exposes return, refund, and replacement actions', /data-manage-sale-return/.test(files.app) && /receiveSaleReturn/.test(files.app) && /releaseSaleReplacement/.test(files.app)],
+  ['sales history opens return actions in a separate history modal', /data-view-sale-returns[\s\S]*openSaleReturnHistoryDialog/.test(files.app) && /saleReturnHistoryDialog[\s\S]*saleReturnHistoryExisting/.test(files.index)],
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],

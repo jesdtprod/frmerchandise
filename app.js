@@ -3294,6 +3294,9 @@ function renderSalesHistory() {
               <button class="icon-button" data-manage-sale-return="${escapeHtml(sale.saleId)}" aria-label="Return, refund, or replace sale" title="Return, refund, or replace sale">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>
               </button>
+              <button class="icon-button" data-view-sale-returns="${escapeHtml(sale.saleId)}" aria-label="View return history" title="View return history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+              </button>
             </span>
           </div>
         </div>
@@ -3308,6 +3311,10 @@ function renderSalesHistory() {
     const sale = salesHistory.find((item) => item.saleId === button.dataset.manageSaleReturn);
     if (sale) openSaleReturnDialog(sale);
   }));
+  table.querySelectorAll('[data-view-sale-returns]').forEach((button) => button.addEventListener('click', () => {
+    const sale = salesHistory.find((item) => item.saleId === button.dataset.viewSaleReturns);
+    if (sale) openSaleReturnHistoryDialog(sale);
+  }));
 }
 
 function saleReturnAvailableQty_(saleItem) {
@@ -3315,11 +3322,14 @@ function saleReturnAvailableQty_(saleItem) {
   return Math.max(Number(saleItem.qty || 0) - alreadyReturned, 0);
 }
 
-function renderSaleReturnExisting_(sale) {
-  const container = $('#saleReturnExisting');
+function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', modal = 'return') {
+  const container = $(`#${containerId}`);
   if (!container) return;
   const returns = saleReturns.filter((item) => item.saleId === sale.saleId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  if (!returns.length) { container.innerHTML = ''; return; }
+  if (!returns.length) {
+    container.innerHTML = '<div class="empty-state"><p>No returns recorded</p><small>This sale has no recorded refund, replacement, or quarantine activity.</small></div>';
+    return;
+  }
   container.innerHTML = `
     <div class="sale-return-section-head">
       <span class="label-text">Recorded Returns</span>
@@ -3375,9 +3385,9 @@ function renderSaleReturnExisting_(sale) {
         </article>`;
       }).join('')}
     </div>`;
-  container.querySelectorAll('[data-complete-return-refund]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnFinancial_(sale, button.dataset.completeReturnRefund)));
-  container.querySelectorAll('[data-release-replacement]').forEach((button) => button.addEventListener('click', () => releaseSaleReplacement_(sale, button.dataset.releaseReplacement)));
-  container.querySelectorAll('[data-resolve-sale-return]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnItem_(sale, button.dataset.resolveSaleReturn, button.dataset.resolution)));
+  container.querySelectorAll('[data-complete-return-refund]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnFinancial_(sale, button.dataset.completeReturnRefund, modal)));
+  container.querySelectorAll('[data-release-replacement]').forEach((button) => button.addEventListener('click', () => releaseSaleReplacement_(sale, button.dataset.releaseReplacement, modal)));
+  container.querySelectorAll('[data-resolve-sale-return]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnItem_(sale, button.dataset.resolveSaleReturn, button.dataset.resolution, modal)));
 }
 
 function updateSaleReturnLineAction_(sale, saleItemId) {
@@ -3475,7 +3485,6 @@ function openSaleReturnDialog(sale) {
     updateSaleReturnLineAction_(sale, input.dataset.saleItemId);
   }));
   $('#saleReturnLines').querySelectorAll('[data-return-action]').forEach((input) => input.addEventListener('change', () => updateSaleReturnLineAction_(sale, input.dataset.returnAction)));
-  renderSaleReturnExisting_(sale);
   (sale.items || []).forEach((item) => updateSaleReturnLineAction_(sale, item.saleItemId));
   initCustomDropdowns(dialog);
   if (!dialog.open) dialog.showModal();
@@ -3483,20 +3492,31 @@ function openSaleReturnDialog(sale) {
   if (returnBody) returnBody.scrollTop = 0;
 }
 
-async function resolveSaleReturnItem_(sale, returnItemId, resolution) {
+function openSaleReturnHistoryDialog(sale) {
+  const dialog = $('#saleReturnHistoryDialog');
+  if (!dialog) return;
+  $('#saleReturnHistoryTitle').textContent = `Return History ${sale.saleId}`;
+  $('#saleReturnHistorySubtitle').textContent = `${displayCustomerName(sale.customerName)} · refund, replacement, and quarantine actions.`;
+  $('#saleReturnHistorySummary').innerHTML = `<strong>${escapeHtml(sale.saleId)}</strong><span>${escapeHtml(sale.paymentType === 'credit' ? `Credit sale · balance ${money(sale.creditBalance)}` : `Cash sale · total ${money(sale.total)}`)}</span>`;
+  $('#saleReturnHistoryError').textContent = '';
+  renderSaleReturnExisting_(sale, 'saleReturnHistoryExisting', 'history');
+  if (!dialog.open) dialog.showModal();
+}
+
+async function resolveSaleReturnItem_(sale, returnItemId, resolution, modal = 'return') {
   const labels = { restocked: 'restock this item', supplier_return: 'mark this item for supplier return', disposed: 'dispose this item' };
   if (!await askConfirmation({ title: 'Resolve Returned Item', eyebrow: 'SALES RETURN', subtitle: 'Confirm inventory disposition', message: `Do you want to ${labels[resolution]}?`, warning: 'This action removes the item from quarantine and is recorded in the audit history.', confirmText: 'Confirm', confirmType: resolution === 'disposed' ? 'danger' : 'primary' })) return;
-  try { await api('resolveSaleReturnItem', { returnItemId, resolution }); await refresh(false); openSaleReturnDialog(sale); showToast('Returned item resolved.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
+  try { await api('resolveSaleReturnItem', { returnItemId, resolution }); await refresh(false); modal === 'history' ? openSaleReturnHistoryDialog(sale) : openSaleReturnDialog(sale); showToast('Returned item resolved.', 'success'); } catch (error) { $(`#saleReturn${modal === 'history' ? 'History' : ''}Error`).textContent = error.message; }
 }
 
-async function resolveSaleReturnFinancial_(sale, returnId) {
+async function resolveSaleReturnFinancial_(sale, returnId, modal = 'return') {
   if (!await askConfirmation({ title: 'Complete Refund', eyebrow: 'SALES RETURN', subtitle: 'Confirm financial adjustment', message: 'Confirm that the customer refund has been completed.', warning: 'For credit sales, this reduces the outstanding customer balance. Cash refunds are recorded in the audit trail.', confirmText: 'Complete Refund', confirmType: 'primary' })) return;
-  try { await api('completeSaleRefund', { returnId }); await refresh(false); openSaleReturnDialog(sale); showToast('Refund completed.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
+  try { await api('completeSaleRefund', { returnId }); await refresh(false); modal === 'history' ? openSaleReturnHistoryDialog(sale) : openSaleReturnDialog(sale); showToast('Refund completed.', 'success'); } catch (error) { $(`#saleReturn${modal === 'history' ? 'History' : ''}Error`).textContent = error.message; }
 }
 
-async function releaseSaleReplacement_(sale, returnId) {
+async function releaseSaleReplacement_(sale, returnId, modal = 'return') {
   if (!await askConfirmation({ title: 'Release Replacement', eyebrow: 'SALES RETURN', subtitle: 'Confirm zero-value replacement release', message: 'Release the selected replacement stock to the customer?', warning: 'Replacement stock is deducted using FIFO and remains linked to this return.', confirmText: 'Release Replacement', confirmType: 'primary' })) return;
-  try { await api('releaseSaleReplacement', { returnId }); await refresh(false); openSaleReturnDialog(sale); showToast('Replacement released.', 'success'); } catch (error) { $('#saleReturnError').textContent = error.message; }
+  try { await api('releaseSaleReplacement', { returnId }); await refresh(false); modal === 'history' ? openSaleReturnHistoryDialog(sale) : openSaleReturnDialog(sale); showToast('Replacement released.', 'success'); } catch (error) { $(`#saleReturn${modal === 'history' ? 'History' : ''}Error`).textContent = error.message; }
 }
 
 function openCreditHistory(historyId) {

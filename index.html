@@ -667,13 +667,37 @@
             </div>
             <div id="saleReturnLines" class="sale-return-lines"></div>
           </div>
-          <div id="saleReturnExisting" class="sale-return-existing"></div>
           <p class="form-error" id="saleReturnError" role="alert"></p>
         </div>
         <div class="modal-actions">
           <button class="button modal-cancel-btn" type="button" data-close="saleReturnDialog">Cancel</button>
           <button class="button modal-save-btn" type="submit" id="saleReturnSubmit"><span class="button-text">Receive to Quarantine</span></button>
         </div>
+      </form>
+    </dialog>
+
+    <!-- Sales Return History Dialog -->
+    <dialog id="saleReturnHistoryDialog" class="pepsi-dialog sale-return-dialog">
+      <form class="sale-return-history-wrap" novalidate>
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge sale-return-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow">SALES RETURN</span>
+              <h2 id="saleReturnHistoryTitle">Return History</h2>
+              <p class="modal-subtitle" id="saleReturnHistorySubtitle">Recorded return actions and quarantine disposition.</p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="saleReturnHistoryDialog" aria-label="Close return history" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="sale-return-body">
+          <div class="sale-return-summary" id="saleReturnHistorySummary"></div>
+          <div id="saleReturnHistoryExisting" class="sale-return-existing"></div>
+          <p class="form-error" id="saleReturnHistoryError" role="alert"></p>
+        </div>
+        <div class="modal-actions"><button class="button modal-cancel-btn" type="button" data-close="saleReturnHistoryDialog">Close</button></div>
       </form>
     </dialog>
 
