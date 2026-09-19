@@ -152,6 +152,21 @@ dialog.sale-return-dialog {
 .sale-return-resolution { padding-top: 9px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); }
 .sale-return-resolution > div { display: flex; gap: 6px; }
 .sale-return-action { justify-self: start; min-height: 34px; font-size: 12px; }
+.sale-return-record-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sale-return-action-btn,
+.resolve-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border-radius: 7px; font-size: 12px; font-weight: 700; }
+.sale-return-action-btn svg,
+.resolve-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.sale-return-action-btn.refund-btn { background: rgba(0, 102, 245, .16); border-color: rgba(56, 189, 248, .4); color: #7dd3fc; }
+.sale-return-action-btn.replacement-btn { background: rgba(168, 85, 247, .16); border-color: rgba(192, 132, 252, .4); color: #d8b4fe; }
+.sale-return-resolution-product { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.sale-return-resolution-name { color: var(--text-pure); font-weight: 700; }
+.quarantine-chip { display: inline-flex; padding: 2px 7px; border-radius: 5px; background: rgba(245, 158, 11, .14); border: 1px solid rgba(245, 158, 11, .3); color: #fbbf24; font-size: 11px; font-weight: 700; }
+.sale-return-resolution-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.resolve-btn { cursor: pointer; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--text-secondary); }
+.resolve-btn.restock-btn:hover { background: rgba(16,185,129,.18); border-color: rgba(16,185,129,.5); color: #34d399; }
+.resolve-btn.supplier-btn:hover { background: rgba(0,102,245,.18); border-color: rgba(56,189,248,.5); color: #7dd3fc; }
+.resolve-btn.danger-icon:hover { background: rgba(227,41,52,.18); border-color: rgba(227,41,52,.5); color: #f87171; }
 
 @media (max-width: 640px) {
   .sale-return-body { padding: 0 16px 16px; }

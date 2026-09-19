@@ -3334,30 +3334,43 @@ function renderSaleReturnExisting_(sale) {
         const unresolved = lines.filter((item) => item.condition === 'quarantine');
         const hasRefund = lines.some((item) => item.actionType === 'refund');
         const hasReplacement = lines.some((item) => item.actionType === 'replacement');
-        const financialAction = `${hasRefund && !record.refundResolvedAt ? `<button class="button button-secondary sale-return-action" type="button" data-complete-return-refund="${escapeHtml(record.id)}">Complete ${money(record.refundAmount)} Refund</button>` : ''}${hasReplacement && !record.replacementReleasedAt ? `<button class="button button-secondary sale-return-action" type="button" data-release-replacement="${escapeHtml(record.id)}">Release Replacement</button>` : ''}`;
+        const pendingActions = [];
+        if (hasRefund && !record.refundResolvedAt) {
+          pendingActions.push(`<button class="button sale-return-action-btn refund-btn" type="button" data-complete-return-refund="${escapeHtml(record.id)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Complete ${money(record.refundAmount)} Refund</span></button>`);
+        }
+        if (hasReplacement && !record.replacementReleasedAt) {
+          pendingActions.push(`<button class="button sale-return-action-btn replacement-btn" type="button" data-release-replacement="${escapeHtml(record.id)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg><span>Release Replacement</span></button>`);
+        }
+        const financialAction = pendingActions.length ? `<div class="sale-return-record-actions">${pendingActions.join('')}</div>` : '';
         return `<article class="sale-return-record">
           <div class="sale-return-record-head">
             <div class="sale-return-record-meta">
               <span class="sale-return-record-id">${escapeHtml(record.id)}</span>
               <span class="sale-type-pill return">${escapeHtml([hasRefund ? 'Refund' : '', hasReplacement ? 'Replacement' : '', lines.some((item) => item.actionType === 'return') ? 'Return Only' : ''].filter(Boolean).join(' + '))}</span>
-              <span class="sale-return-record-status">${escapeHtml(record.status)}</span>
+              <span class="sale-return-record-status"><span class="status-pulse-dot"></span>${escapeHtml(record.status)}</span>
             </div>
-            <span class="sale-return-record-reason">${escapeHtml(record.reason || 'No reason recorded')}</span>
+            ${record.reason ? `<div class="sale-return-record-reason-tag"><span class="reason-label">Reason:</span> <span class="sale-return-record-reason">${escapeHtml(record.reason)}</span></div>` : ''}
           </div>
           ${financialAction}
           ${unresolved.map((line) => {
             const name = allProducts.find((product) => product.id === line.productId)?.name || line.productId;
             return `<div class="sale-return-resolution">
-              <span class="sale-return-resolution-name">${escapeHtml(name)} <span class="quarantine-chip">${Number(line.qty).toLocaleString('en-PH')} in quarantine</span></span>
+              <div class="sale-return-resolution-product">
+                  <span class="resolve-btn-text">Restock</span>
+                <strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>
+                <span class="quarantine-chip">${Number(line.qty).toLocaleString('en-PH')} in quarantine</span>
+              </div>
+                  <span class="resolve-btn-text">Supplier Return</span>
               <div class="sale-return-resolution-actions">
-                <button type="button" class="icon-button resolve-btn restock-btn" title="Restock item" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">
+                <button type="button" class="resolve-btn restock-btn" title="Restock item to active inventory" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
                 </button>
-                <button type="button" class="icon-button resolve-btn supplier-btn" title="Mark for supplier return" aria-label="Mark for supplier return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">
+                <button type="button" class="resolve-btn supplier-btn" title="Return item to supplier" aria-label="Supplier Return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M17 17V7H7"/></svg>
                 </button>
-                <button type="button" class="icon-button resolve-btn danger-icon" title="Dispose item" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <button type="button" class="resolve-btn danger-icon" title="Dispose / scrap damaged item" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span class="resolve-btn-text">Dispose</span>
                 </button>
               </div>
             </div>`;
