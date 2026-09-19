@@ -16,6 +16,7 @@ const files = {
   salesReturns: await readFile(new URL('../supabase/migrations/20260918005000_complete_sales_return_workflow.sql', import.meta.url), 'utf8'),
   mixedSalesReturns: await readFile(new URL('../supabase/migrations/20260918007000_mixed_sales_return_actions.sql', import.meta.url), 'utf8'),
   sameItemReplacements: await readFile(new URL('../supabase/migrations/20260918008000_same_item_replacements.sql', import.meta.url), 'utf8'),
+  bundleReturnComponents: await readFile(new URL('../supabase/migrations/20260918009000_resolve_bundle_return_components.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -57,6 +58,7 @@ const checks = [
   ['replacements are restricted to the original item and returned quantity', /replacement_product_id_value is distinct from sale_item_row\.product_id[\s\S]*replacement_qty_value <> qty_value/.test(files.sameItemReplacements) && /Same item:[\s\S]*data-replacement-product[\s\S]*type="hidden"/.test(files.app)],
   ['only refund lines submit a refund amount', /action === 'refund'[\s\S]*refundInput\.value[\s\S]*actionType === 'refund' \? Number\(document\.querySelector\(`\[data-refund-amount=/.test(files.app)],
   ['quarantine disposition actions are labeled buttons', /resolve-btn-text">Restock[\s\S]*resolve-btn-text">Supplier Return[\s\S]*resolve-btn-text">Dispose/.test(files.app)],
+  ['bundle returns resolve their quarantined components independently', /resolve_bundle_return_component[\s\S]*target_product_id[\s\S]*inventory_return_lots/.test(files.bundleReturnComponents) && /inventoryReturnLots[\s\S]*data-resolve-bundle-return-component[\s\S]*resolveBundleReturnComponent_/.test(files.app)],
   ['dashboard operational lists are limited to five ordered records', /topProducts[\s\S]*slice\(0, 5\)[\s\S]*attentionStock[\s\S]*slice\(0, 5\)[\s\S]*pendingTransfers[\s\S]*slice\(0, 5\)[\s\S]*recentSales[\s\S]*slice\(0, 5\)/.test(files.app)],
 ];
 

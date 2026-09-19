@@ -18,6 +18,7 @@ let pendingCreditAccount = null;
 let salesHistory = [];
 let saleReturns = [];
 let saleReturnItems = [];
+let inventoryReturnLots = [];
 let inventoryReportData = {};
 let stockInHistory = [];
 let sellingPriceBatches = [];
@@ -772,9 +773,10 @@ async function getAppData_(branchId) {
     client.rpc('get_branch_bundle_availability', { target_branch_id: branchId }),
     client.from('sale_returns').select('*').eq('branch_id', branchId),
     client.from('sale_return_items').select('*'),
+    client.from('inventory_return_lots').select('*').eq('branch_id', branchId),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -852,6 +854,7 @@ async function getAppData_(branchId) {
       id: row.return_item_id, returnId: row.return_id, saleItemId: row.original_sale_item_id, productId: row.product_id, qty: Number(row.qty || 0),
       actionType: row.action_type || 'return', refundAmount: Number(row.refund_amount || 0), condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
     })),
+    inventoryReturnLots: returnLotRows.map((row) => ({ id: row.return_lot_id, returnItemId: row.return_item_id, productId: row.product_id, qty: Number(row.qty || 0), state: row.state || 'quarantine' })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
       id: row.stock_in_id,
@@ -950,6 +953,11 @@ async function api(action, payload = {}) {
   }
   if (action === 'resolveSaleReturnItem') {
     const { data, error } = await client.rpc('resolve_return_item', { target_return_item_id: payload.returnItemId, resolution: payload.resolution });
+    throwIfError_(error);
+    return data;
+  }
+  if (action === 'resolveBundleReturnComponent') {
+    const { data, error } = await client.rpc('resolve_bundle_return_component', { target_return_item_id: payload.returnItemId, target_product_id: payload.productId, resolution: payload.resolution });
     throwIfError_(error);
     return data;
   }
@@ -1263,7 +1271,7 @@ function renderSkeletonTable() {
 
   const getSkeletonActionCell = () => {
     if (!hasAction) return '';
-    if (activeView === 'staffAccounts') {
+    if (activeView === 'staffAccounts' || activeView === 'customers' || activeView === 'sales') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -1274,18 +1282,7 @@ function renderSkeletonTable() {
         </div>
       `;
     }
-    if (activeView === 'customers') {
-      return `
-        <div class="row-action-cell skeleton-action-cell">
-          <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
-            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
-            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
-            <div class="skeleton-shimmer skeleton-line btn" style="width:32px;height:32px;border-radius:9px;"></div>
-          </span>
-        </div>
-      `;
-    }
-    if (activeView === 'products' || activeView === 'sales') {
+    if (activeView === 'products') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -3323,6 +3320,16 @@ function saleReturnAvailableQty_(saleItem) {
   return Math.max(Number(saleItem.qty || 0) - alreadyReturned, 0);
 }
 
+function returnResolutionButtons_(attributes) {
+  return `<button type="button" class="resolve-btn restock-btn" title="Restock item to active inventory" aria-label="Restock" ${attributes} data-resolution="restocked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg><span class="resolve-btn-text">Restock</span></button><button type="button" class="resolve-btn supplier-btn" title="Return item to supplier" aria-label="Supplier Return" ${attributes} data-resolution="supplier_return"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M17 17V7H7"/></svg><span class="resolve-btn-text">Supplier Return</span></button><button type="button" class="resolve-btn danger-icon" title="Dispose / scrap damaged item" aria-label="Dispose" ${attributes} data-resolution="disposed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span class="resolve-btn-text">Dispose</span></button>`;
+}
+
+function returnDispositionChip_(state, qty) {
+  if (state === 'quarantine') return `<span class="quarantine-chip">${Number(qty).toLocaleString('en-PH')} in quarantine</span>`;
+  const label = state === 'restocked' ? '✓ Restocked' : state === 'supplier_return' ? '↗ Supplier Return' : state === 'disposed' ? 'Disposed' : 'Mixed resolved';
+  return `<span class="disposition-chip ${escapeHtml(state)}">${label} (${Number(qty).toLocaleString('en-PH')})</span>`;
+}
+
 function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', modal = 'return') {
   const container = $(`#${containerId}`);
   if (!container) return;
@@ -3339,7 +3346,10 @@ function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', mod
     <div class="sale-return-existing-list">
       ${returns.map((record) => {
         const lines = saleReturnItems.filter((item) => item.returnId === record.id);
-        const unresolved = lines.filter((item) => item.condition === 'quarantine');
+        const unresolved = lines.filter((item) => {
+          const isBundle = allProducts.find((product) => product.id === item.productId)?.productType === 'bundle';
+          return isBundle ? inventoryReturnLots.some((lot) => lot.returnItemId === item.id && lot.state === 'quarantine') : item.condition === 'quarantine';
+        });
         const hasRefund = lines.some((item) => item.actionType === 'refund');
         const hasReplacement = lines.some((item) => item.actionType === 'replacement');
         const pendingActions = [];
@@ -3360,35 +3370,49 @@ function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', mod
             ${record.reason ? `<div class="sale-return-record-reason-tag"><span class="reason-label">Reason:</span> <span class="sale-return-record-reason">${escapeHtml(record.reason)}</span></div>` : ''}
           </div>
           ${financialAction}
-          ${unresolved.map((line) => {
+          ${lines.map((line) => {
             const name = allProducts.find((product) => product.id === line.productId)?.name || line.productId;
-            return `<div class="sale-return-resolution">
+            const actionBadge = line.actionType === 'refund'
+              ? `<span class="sale-item-action-badge refund"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Refund${Number(line.refundAmount || 0) > 0 ? ` · ${money(line.refundAmount)}` : ''}</span>`
+              : line.actionType === 'replacement'
+              ? `<span class="sale-item-action-badge replacement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>Replace${Number(line.replacementQty || 0) > 0 ? ` · ${Number(line.replacementQty).toLocaleString('en-PH')} qty` : ''}</span>`
+              : `<span class="sale-item-action-badge return-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg>Return Only</span>`;
+
+            const isBundle = allProducts.find((product) => product.id === line.productId)?.productType === 'bundle';
+            if (isBundle) {
+              const componentLots = inventoryReturnLots.filter((lot) => lot.returnItemId === line.id);
+              const components = Object.values(componentLots.reduce((groups, lot) => {
+                const group = groups[lot.productId] ||= { productId: lot.productId, qty: 0, states: [] };
+                group.qty += Number(lot.qty || 0); group.states.push(lot.state);
+                return groups;
+              }, {}));
+              return `<div class="sale-return-resolution bundle-return-resolution"><div class="sale-return-resolution-product"><strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>${actionBadge}<span class="quarantine-chip">Bundle components</span></div></div>
+                ${components.map((component) => {
+                  const componentName = allProducts.find((product) => product.id === component.productId)?.name || component.productId;
+                  const state = component.states.every((value) => value === component.states[0]) ? component.states[0] : 'mixed_resolved';
+                  return `<div class="sale-return-resolution bundle-component-resolution ${state !== 'quarantine' ? 'is-resolved' : ''}"><div class="sale-return-resolution-product"><strong class="sale-return-resolution-name">${escapeHtml(componentName)}</strong>${returnDispositionChip_(state, component.qty)}</div><div class="sale-return-resolution-actions">${state === 'quarantine' ? returnResolutionButtons_(`data-resolve-bundle-return-component="${escapeHtml(line.id)}" data-component-product="${escapeHtml(component.productId)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}</div></div>`;
+                }).join('') || '<div class="sale-return-complete">No component quarantine lots were found for this bundle return.</div>'}`;
+            }
+            const isQuarantine = line.condition === 'quarantine';
+            return `<div class="sale-return-resolution ${!isQuarantine ? 'is-resolved' : ''}">
               <div class="sale-return-resolution-product">
                 <strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>
-                <span class="quarantine-chip">${Number(line.qty).toLocaleString('en-PH')} in quarantine</span>
+                ${actionBadge}
+                ${returnDispositionChip_(line.condition, line.qty)}
               </div>
               <div class="sale-return-resolution-actions">
-                <button type="button" class="resolve-btn restock-btn" title="Restock item to active inventory" aria-label="Restock" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="restocked">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-                  <span class="resolve-btn-text">Restock</span>
-                </button>
-                <button type="button" class="resolve-btn supplier-btn" title="Return item to supplier" aria-label="Supplier Return" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="supplier_return">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M17 17V7H7"/></svg>
-                  <span class="resolve-btn-text">Supplier Return</span>
-                </button>
-                <button type="button" class="resolve-btn danger-icon" title="Dispose / scrap damaged item" aria-label="Dispose" data-resolve-sale-return="${escapeHtml(line.id)}" data-resolution="disposed">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  <span class="resolve-btn-text">Dispose</span>
-                </button>
+                ${isQuarantine ? returnResolutionButtons_(`data-resolve-sale-return="${escapeHtml(line.id)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}
               </div>
             </div>`;
           }).join('') || '<div class="sale-return-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>'}
+          ${unresolved.length === 0 && lines.length > 0 ? '<div class="sale-return-complete" style="margin-top:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>' : ''}
         </article>`;
       }).join('')}
     </div>`;
   container.querySelectorAll('[data-complete-return-refund]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnFinancial_(sale, button.dataset.completeReturnRefund, modal)));
   container.querySelectorAll('[data-release-replacement]').forEach((button) => button.addEventListener('click', () => releaseSaleReplacement_(sale, button.dataset.releaseReplacement, modal)));
   container.querySelectorAll('[data-resolve-sale-return]').forEach((button) => button.addEventListener('click', () => resolveSaleReturnItem_(sale, button.dataset.resolveSaleReturn, button.dataset.resolution, modal)));
+  container.querySelectorAll('[data-resolve-bundle-return-component]').forEach((button) => button.addEventListener('click', () => resolveBundleReturnComponent_(sale, button.dataset.resolveBundleReturnComponent, button.dataset.componentProduct, button.dataset.resolution, modal)));
 }
 
 function updateSaleReturnLineAction_(sale, saleItemId) {
@@ -3508,6 +3532,13 @@ async function resolveSaleReturnItem_(sale, returnItemId, resolution, modal = 'r
   const labels = { restocked: 'restock this item', supplier_return: 'mark this item for supplier return', disposed: 'dispose this item' };
   if (!await askConfirmation({ title: 'Resolve Returned Item', eyebrow: 'SALES RETURN', subtitle: 'Confirm inventory disposition', message: `Do you want to ${labels[resolution]}?`, warning: 'This action removes the item from quarantine and is recorded in the audit history.', confirmText: 'Confirm', confirmType: resolution === 'disposed' ? 'danger' : 'primary' })) return;
   try { await api('resolveSaleReturnItem', { returnItemId, resolution }); await refresh(false); modal === 'history' ? openSaleReturnHistoryDialog(sale) : openSaleReturnDialog(sale); showToast('Returned item resolved.', 'success'); } catch (error) { $(`#saleReturn${modal === 'history' ? 'History' : ''}Error`).textContent = error.message; }
+}
+
+async function resolveBundleReturnComponent_(sale, returnItemId, productId, resolution, modal = 'history') {
+  const component = allProducts.find((item) => item.id === productId);
+  const labels = { restocked: 'restock this component', supplier_return: 'return this component to the supplier', disposed: 'dispose this component' };
+  if (!await askConfirmation({ title: 'Resolve Bundle Component', eyebrow: 'SALES RETURN', subtitle: component?.name || 'Confirm component disposition', message: `Do you want to ${labels[resolution]}?`, warning: 'Only this bundle component is affected. The other returned components remain in quarantine until individually resolved.', confirmText: 'Confirm', confirmType: resolution === 'disposed' ? 'danger' : 'primary' })) return;
+  try { await api('resolveBundleReturnComponent', { returnItemId, productId, resolution }); await refresh(false); modal === 'history' ? openSaleReturnHistoryDialog(sale) : openSaleReturnDialog(sale); showToast('Bundle component resolved.', 'success'); } catch (error) { $(`#saleReturn${modal === 'history' ? 'History' : ''}Error`).textContent = error.message; }
 }
 
 async function resolveSaleReturnFinancial_(sale, returnId, modal = 'return') {
@@ -4132,6 +4163,7 @@ async function refresh(showSkeleton = true) {
     salesHistory = data.salesHistory || [];
     saleReturns = data.saleReturns || [];
     saleReturnItems = data.saleReturnItems || [];
+    inventoryReturnLots = data.inventoryReturnLots || [];
     openingCreditAccounts = data.openingCreditAccounts || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
