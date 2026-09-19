@@ -17,6 +17,7 @@ const files = {
   mixedSalesReturns: await readFile(new URL('../supabase/migrations/20260918007000_mixed_sales_return_actions.sql', import.meta.url), 'utf8'),
   sameItemReplacements: await readFile(new URL('../supabase/migrations/20260918008000_same_item_replacements.sql', import.meta.url), 'utf8'),
   bundleReturnComponents: await readFile(new URL('../supabase/migrations/20260918009000_resolve_bundle_return_components.sql', import.meta.url), 'utf8'),
+  refundReplacementOnly: await readFile(new URL('../supabase/migrations/20260918010000_refund_replacement_sales_returns.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -53,7 +54,7 @@ const checks = [
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],
-  ['a single return visit supports per-item refund, replacement, and return-only actions', /action_type[\s\S]*refund[\s\S]*replacement[\s\S]*return/.test(files.mixedSalesReturns) && /data-return-action[\s\S]*data-refund-amount[\s\S]*data-replacement-field/.test(files.app)],
+  ['a sale return accepts only refund or same-item replacement actions', /action_value not in \('refund', 'replacement'\)/.test(files.refundReplacementOnly) && /option value="refund">Refund[\s\S]*option value="replacement">Replace/.test(files.app) && !/option value="return">Return Only/.test(files.app)],
   ['cumulative refunds cannot exceed the original sale', /prior_refunds[\s\S]*remaining refundable amount/.test(files.mixedSalesReturns)],
   ['replacements are restricted to the original item and returned quantity', /replacement_product_id_value is distinct from sale_item_row\.product_id[\s\S]*replacement_qty_value <> qty_value/.test(files.sameItemReplacements) && /Same item:[\s\S]*data-replacement-product[\s\S]*type="hidden"/.test(files.app)],
   ['only refund lines submit a refund amount', /action === 'refund'[\s\S]*refundInput\.value[\s\S]*actionType === 'refund' \? Number\(document\.querySelector\(`\[data-refund-amount=/.test(files.app)],

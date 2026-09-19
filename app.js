@@ -3386,22 +3386,45 @@ function renderSaleReturnExisting_(sale, containerId = 'saleReturnExisting', mod
                 group.qty += Number(lot.qty || 0); group.states.push(lot.state);
                 return groups;
               }, {}));
-              return `<div class="sale-return-resolution bundle-return-resolution"><div class="sale-return-resolution-product"><strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>${actionBadge}<span class="quarantine-chip">Bundle components</span></div></div>
-                ${components.map((component) => {
-                  const componentName = allProducts.find((product) => product.id === component.productId)?.name || component.productId;
-                  const state = component.states.every((value) => value === component.states[0]) ? component.states[0] : 'mixed_resolved';
-                  return `<div class="sale-return-resolution bundle-component-resolution ${state !== 'quarantine' ? 'is-resolved' : ''}"><div class="sale-return-resolution-product"><strong class="sale-return-resolution-name">${escapeHtml(componentName)}</strong>${returnDispositionChip_(state, component.qty)}</div><div class="sale-return-resolution-actions">${state === 'quarantine' ? returnResolutionButtons_(`data-resolve-bundle-return-component="${escapeHtml(line.id)}" data-component-product="${escapeHtml(component.productId)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}</div></div>`;
-                }).join('') || '<div class="sale-return-complete">No component quarantine lots were found for this bundle return.</div>'}`;
+              return `<div class="return-item-group bundle-group">
+                <div class="bundle-group-header">
+                  <div class="bundle-group-info">
+                    <span class="item-type-pill bundle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>Bundle</span>
+                    <strong class="bundle-group-name">${escapeHtml(name)}</strong>
+                    ${actionBadge}
+                  </div>
+                  <span class="bundle-group-badge">${components.length} component${components.length === 1 ? '' : 's'}</span>
+                </div>
+                <div class="bundle-components-list">
+                  ${components.map((component) => {
+                    const componentName = allProducts.find((product) => product.id === component.productId)?.name || component.productId;
+                    const state = component.states.every((value) => value === component.states[0]) ? component.states[0] : 'mixed_resolved';
+                    return `<div class="bundle-component-row ${state !== 'quarantine' ? 'is-resolved' : ''}">
+                      <div class="bundle-component-info">
+                        <span class="bundle-tree-indicator">↳</span>
+                        <strong class="bundle-component-name">${escapeHtml(componentName)}</strong>
+                        ${returnDispositionChip_(state, component.qty)}
+                      </div>
+                      <div class="sale-return-resolution-actions">
+                        ${state === 'quarantine' ? returnResolutionButtons_(`data-resolve-bundle-return-component="${escapeHtml(line.id)}" data-component-product="${escapeHtml(component.productId)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}
+                      </div>
+                    </div>`;
+                  }).join('') || '<div class="sale-return-complete">No component quarantine lots were found for this bundle return.</div>'}
+                </div>
+              </div>`;
             }
             const isQuarantine = line.condition === 'quarantine';
-            return `<div class="sale-return-resolution ${!isQuarantine ? 'is-resolved' : ''}">
-              <div class="sale-return-resolution-product">
-                <strong class="sale-return-resolution-name">${escapeHtml(name)}</strong>
-                ${actionBadge}
-                ${returnDispositionChip_(line.condition, line.qty)}
-              </div>
-              <div class="sale-return-resolution-actions">
-                ${isQuarantine ? returnResolutionButtons_(`data-resolve-sale-return="${escapeHtml(line.id)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}
+            return `<div class="return-item-group single-group ${!isQuarantine ? 'is-resolved' : ''}">
+              <div class="single-item-row">
+                <div class="single-item-info">
+                  <span class="item-type-pill individual"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>Single</span>
+                  <strong class="single-item-name">${escapeHtml(name)}</strong>
+                  ${actionBadge}
+                  ${returnDispositionChip_(line.condition, line.qty)}
+                </div>
+                <div class="sale-return-resolution-actions">
+                  ${isQuarantine ? returnResolutionButtons_(`data-resolve-sale-return="${escapeHtml(line.id)}"`) : '<span class="sale-return-resolved-pill">Resolved</span>'}
+                </div>
               </div>
             </div>`;
           }).join('') || '<div class="sale-return-complete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="complete-check-icon"><path d="M20 6 9 17l-5-5"/></svg><span>All returned items have been inspected and resolved.</span></div>'}
@@ -3479,7 +3502,7 @@ function openSaleReturnDialog(sale) {
         </div>
         <div class="sale-return-action-wrap">
           <label class="sale-return-control-label">Action</label>
-          <select data-return-action="${escapeHtml(item.saleItemId)}" aria-label="Return action for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}><option value="">Select action</option><option value="refund">Refund</option><option value="replacement">Replace</option><option value="return">Return Only</option></select>
+          <select data-return-action="${escapeHtml(item.saleItemId)}" aria-label="Return action for ${escapeHtml(item.name)}" ${availableQty <= 0 ? 'disabled' : ''}><option value="">Select action</option><option value="refund">Refund</option><option value="replacement">Replace</option></select>
         </div>
         <div data-refund-field="${escapeHtml(item.saleItemId)}" class="sale-return-refund-item-field" hidden>
           <label class="sale-return-control-label">Refund Amount</label>
@@ -5707,7 +5730,7 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
   const error = $('#saleReturnError');
   if (!lines.length) { error.textContent = 'Enter at least one returned item quantity.'; return; }
   if (!reason) { error.textContent = 'Enter the reason for this return.'; return; }
-  if (lines.some((line) => !line.actionType)) { error.textContent = 'Choose Refund, Replace, or Return Only for every returned item.'; return; }
+  if (lines.some((line) => !['refund', 'replacement'].includes(line.actionType))) { error.textContent = 'Choose Refund or Replace for every returned item.'; return; }
   if (lines.some((line) => {
     const originalItem = sale.items.find((item) => item.saleItemId === line.saleItemId);
     return line.actionType === 'replacement' && (!originalItem || line.replacementProductId !== originalItem.productId || line.replacementQty !== line.qty);
