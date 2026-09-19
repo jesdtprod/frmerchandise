@@ -14,6 +14,7 @@ const files = {
   transferBatchActions: await readFile(new URL('../supabase/migrations/20260918004000_transfer_batch_actions.sql', import.meta.url), 'utf8'),
   salesReturns: await readFile(new URL('../supabase/migrations/20260918005000_complete_sales_return_workflow.sql', import.meta.url), 'utf8'),
   mixedSalesReturns: await readFile(new URL('../supabase/migrations/20260918007000_mixed_sales_return_actions.sql', import.meta.url), 'utf8'),
+  sameItemReplacements: await readFile(new URL('../supabase/migrations/20260918008000_same_item_replacements.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -50,6 +51,7 @@ const checks = [
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['a single return visit supports per-item refund, replacement, and return-only actions', /action_type[\s\S]*refund[\s\S]*replacement[\s\S]*return/.test(files.mixedSalesReturns) && /data-return-action[\s\S]*data-refund-amount[\s\S]*data-replacement-field/.test(files.app)],
   ['cumulative refunds cannot exceed the original sale', /prior_refunds[\s\S]*remaining refundable amount/.test(files.mixedSalesReturns)],
+  ['replacements are restricted to the original item and returned quantity', /replacement_product_id_value is distinct from sale_item_row\.product_id[\s\S]*replacement_qty_value <> qty_value/.test(files.sameItemReplacements) && /Same item:[\s\S]*data-replacement-product[\s\S]*type="hidden"/.test(files.app)],
   ['dashboard operational lists are limited to five ordered records', /topProducts[\s\S]*slice\(0, 5\)[\s\S]*attentionStock[\s\S]*slice\(0, 5\)[\s\S]*pendingTransfers[\s\S]*slice\(0, 5\)[\s\S]*recentSales[\s\S]*slice\(0, 5\)/.test(files.app)],
 ];
 

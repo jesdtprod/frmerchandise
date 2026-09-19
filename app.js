@@ -3383,7 +3383,7 @@ function updateSaleReturnLineAction_(sale, saleItemId) {
   const refundInput = document.querySelector(`[data-refund-amount="${saleItemId}"]`);
   if (refundInput && document.activeElement !== refundInput) refundInput.value = (qty * Number(saleItem?.price || 0)).toFixed(2);
   const replacementQty = document.querySelector(`[data-replacement-qty="${saleItemId}"]`);
-  if (replacementQty && (!Number(replacementQty.value) || Number(replacementQty.value) === 0)) replacementQty.value = qty > 0 ? String(qty) : '0';
+  if (replacementQty) replacementQty.value = qty > 0 ? String(qty) : '0';
 }
 
 function openSaleReturnDialog(sale) {
@@ -3413,7 +3413,6 @@ function openSaleReturnDialog(sale) {
         </div>` : ''}
       </div>
     </div>`;
-  const options = saleReturnProductOptions_();
   $('#saleReturnLines').innerHTML = (sale.items || []).map((item) => {
     const availableQty = saleReturnAvailableQty_(item);
     return `<div class="sale-return-line ${availableQty <= 0 ? 'is-exhausted' : ''}" data-sale-return-line="${escapeHtml(item.saleItemId)}">
@@ -3444,12 +3443,13 @@ function openSaleReturnDialog(sale) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="repl-arrow-icon"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
           <div class="sale-return-repl-select-wrap">
-            <label class="sale-return-control-label">Replace With</label>
-            <select data-replacement-product="${escapeHtml(item.saleItemId)}" aria-label="Replacement product for ${escapeHtml(item.name)}"><option value="">Select replacement</option>${options}</select>
+            <label class="sale-return-control-label">Replacement</label>
+            <strong class="sale-return-same-item">Same item: ${escapeHtml(item.name)}</strong>
+            <input data-replacement-product="${escapeHtml(item.saleItemId)}" type="hidden" value="${escapeHtml(item.productId)}" />
           </div>
           <div class="sale-return-repl-qty-wrap">
             <label class="sale-return-control-label">Repl Qty</label>
-            <input class="sale-return-qty-input" data-replacement-qty="${escapeHtml(item.saleItemId)}" type="number" min="0.001" step="0.001" value="0" aria-label="Replacement quantity for ${escapeHtml(item.name)}"/>
+            <input class="sale-return-qty-input" data-replacement-qty="${escapeHtml(item.saleItemId)}" type="number" min="0.001" step="0.001" value="0" readonly aria-label="Replacement quantity for ${escapeHtml(item.name)}"/>
           </div>
         </div>
       </div>
@@ -5640,7 +5640,10 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
   if (!lines.length) { error.textContent = 'Enter at least one returned item quantity.'; return; }
   if (!reason) { error.textContent = 'Enter the reason for this return.'; return; }
   if (lines.some((line) => !line.actionType)) { error.textContent = 'Choose Refund, Replace, or Return Only for every returned item.'; return; }
-  if (lines.some((line) => line.actionType === 'replacement' && (!line.replacementProductId || line.replacementQty <= 0))) { error.textContent = 'Select a replacement product and quantity for every replacement item.'; return; }
+  if (lines.some((line) => {
+    const originalItem = sale.items.find((item) => item.saleItemId === line.saleItemId);
+    return line.actionType === 'replacement' && (!originalItem || line.replacementProductId !== originalItem.productId || line.replacementQty !== line.qty);
+  })) { error.textContent = 'A replacement must be the same sold item and quantity.'; return; }
   if (lines.some((line) => line.actionType === 'refund' && line.refundAmount <= 0)) { error.textContent = 'Enter a valid refund amount for every refunded item.'; return; }
   const refundAmount = lines.filter((line) => line.actionType === 'refund').reduce((sum, line) => sum + line.refundAmount, 0);
   const submit = $('#saleReturnSubmit');
