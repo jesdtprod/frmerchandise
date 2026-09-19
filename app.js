@@ -3381,7 +3381,10 @@ function updateSaleReturnLineAction_(sale, saleItemId) {
   if (replacementField) replacementField.hidden = action !== 'replacement' || qty <= 0;
   const saleItem = sale.items.find((item) => item.saleItemId === saleItemId);
   const refundInput = document.querySelector(`[data-refund-amount="${saleItemId}"]`);
-  if (refundInput && document.activeElement !== refundInput) refundInput.value = (qty * Number(saleItem?.price || 0)).toFixed(2);
+  if (refundInput) {
+    if (action === 'refund' && qty > 0 && document.activeElement !== refundInput) refundInput.value = (qty * Number(saleItem?.price || 0)).toFixed(2);
+    if (action !== 'refund' || qty <= 0) refundInput.value = '0.00';
+  }
   const replacementQty = document.querySelector(`[data-replacement-qty="${saleItemId}"]`);
   if (replacementQty) replacementQty.value = qty > 0 ? String(qty) : '0';
 }
@@ -5626,11 +5629,12 @@ $('#saleReturnForm')?.addEventListener('submit', async (event) => {
     .map((input) => {
       const qty = Number(input.value || 0);
       const saleItemId = input.dataset.saleItemId;
+      const actionType = document.querySelector(`[data-return-action="${saleItemId}"]`)?.value || '';
       return {
         saleItemId,
         qty,
-        actionType: document.querySelector(`[data-return-action="${saleItemId}"]`)?.value || '',
-        refundAmount: Number(document.querySelector(`[data-refund-amount="${saleItemId}"]`)?.value || 0),
+        actionType,
+        refundAmount: actionType === 'refund' ? Number(document.querySelector(`[data-refund-amount="${saleItemId}"]`)?.value || 0) : 0,
         replacementProductId: document.querySelector(`[data-replacement-product="${saleItemId}"]`)?.value || '',
         replacementQty: Number(document.querySelector(`[data-replacement-qty="${saleItemId}"]`)?.value || 0),
       };
