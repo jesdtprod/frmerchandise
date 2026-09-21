@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=18" />
     <link rel="stylesheet" href="sales-return-components.css" />
   </head>
   <body>
@@ -95,6 +95,10 @@
           <button class="nav-item" type="button" data-view="inventoryReports">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
             Inventory Reports
+          </button>
+          <button class="nav-item" type="button" data-view="quarantineReport">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="m9 15 2 2 4-4"/><path d="M9 11h6"/></svg>
+            Quarantine Report
           </button>
         </nav>
         <div class="sidebar-foot">
@@ -217,6 +221,18 @@
                   <span>Generate PDF</span>
                 </button>
               </div>
+              <div class="sales-date-range" id="quarantineDateRange" hidden>
+                <div class="sales-date-control">
+                  <input id="quarantineDateFrom" type="date" aria-label="Date From" />
+                </div>
+                <div class="sales-date-control">
+                  <input id="quarantineDateTo" type="date" aria-label="Date To" />
+                </div>
+                <button class="button button-primary sales-pdf-button" id="generateQuarantinePdfButton" type="button">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="M8 15h8M8 18h6M8 12h3"/></svg>
+                  <span>Generate PDF</span>
+                </button>
+              </div>
               <button class="button button-primary" id="generateInventoryPdfButton" hidden>
                 <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="M8 15h8M8 18h6M8 12h3"/></svg>
                 <span>Generate PDF</span>
@@ -304,9 +320,7 @@
               <p class="modal-subtitle" id="modalSubtitle">Configure product details, pricing, and stock alert levels.</p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="formDialog" aria-label="Close dialog" title="Close dialog">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="formDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div id="formFields" class="form-grid"></div>
         <p class="form-error" id="formError" role="alert"></p>
@@ -406,9 +420,7 @@
               <p class="modal-subtitle">This POS is connected to its secure Supabase backend.</p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="settingsDialog" aria-label="Close dialog" title="Close dialog">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="settingsDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div class="settings-body">
           <label class="field-label">
@@ -440,9 +452,7 @@
               <p class="modal-subtitle">Review payment before recording this sale.</p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="saleDialog" aria-label="Close dialog" title="Close dialog">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="saleDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
 
         <div class="sale-form-content">
@@ -658,12 +668,9 @@
         </div>
         <div class="sale-return-body">
           <div class="sale-return-summary" id="saleReturnSummary"></div>
-          <div class="form-grid sale-return-form-grid">
-            <div class="form-field-group full-field">
-              <label for="saleReturnReason"><span class="label-text">Reason <span class="required">*</span></span></label>
-              <textarea id="saleReturnReason" rows="2" maxlength="500" placeholder="Example: damaged item, wrong item, or customer request" required></textarea>
-              <p class="field-hint">Choose Refund, Replace, or Return Only for each returned item below.</p>
-            </div>
+          <div class="sale-return-reason-block form-field-group full-field">
+            <label for="saleReturnReason"><span class="label-text">Reason <span class="required">*</span></span></label>
+            <textarea id="saleReturnReason" class="sale-return-reason-textarea" rows="1" maxlength="500" placeholder="Example: damaged item, wrong item, or customer request" required></textarea>
           </div>
           <div class="sale-return-items-wrap">
             <div class="sale-return-section-head">
@@ -723,9 +730,7 @@
               <p class="modal-subtitle" id="receiptBranch">Main Branch</p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="receiptDialog" aria-label="Close receipt" title="Close receipt">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="receiptDialog" aria-label="Close receipt" title="Close receipt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
 
         <div class="receipt-body">
@@ -853,9 +858,7 @@
               <p class="modal-subtitle" id="actionConfirmSubtitle">Please review before continuing</p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="actionConfirmDialog" aria-label="Close dialog" title="Close dialog">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="actionConfirmDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div class="confirm-body">
           <p class="confirm-text" id="actionConfirmText"></p>
@@ -934,7 +937,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="supabase-config.js?v=1"></script>
-    <script src="app.js?v=return-components-2"></script>
+    <script src="app.js?v=quarantine-report-4"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));

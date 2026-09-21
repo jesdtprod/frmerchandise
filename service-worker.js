@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fr-pos-shell-v15';
+const CACHE_NAME = 'fr-pos-shell-v19';
 const APP_SHELL = [
   './',
   './index.html',
@@ -31,7 +31,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const alwaysFresh = /\/(app\.js|supabase-config\.js|index\.html)$/.test(url.pathname);
+  const alwaysFresh = /\/(app\.js|styles\.css|supabase-config\.js|index\.html)$/.test(url.pathname);
   if (alwaysFresh) {
     event.respondWith(fetch(request).catch(() => caches.match(request, { ignoreSearch: true })));
     return;

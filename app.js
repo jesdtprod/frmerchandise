@@ -38,6 +38,7 @@ let pendingActionConfirmResolver = null;
 let toastTimer = null;
 let refreshInFlight = false;
 let pendingTransferReceipt = null;
+let activeQuarantineFilter = 'all';
 
 // Utility: debounce — delays fn execution until after `wait` ms of silence
 function debounce(fn, wait = 150) {
@@ -53,8 +54,8 @@ function backgroundRefresh() {
   refresh(false).catch(() => {});
 }
 
-const PRODUCT_CATEGORIES = ['LPG', 'Softdrinks', 'Others'];
-const PRODUCT_UNITS = ['pc', 'kg', 'g', 'L', 'mL', 'bottle', 'can', 'case', 'pack', 'box', 'bag', 'sack', 'tray', 'gallon', 'drum'];
+const PRODUCT_CATEGORIES = ['LPG', 'Others', 'Softdrinks'];
+const PRODUCT_UNITS = ['bag', 'bottle', 'box', 'can', 'case', 'drum', 'g', 'gallon', 'kg', 'L', 'mL', 'pack', 'pc', 'sack', 'tray'];
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -127,6 +128,17 @@ function readTransferLines_(formEl) {
   return lines;
 }
 
+function readStockInLines_(formEl) {
+  const lines = [...formEl.querySelectorAll('[data-stock-in-line]')].map((row) => ({
+    productId: row.querySelector('[name="productId"]')?.value || '', qty: Number(row.querySelector('[name="qty"]')?.value || 0),
+    quarantineQty: Number(row.querySelector('[name="quarantineQty"]')?.value || 0), sellingPrice: Number(row.querySelector('[name="sellingPrice"]')?.value || 0),
+    quarantineReason: row.querySelector('[name="quarantineReason"]')?.value || '',
+  }));
+  if (!lines.length || lines.some((line) => !line.productId || line.qty <= 0 || line.quarantineQty < 0 || line.quarantineQty > line.qty || line.sellingPrice < 0 || (line.quarantineQty > 0 && !line.quarantineReason.trim()))) throw new Error('Complete every stock-in line and add a reason for quarantined units.');
+  if (new Set(lines.map((line) => line.productId)).size !== lines.length) throw new Error('Add each product only once per stock-in receipt.');
+  return lines;
+}
+
 function formatDateInput(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -137,6 +149,18 @@ function formatDateInput(date) {
 function ensureSalesDateDefaults() {
   const dateFrom = $('#salesDateFrom');
   const dateTo = $('#salesDateTo');
+  if (!dateFrom || !dateTo) return;
+
+  const today = new Date();
+  if (!dateFrom.value) dateFrom.value = formatDateInput(new Date(today.getFullYear(), today.getMonth(), 1));
+  if (!dateTo.value) dateTo.value = formatDateInput(today);
+  syncCustomDatePicker(dateFrom);
+  syncCustomDatePicker(dateTo);
+}
+
+function ensureQuarantineDateDefaults() {
+  const dateFrom = $('#quarantineDateFrom');
+  const dateTo = $('#quarantineDateTo');
   if (!dateFrom || !dateTo) return;
 
   const today = new Date();
@@ -186,6 +210,577 @@ function updateSalesPrintPeriod() {
   period.textContent = `Period: ${formatDate(dateFrom)} to ${formatDate(dateTo)}`;
 }
 
+function updateQuarantinePrintPeriod() {
+  const period = $('#salesPrintPeriod');
+  const dateFrom = $('#quarantineDateFrom')?.value || '';
+  const dateTo = $('#quarantineDateTo')?.value || '';
+  if (!period) return;
+
+  const formatDate = (value) => value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { dateStyle: 'long' })
+    : 'All dates';
+  period.textContent = `Period: ${formatDate(dateFrom)} to ${formatDate(dateTo)}`;
+}
+
+function openReportInNewPage_(htmlContent, title = 'Report') {
+  const reportWindow = window.open('', '_blank');
+  if (!reportWindow) {
+    showToast('Please allow popups to open the report in a new tab.', 'error');
+    return;
+  }
+  const documentHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: 8.5in 13in;
+      margin: 10mm 12mm 12mm 12mm;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #08111e;
+      color: #0f172a;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    @media screen {
+      body {
+        padding: 28px 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        background: #08111e;
+        min-height: 100vh;
+      }
+      .report-page {
+        width: 8.5in;
+        height: 13in;
+        min-height: 13in;
+        max-height: 13in;
+        background: #ffffff;
+        box-shadow: 0 14px 45px rgba(0, 0, 0, 0.45);
+        border-radius: 4px;
+        padding: 10mm 14mm;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+      }
+    }
+    @media print {
+      @page {
+        size: 8.5in 13in;
+        margin: 10mm 12mm 10mm 12mm;
+      }
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+      .report-page {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 100% !important;
+        max-height: 100% !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
+      }
+      .report-page:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+    }
+    .report-page-content {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .report-running-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #0f172a;
+      margin-bottom: 10px;
+    }
+    .running-header-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .running-brand-title {
+      font-size: 10px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      line-height: 1.2;
+    }
+    .running-brand-sub {
+      font-size: 9px;
+      color: #64748b;
+      line-height: 1.2;
+    }
+    .running-meta-tag {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #475569;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 2.5px 7px;
+      white-space: nowrap;
+    }
+    .report-page-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 6px;
+      border-top: 1px solid #cbd5e1;
+      font-size: 8.5px;
+      color: #64748b;
+      margin-top: auto;
+      flex-shrink: 0;
+    }
+    .page-footer-left {
+      font-size: 8px;
+      color: #64748b;
+      letter-spacing: 0.2px;
+    }
+    .page-number-indicator {
+      font-size: 9px;
+      font-weight: 800;
+      color: #0f172a;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.3px;
+    }
+    .report-page {
+      font-size: 11.5px;
+      line-height: 1.4;
+      color: #1e293b;
+    }
+    .report-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #0f172a;
+      margin-bottom: 12px;
+    }
+    .report-brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .report-badge-svg {
+      width: 42px !important;
+      height: 42px !important;
+      max-width: 42px !important;
+      max-height: 42px !important;
+      flex-shrink: 0 !important;
+    }
+    .report-eyebrow {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      color: #0066f5;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+      line-height: 1.1;
+    }
+    .report-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 2px;
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+    }
+    .report-subtitle {
+      font-size: 10.5px;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.2;
+    }
+    .report-meta-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 12px;
+      text-align: right;
+      font-size: 10px;
+      min-width: 210px;
+    }
+    .report-meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 1.5px 0;
+    }
+    .report-meta-row .meta-label { color: #64748b; }
+    .report-meta-row .meta-val { color: #0f172a; font-weight: 600; }
+    .report-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .report-kpi-card {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 7px 11px;
+    }
+    .report-kpi-card .kpi-label {
+      font-size: 8.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #64748b;
+      display: block;
+      margin-bottom: 2px;
+      line-height: 1.1;
+    }
+    .report-kpi-card .kpi-val {
+      font-size: 14px;
+      font-weight: 800;
+      color: #0f172a;
+      display: block;
+      margin-bottom: 2px;
+      line-height: 1.15;
+    }
+    .report-kpi-card .kpi-val.text-success { color: #059669; }
+    .report-kpi-card .kpi-val.text-amber { color: #d97706; }
+    .report-kpi-card .kpi-val.text-discount { color: #dc2626; }
+    .report-kpi-card .kpi-sub { font-size: 8.5px; color: #94a3b8; line-height: 1.1; }
+    .report-section-title-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .report-section-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin: 0;
+    }
+    .report-count-badge {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: #475569;
+      background: #e2e8f0;
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+    .report-tx-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .report-tx-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .report-tx-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f1f5f9;
+      padding: 6px 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .tx-head-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tx-id-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .tx-index { font-size: 10px; font-weight: 700; color: #64748b; }
+    .tx-receipt-no { font-size: 12px; font-weight: 800; color: #0f172a; font-family: monospace, sans-serif; }
+    .tx-date { font-size: 10px; color: #475569; }
+    .tx-head-mid { display: flex; align-items: center; gap: 7px; }
+    .tx-customer-name { font-size: 11.5px; font-weight: 700; color: #0f172a; }
+    .tx-payment-tag {
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .tx-payment-tag.is-cash { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .tx-payment-tag.is-credit { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .tx-head-right { text-align: right; }
+    .tx-total-label { font-size: 8.5px; color: #64748b; text-transform: uppercase; display: block; line-height: 1; }
+    .tx-total-amount { font-size: 13px; font-weight: 800; color: #0066f5; line-height: 1.1; }
+    .report-tx-items-wrap { padding: 3px 12px; }
+    .report-items-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    .report-items-table th {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: #64748b;
+      padding: 4px 6px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    .report-items-table td {
+      padding: 4px 6px;
+      border-bottom: 1px dashed #f1f5f9;
+      color: #334155;
+      font-size: 10.5px;
+    }
+    .report-items-table tr:last-child td { border-bottom: none; }
+    .col-num { color: #94a3b8; font-weight: 600; }
+    .item-name { color: #0f172a; font-weight: 600; }
+    .report-tx-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8fafc;
+      padding: 5px 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 9.5px;
+      color: #64748b;
+    }
+    .report-sale-return-note {
+      padding: 5px 12px;
+      border-top: 1px solid #e2e8f0;
+      background: #fffbeb;
+      color: #92400e;
+      font-size: 9.5px;
+      line-height: 1.35;
+    }
+    .report-return-ledger { margin-top: 14px; page-break-inside: avoid; break-inside: avoid; }
+    .report-return-table-wrap { border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+    .report-return-table { font-size: 9.5px; }
+    .report-return-table th {
+      padding: 7px 10px;
+      background: #f8fafc;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #475569;
+      border-bottom: 1.5px solid #cbd5e1;
+    }
+    .report-return-table td {
+      padding: 7px 10px;
+      border-bottom: 1px dashed #e2e8f0;
+      font-size: 10px;
+      vertical-align: middle;
+    }
+    .report-return-table td span { color: #64748b; font-size: 8.5px; }
+    .report-request-tag {
+      display: inline-block;
+      margin-top: 2px;
+      font-weight: 700;
+      font-size: 8.5px;
+      padding: 1.5px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .report-request-tag.is-refund {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    .report-request-tag.is-replacement {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    .report-request-tag.is-return-only {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+    .report-return-outcomes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 7px;
+      color: #475569;
+      font-size: 9.5px;
+    }
+    .report-return-outcomes strong { color: #0f172a; }
+    .tx-foot-details strong { color: #334155; }
+    .tx-discount-note { color: #dc2626; font-weight: 600; margin-right: 8px; }
+    .tx-items-count { font-weight: 600; }
+    .report-document-summary-block {
+      margin-top: 22px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .report-document-footer {
+      margin-top: 22px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .report-final-totals {
+      background: #f8fafc;
+      border: 1.5px solid #0f172a;
+      border-radius: 8px;
+      padding: 14px 22px;
+      width: 100%;
+      max-width: 100%;
+      margin-left: 0;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+      box-sizing: border-box;
+    }
+    .final-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 4.5px 0;
+      font-size: 10.5px;
+      color: #475569;
+      white-space: nowrap;
+    }
+    .final-row span {
+      font-weight: 600;
+    }
+    .final-row strong {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .final-row.text-discount {
+      color: #dc2626;
+    }
+    .final-row.final-grand-total {
+      border-top: 1.5px solid #cbd5e1;
+      margin-top: 6px;
+      padding-top: 6px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .final-row.net-sales-row {
+      border-top: 1.5px solid #0f172a;
+      margin-top: 6px;
+      padding-top: 8px;
+      font-size: 12.5px;
+    }
+    .grand-total-val {
+      color: #0066f5;
+      font-size: 15px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .report-sign-block {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      margin-top: 20px;
+      margin-bottom: 14px;
+      padding: 4px 20px 0;
+    }
+    .sign-column { text-align: center; }
+    .sign-line {
+      border-bottom: 1px solid #94a3b8;
+      height: 30px;
+      margin-bottom: 6px;
+    }
+    .sign-title { font-size: 9.5px; font-weight: 700; color: #0f172a; display: block; line-height: 1.2; }
+    .sign-sub { font-size: 8.5px; color: #94a3b8; line-height: 1.2; }
+    .report-disclaimer { text-align: center; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 8px; color: #94a3b8; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`;
+
+  reportWindow.document.open();
+  reportWindow.document.write(documentHtml);
+  reportWindow.document.close();
+}
+
+function renderReportPageFooter(pageNumber, totalPages, generatedTime, reportType = 'Sales Audit') {
+  return `
+    <footer class="report-page-footer">
+      <div class="page-footer-left">
+        <span>FR MERCHANDISE OPERATIONS &bull; ${escapeHtml(reportType)} Audit Report &bull; Generated ${escapeHtml(generatedTime)}</span>
+      </div>
+      <div class="page-footer-right">
+        <strong class="page-number-indicator">Page ${pageNumber} of ${totalPages}</strong>
+      </div>
+    </footer>
+  `;
+}
+
+function renderReportRunningHeader(branchName, periodText, reportTitle = 'Branch Sales, Returns & Inventory Ledger') {
+  return `
+    <header class="report-running-header">
+      <div class="running-header-brand">
+        <svg viewBox="0 0 36 36" class="report-badge-svg" width="26" height="26" style="width:26px;height:26px;max-width:26px;max-height:26px;flex-shrink:0;" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="18" cy="18" r="16.5" fill="#081326"/>
+          <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
+          <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
+          <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
+        </svg>
+        <div>
+          <span class="running-brand-title">FR MERCHANDISE &bull; ${escapeHtml(reportTitle)}</span>
+          <span class="running-brand-sub">${escapeHtml(branchName)} &bull; ${escapeHtml(periodText)}</span>
+        </div>
+      </div>
+      <div class="running-meta-tag">
+        <span>Official Long Bond Sheet</span>
+      </div>
+    </header>
+  `;
+}
+
 function generateSalesPdf() {
   ensureSalesDateDefaults();
   updateSalesPrintPeriod();
@@ -217,10 +812,6 @@ function generateSalesPdf() {
   const returnItemsInPeriod = returnsInPeriod.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id));
 
   const printDoc = $('#salesPrintDocument');
-  if (!printDoc) {
-    window.print();
-    return;
-  }
 
   const totalSales = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
   const totalItemsCount = sales.reduce((sum, s) => sum + (s.items || []).reduce((iSum, i) => iSum + Number(i.qty || 1), 0), 0);
@@ -249,277 +840,372 @@ function generateSalesPdf() {
     : 'All Recorded Dates';
   const generatedTime = new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 
-  printDoc.innerHTML = `
-    <div class="report-page">
-      <!-- Report Header -->
-      <header class="report-header">
-        <div class="report-brand-wrap">
-          <div class="report-logo">
-            <svg viewBox="0 0 36 36" class="report-badge-svg" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="18" cy="18" r="16.5" fill="#081326"/>
-              <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
-              <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
-              <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
-            </svg>
-          </div>
-          <div>
-            <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
-            <h1 class="report-title">Branch Sales, Returns & Inventory Ledger</h1>
-            <p class="report-subtitle">Official sales, refund, replacement, and returned-stock audit report</p>
-          </div>
-        </div>
+  // Long Bond Paper (8.5in x 13in) pagination calculation
+  const summaryBlockHeight = (returnsInPeriod.length ? (110 + returnItemsInPeriod.length * 32) : 55) + 245;
+  const salesPages = [];
+  let currentSaleIdx = 0;
+  let isFirst = true;
 
-        <div class="report-meta-box">
-          <div class="report-meta-row">
-            <span class="meta-label">Branch:</span>
-            <strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong>
-          </div>
-          <div class="report-meta-row">
-            <span class="meta-label">Period:</span>
-            <strong class="meta-val">${escapeHtml(periodText)}</strong>
-          </div>
-          <div class="report-meta-row">
-            <span class="meta-label">Generated:</span>
-            <span class="meta-val">${escapeHtml(generatedTime)}</span>
-          </div>
-        </div>
-      </header>
+  while (currentSaleIdx < sales.length || salesPages.length === 0) {
+    const pageCapacity = isFirst ? 820 : 980;
+    let usedHeight = 0;
+    const chunk = [];
 
-      <!-- KPI Metrics Strip -->
-      <section class="report-kpi-grid">
-        <div class="report-kpi-card">
-          <span class="kpi-label">Gross Revenue</span>
-          <strong class="kpi-val">${money(totalSales)}</strong>
-          <span class="kpi-sub">${sales.length} transactions</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Net Cash Collected</span>
-          <strong class="kpi-val text-success">${money(netCashCollected)}</strong>
-          <span class="kpi-sub">${cashSales.length} cash sale${cashSales.length === 1 ? '' : 's'} less ${money(cashRefunds)} refunds</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Credit Charged</span>
-          <strong class="kpi-val text-amber">${money(totalCredit)}</strong>
-          <span class="kpi-sub">${creditSales.length} on credit · ${money(creditRefunds)} adjusted</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Total Units Sold</span>
-          <strong class="kpi-val">${totalItemsCount}</strong>
-          <span class="kpi-sub">Items dispensed</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Refunds Completed</span>
-          <strong class="kpi-val text-discount">-${money(totalRefunds)}</strong>
-          <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Net Sales</span>
-          <strong class="kpi-val text-success">${money(netSales)}</strong>
-          <span class="kpi-sub">Gross sales less refunds</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Returned Units</span>
-          <strong class="kpi-val text-amber">${returnedUnits.toLocaleString('en-PH')}</strong>
-          <span class="kpi-sub">${returnsInPeriod.length} return case${returnsInPeriod.length === 1 ? '' : 's'} received</span>
-        </div>
-        <div class="report-kpi-card">
-          <span class="kpi-label">Replacement Units</span>
-          <strong class="kpi-val">${replacementUnits.toLocaleString('en-PH')}</strong>
-          <span class="kpi-sub">${releasedReplacements.length} replacement release${releasedReplacements.length === 1 ? '' : 's'}</span>
-        </div>
-      </section>
+    while (currentSaleIdx < sales.length) {
+      const sale = sales[currentSaleIdx];
+      const items = sale.items || [];
+      const linked = saleReturns.filter((r) => r.saleId === sale.saleId);
+      const estCardHeight = 92 + items.length * 24 + (linked.length ? 26 : 0) + 10;
 
-      <!-- Transactions List with Full Line Items -->
-      <section class="report-ledger-body">
-        <div class="report-section-title-wrap">
-          <h2 class="report-section-title">Itemized Transaction Records</h2>
-          <span class="report-count-badge">${sales.length} Completed Orders</span>
-        </div>
+      if (chunk.length > 0 && (usedHeight + estCardHeight > pageCapacity)) {
+        break;
+      }
+      chunk.push({ sale, globalIndex: currentSaleIdx + 1 });
+      usedHeight += estCardHeight;
+      currentSaleIdx++;
+    }
 
-        ${sales.length === 0 ? `
-          <div class="report-empty-state">
-            <p>No sales records found for the selected period.</p>
-          </div>
-        ` : `
-          <div class="report-tx-list">
-            ${sales.map((sale, saleIndex) => {
-              const items = sale.items || [];
-              const isCash = sale.paymentType === 'cash';
-              const saleDateFormatted = sale.date
-                ? new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                : 'N/A';
-              const customerDisplay = displayCustomerName(sale.customerName || 'Walk-in customer');
-              const linkedReturns = saleReturns.filter((record) => record.saleId === sale.saleId);
+    const isLastSales = currentSaleIdx >= sales.length;
+    let hasSummary = false;
 
-              return `
-                <article class="report-tx-card">
-                  <header class="report-tx-head">
-                    <div class="tx-head-left">
-                      <div class="tx-id-badge">
-                        <span class="tx-index">#${saleIndex + 1}</span>
-                        <strong class="tx-receipt-no">${escapeHtml(sale.saleId)}</strong>
-                      </div>
-                      <span class="tx-date">${escapeHtml(saleDateFormatted)}</span>
-                    </div>
+    if (isLastSales) {
+      if (pageCapacity - usedHeight >= summaryBlockHeight) {
+        hasSummary = true;
+      }
+    }
 
-                    <div class="tx-head-mid">
-                      <strong class="tx-customer-name">${escapeHtml(customerDisplay)}</strong>
-                      <span class="tx-payment-tag ${isCash ? 'is-cash' : 'is-credit'}">
-                        ${isCash ? 'PAID CASH' : 'CREDIT CHARGED'}
-                      </span>
-                    </div>
+    salesPages.push({
+      isFirstPage: isFirst,
+      salesChunk: chunk,
+      hasSummary
+    });
 
-                    <div class="tx-head-right">
-                      <span class="tx-total-label">Total</span>
-                      <strong class="tx-total-amount">${money(sale.total)}</strong>
-                    </div>
-                  </header>
+    isFirst = false;
 
-                  <!-- Line Items Table -->
-                  <div class="report-tx-items-wrap">
-                    <table class="report-items-table">
-                      <thead>
-                        <tr>
-                          <th style="width: 40px;">#</th>
-                          <th>Purchased Item Description</th>
-                          <th style="width: 80px; text-align: center;">Qty</th>
-                          <th style="width: 110px; text-align: right;">Unit Price</th>
-                          <th style="width: 120px; text-align: right;">Line Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${items.length === 0 ? `
-                          <tr>
-                            <td colspan="5" style="text-align: center; color: #64748b; padding: 8px;">No line items detailed</td>
-                          </tr>
-                        ` : items.map((it, itIdx) => {
-                          const itemQty = Number(it.qty || 1);
-                          const itemPrice = Number(it.price || 0);
-                          const lineTotal = itemQty * itemPrice;
-                          return `
-                            <tr>
-                              <td class="col-num">${itIdx + 1}</td>
-                              <td class="col-name">
-                                <strong class="item-name">${escapeHtml(it.name || 'Unknown item')}</strong>
-                              </td>
-                              <td class="col-qty" style="text-align: center;">${itemQty} ${escapeHtml(it.unit || 'pcs')}</td>
-                              <td class="col-price" style="text-align: right;">${money(itemPrice)}</td>
-                              <td class="col-total" style="text-align: right;"><strong>${money(lineTotal)}</strong></td>
-                            </tr>
-                          `;
-                        }).join('')}
-                      </tbody>
-                    </table>
-                  </div>
+    if (isLastSales && !hasSummary) {
+      salesPages.push({
+        isFirstPage: false,
+        salesChunk: [],
+        hasSummary: true
+      });
+      break;
+    }
+  }
 
-                  <!-- Transaction Footer / Sub-breakdown -->
-                  <footer class="report-tx-foot">
-                    <div class="tx-foot-details">
-                      ${isCash && Number(sale.cashTendered) > 0 ? `
-                        <span>Cash Tendered: <strong>${money(sale.cashTendered)}</strong> &bull; Change Given: <strong>${money(sale.change || 0)}</strong></span>
-                      ` : !isCash ? `
-                        <span>Customer Balance Remaining: <strong>${money(sale.creditBalance || 0)}</strong></span>
-                      ` : ''}
-                    </div>
-                    <div class="tx-foot-summary">
-                      ${Number(sale.discount) > 0 ? `
-                        <span class="tx-discount-note">Discount: -${money(sale.discount)}</span>
-                      ` : ''}
-                      <span class="tx-items-count">${items.length} item${items.length === 1 ? '' : 's'} (${items.reduce((acc, i) => acc + Number(i.qty || 1), 0)} units)</span>
-                    </div>
-                  </footer>
-                  ${linkedReturns.length ? `<div class="report-sale-return-note">${linkedReturns.map((record) => `${escapeHtml(record.id)}: ${escapeHtml(record.type === 'refund' ? `Refund ${money(record.refundAmount)}` : 'Replacement')} · ${escapeHtml(record.status)}`).join(' &bull; ')}</div>` : ''}
-                </article>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </section>
+  const totalPages = salesPages.length;
 
-      <section class="report-ledger-body report-return-ledger">
-        <div class="report-section-title-wrap">
-          <h2 class="report-section-title">Return & Replacement Activity</h2>
-          <span class="report-count-badge">${returnItemsInPeriod.length} returned item${returnItemsInPeriod.length === 1 ? '' : 's'}</span>
-        </div>
-        ${returnsInPeriod.length === 0 ? `<div class="report-empty-state"><p>No return activity recorded for the selected period.</p></div>` : `
-          <div class="report-return-table-wrap"><table class="report-items-table report-return-table"><thead><tr><th>Return</th><th>Original Sale</th><th>Customer</th><th>Request</th><th>Returned Item</th><th>Inventory Outcome</th><th>Financial Outcome</th></tr></thead><tbody>
-            ${returnsInPeriod.flatMap((record) => {
-              const originalSale = salesHistory.find((sale) => sale.saleId === record.saleId);
-              const lines = saleReturnItems.filter((item) => item.returnId === record.id);
-              return lines.map((line) => {
-                const product = allProducts.find((item) => item.id === line.productId);
-                const request = ({ refund: 'Refund', replacement: 'Replace', return: 'Return Only' }[line.actionType] || 'Return Only');
-                const financial = line.actionType === 'refund'
-                  ? (record.refundResolvedAt ? `Refunded ${money(line.refundAmount)}` : `Refund pending ${money(line.refundAmount)}`)
-                  : line.actionType === 'replacement'
-                    ? (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending')
-                    : 'No financial action';
-                const inventoryOutcome = `${String(line.condition || 'quarantine').replace('_', ' ')}: ${Number(line.qty || 0).toLocaleString('en-PH')}`;
-                return `<tr><td><strong>${escapeHtml(record.id)}</strong><br><span>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span></td><td>${escapeHtml(record.saleId)}</td><td>${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</td><td>${escapeHtml(request)}</td><td><strong>${escapeHtml(product?.name || line.productId)}</strong><br><span>${Number(line.qty || 0).toLocaleString('en-PH')} ${escapeHtml(product?.unit || 'unit')}</span></td><td>${escapeHtml(inventoryOutcome)}</td><td><strong>${escapeHtml(financial)}</strong></td></tr>`;
-              });
-            }).join('')}
-          </tbody></table></div>
-        `}
-        <div class="report-return-outcomes"><span>Quarantine: <strong>${Number(returnOutcomes.quarantine || 0).toLocaleString('en-PH')}</strong></span><span>Restocked: <strong>${Number(returnOutcomes.restocked || 0).toLocaleString('en-PH')}</strong></span><span>Supplier Return: <strong>${Number(returnOutcomes.supplier_return || 0).toLocaleString('en-PH')}</strong></span><span>Disposed: <strong>${Number(returnOutcomes.disposed || 0).toLocaleString('en-PH')}</strong></span></div>
-      </section>
+  const renderedPagesHtml = salesPages.map((pageData, pageIndex) => {
+    const pageNum = pageIndex + 1;
+    let pageContentHtml = '';
 
-      <!-- Grand Totals Box & Sign-off Block -->
-      <footer class="report-document-footer">
-        <div class="report-final-totals">
-          <div class="final-row">
-            <span>Sales Before Discounts:</span>
-            <strong>${money(totalSales + totalDiscounts)}</strong>
-          </div>
-          ${totalDiscounts > 0 ? `
-            <div class="final-row text-discount">
-              <span>Total Discounts Granted:</span>
-              <strong>-${money(totalDiscounts)}</strong>
+    if (pageData.isFirstPage) {
+      pageContentHtml += `
+        <!-- Main Report Header -->
+        <header class="report-header">
+          <div class="report-brand-wrap">
+            <div class="report-logo">
+              <svg viewBox="0 0 36 36" class="report-badge-svg" width="42" height="42" style="width:42px;height:42px;max-width:42px;max-height:42px;flex-shrink:0;" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="18" cy="18" r="16.5" fill="#081326"/>
+                <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
+                <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
+                <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
+              </svg>
             </div>
-          ` : ''}
-          <div class="final-row final-grand-total">
-            <span>Gross Sales After Discounts:</span>
-            <strong>${money(totalSales)}</strong>
+            <div>
+              <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
+              <h1 class="report-title">Branch Sales, Returns & Inventory Ledger</h1>
+              <p class="report-subtitle">Official sales, refund, replacement, and returned-stock audit report</p>
+            </div>
           </div>
-          <div class="final-row text-discount">
-            <span>Less: Completed Refunds:</span>
-            <strong>-${money(totalRefunds)}</strong>
+
+          <div class="report-meta-box">
+            <div class="report-meta-row">
+              <span class="meta-label">Branch:</span>
+              <strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong>
+            </div>
+            <div class="report-meta-row">
+              <span class="meta-label">Period:</span>
+              <strong class="meta-val">${escapeHtml(periodText)}</strong>
+            </div>
+            <div class="report-meta-row">
+              <span class="meta-label">Generated:</span>
+              <span class="meta-val">${escapeHtml(generatedTime)}</span>
+            </div>
           </div>
-          <div class="final-row final-grand-total">
-            <span>Net Sales:</span>
-            <strong class="grand-total-val">${money(netSales)}</strong>
+        </header>
+
+        <!-- KPI Metrics Strip -->
+        <section class="report-kpi-grid">
+          <div class="report-kpi-card">
+            <span class="kpi-label">Gross Revenue</span>
+            <strong class="kpi-val">${money(totalSales)}</strong>
+            <span class="kpi-sub">${sales.length} transactions</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Net Cash Collected</span>
+            <strong class="kpi-val text-success">${money(netCashCollected)}</strong>
+            <span class="kpi-sub">${cashSales.length} cash sale${cashSales.length === 1 ? '' : 's'} less ${money(cashRefunds)} refunds</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Credit Charged</span>
+            <strong class="kpi-val text-amber">${money(totalCredit)}</strong>
+            <span class="kpi-sub">${creditSales.length} on credit · ${money(creditRefunds)} adjusted</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Total Units Sold</span>
+            <strong class="kpi-val">${totalItemsCount}</strong>
+            <span class="kpi-sub">Items dispensed</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Refunds Completed</span>
+            <strong class="kpi-val text-discount">-${money(totalRefunds)}</strong>
+            <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Net Sales</span>
+            <strong class="kpi-val text-success">${money(netSales)}</strong>
+            <span class="kpi-sub">Gross sales less refunds</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Returned Units</span>
+            <strong class="kpi-val text-amber">${returnedUnits.toLocaleString('en-PH')}</strong>
+            <span class="kpi-sub">${returnsInPeriod.length} return case${returnsInPeriod.length === 1 ? '' : 's'} received</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Replacement Units</span>
+            <strong class="kpi-val">${replacementUnits.toLocaleString('en-PH')}</strong>
+            <span class="kpi-sub">${releasedReplacements.length} replacement release${releasedReplacements.length === 1 ? '' : 's'}</span>
+          </div>
+        </section>
+      `;
+    } else {
+      pageContentHtml += renderReportRunningHeader(branch.name || 'Main Branch', periodText, 'Branch Sales, Returns & Inventory Ledger');
+    }
+
+    if (pageData.salesChunk.length > 0 || (pageData.isFirstPage && sales.length === 0)) {
+      pageContentHtml += `
+        <section class="report-ledger-body">
+          <div class="report-section-title-wrap">
+            <h2 class="report-section-title">${pageData.isFirstPage ? 'Itemized Transaction Records' : 'Itemized Transaction Records (Continued)'}</h2>
+            <span class="report-count-badge">${pageData.salesChunk.length > 0 ? `Showing ${pageData.salesChunk[0].globalIndex}–${pageData.salesChunk[pageData.salesChunk.length - 1].globalIndex} of ${sales.length}` : '0 Orders'}</span>
+          </div>
+
+          ${sales.length === 0 ? `
+            <div class="report-empty-state">
+              <p>No sales records found for the selected period.</p>
+            </div>
+          ` : `
+            <div class="report-tx-list">
+              ${pageData.salesChunk.map(({ sale, globalIndex }) => {
+                const items = sale.items || [];
+                const isCash = sale.paymentType === 'cash';
+                const saleDateFormatted = sale.date
+                  ? new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                  : 'N/A';
+                const customerDisplay = displayCustomerName(sale.customerName || 'Walk-in customer');
+                const linkedReturns = saleReturns.filter((record) => record.saleId === sale.saleId);
+
+                return `
+                  <article class="report-tx-card">
+                    <header class="report-tx-head">
+                      <div class="tx-head-left">
+                        <div class="tx-id-badge">
+                          <span class="tx-index">#${globalIndex}</span>
+                          <strong class="tx-receipt-no">${escapeHtml(sale.saleId)}</strong>
+                        </div>
+                        <span class="tx-date">${escapeHtml(saleDateFormatted)}</span>
+                      </div>
+
+                      <div class="tx-head-mid">
+                        <strong class="tx-customer-name">${escapeHtml(customerDisplay)}</strong>
+                        <span class="tx-payment-tag ${isCash ? 'is-cash' : 'is-credit'}">
+                          ${isCash ? 'PAID CASH' : 'CREDIT CHARGED'}
+                        </span>
+                      </div>
+
+                      <div class="tx-head-right">
+                        <span class="tx-total-label">Total</span>
+                        <strong class="tx-total-amount">${money(sale.total)}</strong>
+                      </div>
+                    </header>
+
+                    <div class="report-tx-items-wrap">
+                      <table class="report-items-table">
+                        <thead>
+                          <tr>
+                            <th style="width: 40px;">#</th>
+                            <th>Purchased Item Description</th>
+                            <th style="width: 80px; text-align: center;">Qty</th>
+                            <th style="width: 110px; text-align: right;">Unit Price</th>
+                            <th style="width: 120px; text-align: right;">Line Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${items.length === 0 ? `
+                            <tr>
+                              <td colspan="5" style="text-align: center; color: #64748b; padding: 8px;">No line items detailed</td>
+                            </tr>
+                          ` : items.map((it, itIdx) => {
+                            const itemQty = Number(it.qty || 1);
+                            const itemPrice = Number(it.price || 0);
+                            const lineTotal = itemQty * itemPrice;
+                            return `
+                              <tr>
+                                <td class="col-num">${itIdx + 1}</td>
+                                <td class="col-name">
+                                  <strong class="item-name">${escapeHtml(it.name || 'Unknown item')}</strong>
+                                </td>
+                                <td class="col-qty" style="text-align: center;">${itemQty} ${escapeHtml(it.unit || 'pcs')}</td>
+                                <td class="col-price" style="text-align: right;">${money(itemPrice)}</td>
+                                <td class="col-total" style="text-align: right;"><strong>${money(lineTotal)}</strong></td>
+                              </tr>
+                            `;
+                          }).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <footer class="report-tx-foot">
+                      <div class="tx-foot-details">
+                        ${isCash && Number(sale.cashTendered) > 0 ? `
+                          <span>Cash Tendered: <strong>${money(sale.cashTendered)}</strong> &bull; Change Given: <strong>${money(sale.change || 0)}</strong></span>
+                        ` : !isCash ? `
+                          <span>Customer Balance Remaining: <strong>${money(sale.creditBalance || 0)}</strong></span>
+                        ` : ''}
+                      </div>
+                      <div class="tx-foot-summary">
+                        ${Number(sale.discount) > 0 ? `
+                          <span class="tx-discount-note">Discount: -${money(sale.discount)}</span>
+                        ` : ''}
+                        <span class="tx-items-count">${items.length} item${items.length === 1 ? '' : 's'} (${items.reduce((acc, i) => acc + Number(i.qty || 1), 0)} units)</span>
+                      </div>
+                    </footer>
+                    ${linkedReturns.length ? `<div class="report-sale-return-note">${linkedReturns.map((record) => `${escapeHtml(record.id)}: ${escapeHtml(record.type === 'refund' ? `Refund ${money(record.refundAmount)}` : 'Replacement')} · ${escapeHtml(record.status)}`).join(' &bull; ')}</div>` : ''}
+                  </article>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </section>
+      `;
+    }
+
+    if (pageData.hasSummary) {
+      pageContentHtml += `
+        <section class="report-ledger-body report-return-ledger">
+          <div class="report-section-title-wrap">
+            <h2 class="report-section-title">Return & Replacement Activity</h2>
+            <span class="report-count-badge">${returnItemsInPeriod.length} returned item${returnItemsInPeriod.length === 1 ? '' : 's'}</span>
+          </div>
+          ${returnsInPeriod.length === 0 ? `<div class="report-empty-state"><p>No return activity recorded for the selected period.</p></div>` : `
+            <div class="report-return-table-wrap"><table class="report-items-table report-return-table"><thead><tr><th style="width: 110px;">Return</th><th style="width: 140px;">SALES #</th><th style="width: 170px;">CUSTOMER</th><th>Returned Item</th><th style="width: 140px; text-align: right;">Financial Outcome</th></tr></thead><tbody>
+              ${returnsInPeriod.flatMap((record) => {
+                const originalSale = salesHistory.find((sale) => sale.saleId === record.saleId);
+                const lines = saleReturnItems.filter((item) => item.returnId === record.id);
+                return lines.map((line) => {
+                  const product = allProducts.find((item) => item.id === line.productId);
+                  const request = ({ refund: 'Refund', replacement: 'Replace', return: 'Return Only' }[line.actionType] || 'Return Only');
+                  const requestClass = line.actionType === 'refund' ? 'is-refund' : line.actionType === 'replacement' ? 'is-replacement' : 'is-return-only';
+                  const financial = line.actionType === 'refund'
+                    ? (record.refundResolvedAt ? `Refunded ${money(line.refundAmount)}` : `Refund pending ${money(line.refundAmount)}`)
+                    : line.actionType === 'replacement'
+                      ? (record.replacementReleasedAt ? 'Replacement released' : 'Replacement pending')
+                      : 'No financial action';
+                  const conditionWords = String(line.condition || 'quarantine')
+                    .replace(/_/g, ' ')
+                    .split(' ')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                    .join(' ');
+                  const inventoryOutcome = `${conditionWords}: ${Number(line.qty || 0).toLocaleString('en-PH')}`;
+                  return `
+                    <tr>
+                      <td>
+                        <strong style="color: #0f172a;">${escapeHtml(record.id)}</strong><br>
+                        <span style="color: #64748b; font-size: 8.5px;">${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')}</span>
+                      </td>
+                      <td>
+                        <strong style="font-family: monospace, sans-serif; font-size: 11px; color: #0f172a;">${escapeHtml(record.saleId)}</strong><br>
+                        <span class="report-request-tag ${requestClass}">${escapeHtml(request)}</span>
+                      </td>
+                      <td>
+                        <strong style="color: #0f172a; font-size: 10.5px;">${escapeHtml(displayCustomerName(originalSale?.customerName || 'Walk-in customer'))}</strong><br>
+                        <span style="display: inline-block; margin-top: 2px; font-size: 9px; color: #475569; font-weight: 600;">${escapeHtml(inventoryOutcome)}</span>
+                      </td>
+                      <td>
+                        <strong class="item-name">${escapeHtml(product?.name || line.productId)}</strong><br>
+                        <span style="color: #64748b; font-size: 8.5px;">${Number(line.qty || 0).toLocaleString('en-PH')} ${escapeHtml(product?.unit || 'unit')}</span>
+                      </td>
+                      <td style="text-align: right;">
+                        <strong style="color: ${line.actionType === 'refund' ? '#dc2626' : '#059669'}; font-size: 10.5px;">${escapeHtml(financial)}</strong>
+                      </td>
+                    </tr>
+                  `;
+                });
+              }).join('')}
+            </tbody></table></div>
+          `}
+          <div class="report-return-outcomes"><span>Quarantine: <strong>${Number(returnOutcomes.quarantine || 0).toLocaleString('en-PH')}</strong></span><span>Restocked: <strong>${Number(returnOutcomes.restocked || 0).toLocaleString('en-PH')}</strong></span><span>Supplier Return: <strong>${Number(returnOutcomes.supplier_return || 0).toLocaleString('en-PH')}</strong></span><span>Disposed: <strong>${Number(returnOutcomes.disposed || 0).toLocaleString('en-PH')}</strong></span></div>
+        </section>
+
+        <!-- Grand Totals Box & Sign-off Block -->
+        <div class="report-document-summary-block">
+          <div class="report-final-totals">
+            <div class="final-row">
+              <span>Sales Before Discounts:</span>
+              <strong>${money(totalSales + totalDiscounts)}</strong>
+            </div>
+            ${totalDiscounts > 0 ? `
+              <div class="final-row text-discount">
+                <span>Total Discounts Granted:</span>
+                <strong>-${money(totalDiscounts)}</strong>
+              </div>
+            ` : ''}
+            <div class="final-row final-grand-total">
+              <span>Gross Sales After Discounts:</span>
+              <strong>${money(totalSales)}</strong>
+            </div>
+            <div class="final-row text-discount">
+              <span>Less: Completed Refunds:</span>
+              <strong>-${money(totalRefunds)}</strong>
+            </div>
+            <div class="final-row final-grand-total net-sales-row">
+              <span>Net Sales:</span>
+              <strong class="grand-total-val">${money(netSales)}</strong>
+            </div>
+          </div>
+
+          <div class="report-sign-block">
+            <div class="sign-column">
+              <div class="sign-line"></div>
+              <span class="sign-title">Prepared By (Cashier / Staff)</span>
+              <span class="sign-sub">Signature over printed name</span>
+            </div>
+            <div class="sign-column">
+              <div class="sign-line"></div>
+              <span class="sign-title">Audited & Verified By</span>
+              <span class="sign-sub">Branch Manager / Operations</span>
+            </div>
+          </div>
+
+          <div class="report-disclaimer">
+            <p>FR MERCHANDISE SYSTEM-GENERATED SALES AUDIT REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p>
           </div>
         </div>
+      `;
+    }
 
-        <div class="report-sign-block">
-          <div class="sign-column">
-            <div class="sign-line"></div>
-            <span class="sign-title">Prepared By (Cashier / Staff)</span>
-            <span class="sign-sub">Signature over printed name</span>
-          </div>
-          <div class="sign-column">
-            <div class="sign-line"></div>
-            <span class="sign-title">Audited & Verified By</span>
-            <span class="sign-sub">Branch Manager / Operations</span>
-          </div>
+    return `
+      <div class="report-page">
+        <div class="report-page-content">
+          ${pageContentHtml}
         </div>
+        ${renderReportPageFooter(pageNum, totalPages, generatedTime, 'Sales Audit')}
+      </div>
+    `;
+  }).join('');
 
-        <div class="report-disclaimer">
-          <p>FR MERCHANDISE SYSTEM-GENERATED SALES AUDIT REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p>
-        </div>
-      </footer>
-    </div>
-  `;
-
-  document.body.dataset.printMode = 'sales';
-  const clearPrintMode = () => {
-    delete document.body.dataset.printMode;
-    printDoc.hidden = true;
-    printDoc.innerHTML = '';
-    window.removeEventListener('afterprint', clearPrintMode);
-  };
-  window.addEventListener('afterprint', clearPrintMode);
-  printDoc.hidden = false;
-  window.print();
+  printDoc.innerHTML = renderedPagesHtml;
+  openReportInNewPage_(printDoc ? printDoc.innerHTML : '', `Branch Sales Report - ${periodText}`);
 }
 
 function generateInventoryReportPdf() {
@@ -530,65 +1216,133 @@ function generateInventoryReportPdf() {
   const rows = getInventoryReportRows();
   const generatedTime = new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 
-  printDoc.innerHTML = `
-    <div class="report-page inventory-print-page">
-      <header class="report-header">
-        <div class="report-brand-wrap">
-          <svg viewBox="0 0 36 36" class="report-badge-svg" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="18" cy="18" r="16.5" fill="#081326"/>
-            <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
-            <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
-            <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
-          </svg>
-          <div>
-            <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
-            <h1 class="report-title">Branch Inventory Report</h1>
-            <p class="report-subtitle">Stock movement and remaining inventory by product</p>
+  // Long Bond Paper (8.5in x 13in) pagination for Inventory rows
+  const invSignoffHeight = 150;
+  const inventoryPages = [];
+  let currentRowIdx = 0;
+  let isFirstInvPage = true;
+
+  while (currentRowIdx < rows.length || inventoryPages.length === 0) {
+    const pageCapacity = isFirstInvPage ? 820 : 980;
+    let usedHeight = 0;
+    const chunk = [];
+
+    while (currentRowIdx < rows.length) {
+      const rowHeight = 32;
+      if (chunk.length > 0 && (usedHeight + rowHeight > pageCapacity)) {
+        break;
+      }
+      chunk.push(rows[currentRowIdx]);
+      usedHeight += rowHeight;
+      currentRowIdx++;
+    }
+
+    const isLastRows = currentRowIdx >= rows.length;
+    let hasSignoff = false;
+    if (isLastRows) {
+      if (pageCapacity - usedHeight >= invSignoffHeight) {
+        hasSignoff = true;
+      }
+    }
+
+    inventoryPages.push({
+      isFirstPage: isFirstInvPage,
+      rowsChunk: chunk,
+      hasSignoff
+    });
+
+    isFirstInvPage = false;
+
+    if (isLastRows && !hasSignoff) {
+      inventoryPages.push({
+        isFirstPage: false,
+        rowsChunk: [],
+        hasSignoff: true
+      });
+      break;
+    }
+  }
+
+  const totalPages = inventoryPages.length;
+
+  const renderedInventoryHtml = inventoryPages.map((pageData, pageIndex) => {
+    const pageNum = pageIndex + 1;
+    let pageContentHtml = '';
+
+    if (pageData.isFirstPage) {
+      pageContentHtml += `
+        <header class="report-header">
+          <div class="report-brand-wrap">
+            <svg viewBox="0 0 36 36" class="report-badge-svg" width="42" height="42" style="width:42px;height:42px;max-width:42px;max-height:42px;flex-shrink:0;" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="18" cy="18" r="16.5" fill="#081326"/>
+              <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
+              <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
+              <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
+            </svg>
+            <div>
+              <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
+              <h1 class="report-title">Branch Inventory Report</h1>
+              <p class="report-subtitle">Stock movement and remaining inventory by product</p>
+            </div>
           </div>
-        </div>
-        <div class="report-meta-box">
-          <div class="report-meta-row"><span class="meta-label">Branch:</span><strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong></div>
-          <div class="report-meta-row"><span class="meta-label">Scope:</span><strong class="meta-val">Active Branch Inventory</strong></div>
-          <div class="report-meta-row"><span class="meta-label">Generated:</span><span class="meta-val">${escapeHtml(generatedTime)}</span></div>
-        </div>
-      </header>
-
-      <section class="report-ledger-body">
-        <div class="report-section-title-wrap"><h2 class="report-section-title">Inventory Movement by Product</h2><span class="report-count-badge">${rows.length} Products</span></div>
-        <div class="report-tx-card">
-          <div class="report-tx-items-wrap">
-            <table class="report-items-table inventory-report-table">
-              <thead><tr><th>Product</th><th style="text-align:center;">Qty Sold</th><th style="text-align:center;">Qty Stock In</th><th style="text-align:center;">Qty Transfer</th><th style="text-align:center;">Qty Remaining</th><th style="text-align:right;">Status</th></tr></thead>
-              <tbody>
-                ${rows.map((product) => {
-                  const qty = Math.max(Number(product.qty) || 0, 0);
-                  const status = getInventoryReportStatus(product);
-                  const movement = getInventoryReportMovement(product.id);
-                  return `<tr><td class="col-name"><strong class="item-name">${escapeHtml(product.name)}</strong><br><span>${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit || 'unit')}</span></td><td style="text-align:center;">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${formatTransferQuantity(movement)}</td><td style="text-align:center;"><strong>${qty.toLocaleString('en-PH')}</strong></td><td style="text-align:right;">${escapeHtml(status.label)}</td></tr>`;
-                }).join('') || '<tr><td colspan="6" style="text-align:center; padding:12px;">No inventory records found.</td></tr>'}
-              </tbody>
-            </table>
+          <div class="report-meta-box">
+            <div class="report-meta-row"><span class="meta-label">Branch:</span><strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong></div>
+            <div class="report-meta-row"><span class="meta-label">Scope:</span><strong class="meta-val">Active Branch Inventory</strong></div>
+            <div class="report-meta-row"><span class="meta-label">Generated:</span><span class="meta-val">${escapeHtml(generatedTime)}</span></div>
           </div>
+        </header>
+      `;
+    } else {
+      pageContentHtml += renderReportRunningHeader(branch.name || 'Main Branch', 'Active Branch Inventory', 'Branch Inventory Report');
+    }
+
+    if (pageData.rowsChunk.length > 0 || (pageData.isFirstPage && rows.length === 0)) {
+      pageContentHtml += `
+        <section class="report-ledger-body">
+          <div class="report-section-title-wrap">
+            <h2 class="report-section-title">${pageData.isFirstPage ? 'Inventory Movement by Product' : 'Inventory Movement by Product (Continued)'}</h2>
+            <span class="report-count-badge">${pageData.rowsChunk.length > 0 ? `Showing ${pageData.rowsChunk.length} of ${rows.length} Products` : '0 Products'}</span>
+          </div>
+          <div class="report-tx-card">
+            <div class="report-tx-items-wrap">
+              <table class="report-items-table inventory-report-table">
+                <thead><tr><th>Product</th><th style="text-align:center;">Qty Sold</th><th style="text-align:center;">Qty Stock In</th><th style="text-align:center;">Qty Transfer</th><th style="text-align:center;">Qty Remaining</th><th style="text-align:right;">Status</th></tr></thead>
+                <tbody>
+                  ${pageData.rowsChunk.map((product) => {
+                    const qty = Math.max(Number(product.qty) || 0, 0);
+                    const status = getInventoryReportStatus(product);
+                    const movement = getInventoryReportMovement(product.id);
+                    return `<tr><td class="col-name"><strong class="item-name">${escapeHtml(product.name)}</strong><br><span>${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit || 'unit')}</span></td><td style="text-align:center;">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')}</td><td style="text-align:center;">${formatTransferQuantity(movement)}</td><td style="text-align:center;"><strong>${qty.toLocaleString('en-PH')}</strong></td><td style="text-align:right;">${escapeHtml(status.label)}</td></tr>`;
+                  }).join('') || '<tr><td colspan="6" style="text-align:center; padding:12px;">No inventory records found.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    if (pageData.hasSignoff) {
+      pageContentHtml += `
+        <footer class="report-document-footer">
+          <div class="report-sign-block"><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Prepared By (Cashier / Staff)</span><span class="sign-sub">Signature over printed name</span></div><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Audited & Verified By</span><span class="sign-sub">Branch Manager / Operations</span></div></div>
+          <div class="report-disclaimer"><p>FR MERCHANDISE SYSTEM-GENERATED INVENTORY REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p></div>
+        </footer>
+      `;
+    }
+
+    return `
+      <div class="report-page inventory-print-page">
+        <div class="report-page-content">
+          ${pageContentHtml}
         </div>
-      </section>
+        ${renderReportPageFooter(pageNum, totalPages, generatedTime, 'Inventory')}
+      </div>
+    `;
+  }).join('');
 
-      <footer class="report-document-footer">
-        <div class="report-sign-block"><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Prepared By (Cashier / Staff)</span><span class="sign-sub">Signature over printed name</span></div><div class="sign-column"><div class="sign-line"></div><span class="sign-title">Audited & Verified By</span><span class="sign-sub">Branch Manager / Operations</span></div></div>
-        <div class="report-disclaimer"><p>FR MERCHANDISE SYSTEM-GENERATED INVENTORY REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p></div>
-      </footer>
-    </div>
-  `;
-
-  document.body.dataset.printMode = 'sales';
-  const clearPrintMode = () => {
-    delete document.body.dataset.printMode;
-    printDoc.hidden = true;
-    printDoc.innerHTML = '';
-    window.removeEventListener('afterprint', clearPrintMode);
-  };
-  window.addEventListener('afterprint', clearPrintMode);
-  printDoc.hidden = false;
-  window.print();
+  printDoc.innerHTML = renderedInventoryHtml;
+  openReportInNewPage_(printDoc ? printDoc.innerHTML : '', `Inventory Report - ${branch.name || 'Main Branch'}`);
 }
 
 function askConfirmation({
@@ -944,6 +1698,11 @@ async function api(action, payload = {}) {
     throwIfError_(error);
     return data;
   }
+  if (action === 'receiveStockInBatch') {
+    const { data, error } = await client.rpc('receive_stock_in_batch_with_quarantine', { target_branch_id: payload.branchId, receipt_lines: payload.lines, supplier_reference_input: payload.supplierReference || '' });
+    throwIfError_(error);
+    return data;
+  }
   if (action === 'recordSale') {
     const { data, error } = await client.rpc('record_sale', {
       target_branch_id: payload.branchId,
@@ -1191,6 +1950,8 @@ function renderSkeletonTable() {
     ? ['Product', 'Category', 'Current stock', 'Stock warning', 'Status']
     : activeView === 'inventoryReports'
     ? ['Product', 'Qty sold', 'Qty stock in', 'Qty transfer', 'Qty remaining', 'Status']
+    : activeView === 'quarantineReport'
+    ? ['Product', 'Case / Date', 'Origin & Reference', 'Inspection Reason', 'Quantity', 'Disposition']
     : activeView === 'branches'
     ? ['Branch', 'Type', 'Address', 'Status', 'Action']
     : activeView === 'customers'
@@ -1291,6 +2052,15 @@ function renderSkeletonTable() {
         <div><div class="skeleton-shimmer skeleton-line pill" style="width:70px;"></div></div>
       `;
     }
+    if (activeView === 'quarantineReport') {
+      return `
+        <div class="product-cell skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:105px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:75px;"></div></div>
+        <div class="product-cell skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:120px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:90px;"></div></div>
+        <div class="product-cell"><div class="skeleton-shimmer skeleton-line text" style="width:140px;"></div></div>
+        <div class="row-middle-cells" style="justify-content:center; display:flex;"><div class="skeleton-shimmer skeleton-line pill" style="width:48px;height:22px;"></div></div>
+        <div class="row-action-cell" style="justify-content:center; display:flex;"><div class="skeleton-shimmer skeleton-line pill" style="width:90px;height:22px;"></div></div>
+      `;
+    }
     // Default / POS view:
     return `
       <div><div class="skeleton-shimmer skeleton-line price"></div></div>
@@ -1298,7 +2068,7 @@ function renderSkeletonTable() {
     `;
   };
 
-  const hasAction = !['inventory', 'inventoryReports', 'credits'].includes(activeView);
+  const hasAction = !['inventory', 'inventoryReports', 'credits', 'quarantineReport'].includes(activeView);
 
   const getSkeletonActionCell = () => {
     if (!hasAction) return '';
@@ -1330,8 +2100,50 @@ function renderSkeletonTable() {
     `;
   };
 
+  if (activeView === 'quarantineReport') {
+    const quarantineRows = Array.from({ length: 5 }).map(() => `
+      <div class="table-row skeleton-row" style="grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(180px, 1.4fr) 90px 130px;">
+        <div class="product-cell skeleton-prod-col">
+          <div class="skeleton-shimmer skeleton-line title"></div>
+          <div class="skeleton-shimmer skeleton-line meta"></div>
+        </div>
+        <div class="product-cell skeleton-col">
+          <div class="skeleton-shimmer skeleton-line title" style="width: 105px;"></div>
+          <div class="skeleton-shimmer skeleton-line meta" style="width: 75px;"></div>
+        </div>
+        <div class="product-cell skeleton-col">
+          <div class="skeleton-shimmer skeleton-line title" style="width: 120px;"></div>
+          <div class="skeleton-shimmer skeleton-line meta" style="width: 90px;"></div>
+        </div>
+        <div class="product-cell">
+          <div class="skeleton-shimmer skeleton-line text" style="width: 140px;"></div>
+        </div>
+        <div class="row-middle-cells" style="justify-content: center; display: flex;">
+          <div class="skeleton-shimmer skeleton-line pill" style="width: 48px; height: 22px;"></div>
+        </div>
+        <div class="row-action-cell" style="justify-content: center; display: flex;">
+          <div class="skeleton-shimmer skeleton-line pill" style="width: 90px; height: 22px;"></div>
+        </div>
+      </div>
+    `).join('');
+
+    table.innerHTML = `
+      <div class="quarantine-filter-bar" style="pointer-events: none; opacity: 0.7;">
+        <div class="skeleton-shimmer skeleton-line pill" style="width: 55px; height: 32px; border-radius: 9999px;"></div>
+        <div class="skeleton-shimmer skeleton-line pill" style="width: 95px; height: 32px; border-radius: 9999px;"></div>
+        <div class="skeleton-shimmer skeleton-line pill" style="width: 130px; height: 32px; border-radius: 9999px;"></div>
+        <div class="skeleton-shimmer skeleton-line pill" style="width: 85px; height: 32px; border-radius: 9999px;"></div>
+      </div>
+      <div class="table-row table-header" style="grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(180px, 1.4fr) 90px 130px;">
+        ${headers.map((header) => `<span>${header}</span>`).join('')}
+      </div>
+      ${quarantineRows}
+    `;
+    return;
+  }
+
   const rows = Array.from({ length: 5 }).map(() => `
-    <div class="skeleton-row">
+    <div class="table-row skeleton-row">
       <div class="skeleton-col skeleton-prod-col">
         <div class="skeleton-shimmer skeleton-line title"></div>
         <div class="skeleton-shimmer skeleton-line meta"></div>
@@ -1355,10 +2167,31 @@ function renderSkeletonTable() {
    SMOOTH CUSTOM DROPDOWN SYSTEM
    (User Requirement: Make everything smooth and the dropdown must be smooth)
    ========================================================================== */
+function sortSelectOptionsAtoZ_(select) {
+  if (!select || !select.options || select.options.length <= 1) return;
+  if (select.dataset.noSort === 'true') return;
+
+  const currentVal = select.value;
+  const options = Array.from(select.options);
+  const first = options[0];
+  const hasPlaceholder = first && (!first.value || first.disabled);
+  const toSort = hasPlaceholder ? options.slice(1) : options;
+
+  toSort.sort((a, b) => a.text.trim().localeCompare(b.text.trim(), 'en', { sensitivity: 'base' }));
+
+  const sorted = hasPlaceholder ? [first, ...toSort] : toSort;
+  sorted.forEach((opt) => select.appendChild(opt));
+
+  if (currentVal !== undefined && currentVal !== '') {
+    select.value = currentVal;
+  }
+}
+
 function initCustomDropdowns(container = document) {
   const selects = container.querySelectorAll('select:not([data-custom-enhanced])');
 
   selects.forEach((select) => {
+    sortSelectOptionsAtoZ_(select);
     select.setAttribute('data-custom-enhanced', 'true');
     select.classList.add('native-hidden');
 
@@ -1583,6 +2416,7 @@ function initCustomDropdowns(container = document) {
 
 function updateCustomDropdown(select) {
   if (!select) return;
+  sortSelectOptionsAtoZ_(select);
   const wrapper = select.closest('.custom-dropdown');
   if (!wrapper || typeof wrapper._renderOptions !== 'function') {
     if (wrapper) wrapper.replaceWith(select);
@@ -1853,8 +2687,16 @@ function initCustomDatePickers(container = document) {
       const todayDate = today.getDate();
 
       const selectedIso = input.value || '';
-      const isDateFrom = input.id === 'salesDateFrom';
-      const otherInput = isDateFrom ? $('#salesDateTo') : $('#salesDateFrom');
+      const isDateFrom = input.id === 'salesDateFrom' || input.id === 'quarantineDateFrom';
+      const otherInput = input.id === 'salesDateFrom'
+        ? $('#salesDateTo')
+        : input.id === 'salesDateTo'
+        ? $('#salesDateFrom')
+        : input.id === 'quarantineDateFrom'
+        ? $('#quarantineDateTo')
+        : input.id === 'quarantineDateTo'
+        ? $('#quarantineDateFrom')
+        : null;
       const otherIso = otherInput?.value || '';
 
       let rangeStart = isDateFrom ? selectedIso : otherIso;
@@ -2961,6 +3803,7 @@ function renderDashboardSkeleton() {
 function renderInventory() {
   if (activeView === 'dashboard') { renderDashboard(); return; }
   if (activeView === 'quarantine') { renderQuarantinedItems(); return; }
+  if (activeView === 'quarantineReport') { renderQuarantineReport(); return; }
   if (activeView === 'inventoryReports') {
     renderInventoryReports();
     return;
@@ -3042,12 +3885,8 @@ function renderInventory() {
       </div>
       <div class="row-action-cell">
         <span class="table-actions">
-          <button class="icon-button" data-edit="${product.id}" aria-label="Edit ${escapeHtml(product.name)}" title="Edit product">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-          </button>
-          ${currentSession?.account?.role !== 'staff' ? `<button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-          </button>` : ''}
+          <button class="icon-button" data-edit="${product.id}" aria-label="Edit ${escapeHtml(product.name)}" title="Edit product"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+          ${currentSession?.account?.role !== 'staff' ? `<button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button>` : ''}
         </span>
       </div>
     `;
@@ -3115,20 +3954,92 @@ function renderQuarantinedItems() {
   const resolutionLabel = (resolution) => ({ restocked: 'Restock', supplier_return: 'Return to Supplier', return_to_source: 'Return to Source Branch', disposed: 'Dispose' }[resolution] || resolution);
   const actionButtons = (item, source) => {
     if (item.resolution !== 'quarantine') return `<span class="sale-return-resolved-pill">${escapeHtml(resolutionLabel(item.resolution))}</span>`;
+    const icons = {
+      restocked: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+      supplier_return: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 17V7H7"/></svg>',
+      return_to_source: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 17V7H7"/></svg>',
+      disposed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+    };
+    const btnClasses = {
+      restocked: 'restock-btn',
+      supplier_return: 'supplier-btn',
+      return_to_source: 'supplier-btn',
+      disposed: 'danger-btn'
+    };
     const buttons = source === 'stock_in'
       ? [['restocked', 'Restock'], ['supplier_return', 'Return to Supplier'], ['disposed', 'Dispose']]
-      : [['restocked', 'Restock'], ['return_to_source', 'Return to Source Branch'], ['disposed', 'Dispose']];
-    return `<span class="table-actions quarantine-actions">${buttons.map(([resolution, label]) => `<button class="button button-secondary quarantine-resolution${resolution === 'disposed' ? ' danger' : ''}" data-quarantine-resolution="${resolution}" data-quarantine-item="${item.id}" type="button">${label}</button>`).join('')}</span>`;
+      : [['restocked', 'Restock'], ['return_to_source', 'Return to Source'], ['disposed', 'Dispose']];
+    return `<span class="table-actions quarantine-actions">${buttons.map(([resolution, label]) => `<button class="quarantine-resolution resolve-btn ${btnClasses[resolution] || ''}" data-quarantine-resolution="${resolution}" data-quarantine-item="${item.id}" type="button" title="${label}">${icons[resolution] || ''}<span class="resolve-btn-text">${label}</span></button>`).join('')}</span>`;
   };
-  table.innerHTML = `<div class="quarantine-summary"><strong>Inspection holding area</strong><span>Items listed here are not part of available or sellable stock. Resolve each item only after inspection.</span></div>${cases.map((caseItem) => {
-    const items = inventoryQuarantineItems.filter((item) => item.caseId === caseItem.id);
-    return `<section class="quarantine-case-card">
-      <header class="quarantine-case-header"><div><span class="category-badge">${escapeHtml(sourceLabel(caseItem.sourceType))}</span><strong>${escapeHtml(caseItem.id)}</strong><span class="product-meta">Reference: ${escapeHtml(caseItem.reference)} · ${escapeHtml(caseItem.createdAt ? formatDateTime(caseItem.createdAt) : '')}</span></div><span class="stock-pill ${caseItem.status === 'Resolved' ? 'stock-normal' : caseItem.status === 'Partially Resolved' ? 'category-badge' : 'stock-low'}">${escapeHtml(caseItem.status)}</span></header>
-      <div class="quarantine-case-details"><span><b>${caseItem.sourceType === 'stock_in' ? 'Supplier / reference' : 'Source branch'}</b> ${escapeHtml(caseItem.sourceType === 'stock_in' ? (caseItem.supplierReference || 'Not recorded') : (caseItem.sourceBranchName || caseItem.sourceBranchId || 'Not recorded'))}</span><span><b>Inspection reason</b> ${escapeHtml(caseItem.reason || 'Not recorded')}</span></div>
-      <div class="quarantine-items">${items.map((item) => `<div class="quarantine-item-row"><div class="product-cell"><strong class="product-name">${escapeHtml(item.productName)}</strong><span class="product-meta">${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)}${item.sellingPrice === null ? '' : ` · Receipt price ${money(item.sellingPrice)}`}</span></div><div class="quarantine-item-action">${actionButtons(item, caseItem.sourceType)}</div></div>`).join('') || '<div class="empty-state"><p>No quarantine items found</p></div>'}</div>
-    </section>`;
-  }).join('') || '<div class="empty-state"><p>No quarantined items</p><small>Stock received into quarantine will appear here for inspection and disposition.</small></div>'}`;
+
+  const casesHtml = cases.length > 0
+    ? cases.map((caseItem) => {
+        const items = inventoryQuarantineItems.filter((item) => item.caseId === caseItem.id);
+        return `<section class="quarantine-case-card">
+          <header class="quarantine-case-header">
+            <div>
+              <span class="category-badge">${escapeHtml(sourceLabel(caseItem.sourceType))}</span>
+              <strong>${escapeHtml(caseItem.id)}</strong>
+              <span class="product-meta">Reference: ${escapeHtml(caseItem.reference)} &bull; ${escapeHtml(caseItem.createdAt ? formatDateTime(caseItem.createdAt) : '')}</span>
+            </div>
+            <span class="stock-pill ${caseItem.status === 'Resolved' ? 'stock-normal' : caseItem.status === 'Partially Resolved' ? 'category-badge' : 'stock-low'}">${escapeHtml(caseItem.status)}</span>
+          </header>
+          <div class="quarantine-case-details">
+            <span><b>${caseItem.sourceType === 'stock_in' ? 'Supplier / Reference:' : 'Source Branch:'}</b> ${escapeHtml(caseItem.sourceType === 'stock_in' ? (caseItem.supplierReference || 'Not recorded') : (caseItem.sourceBranchName || caseItem.sourceBranchId || 'Not recorded'))}</span>
+            <span><b>Inspection Reason:</b> ${escapeHtml(caseItem.reason || 'Not recorded')}</span>
+          </div>
+          <div class="quarantine-items">
+            ${items.map((item) => `<div class="quarantine-item-row"><div class="product-cell"><strong class="product-name">${escapeHtml(item.productName)}</strong><span class="product-meta">${Number(item.qty).toLocaleString('en-PH')} ${escapeHtml(item.unit)}${item.sellingPrice === null ? '' : ` &bull; Receipt price ${money(item.sellingPrice)}`}</span></div><div class="quarantine-item-action">${actionButtons(item, caseItem.sourceType)}</div></div>`).join('') || '<div class="empty-state"><p>No quarantine items found</p></div>'}
+          </div>
+        </section>`;
+      }).join('')
+    : `<div class="quarantine-empty-state">
+        <div class="quarantine-empty-icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <h3 class="quarantine-empty-title">No Quarantined Items</h3>
+        <p class="quarantine-empty-desc">Inspection holding area is currently clear. Any stock-in receipts or branch transfers flagged for inspection will appear here for verification and disposition.</p>
+        <div class="quarantine-empty-status">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+          <span>Holding Area All Clear</span>
+        </div>
+      </div>`;
+
+  table.innerHTML = `
+    <div class="quarantine-view">
+      <div class="quarantine-banner">
+        <div class="quarantine-banner-leading">
+          <div class="quarantine-banner-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="quarantine-banner-text">
+            <strong class="quarantine-banner-title">Quarantine &amp; Quality Inspection Area</strong>
+            <p class="quarantine-banner-desc">Stock listed here is isolated from available inventory. Inspect each item carefully before authorizing disposition.</p>
+          </div>
+        </div>
+        <div class="quarantine-banner-status">
+          <button class="button button-secondary quarantine-report-link-btn" type="button" id="quarantineReportNavBtn" style="height:32px;padding:0 12px;font-size:12px;gap:6px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>Quarantine Report</span>
+          </button>
+          ${cases.length > 0
+            ? `<span class="quarantine-status-pill has-items"><span class="quarantine-pulse-dot"></span> ${cases.length} ${cases.length === 1 ? 'Case Pending' : 'Cases Pending'}</span>`
+            : `<span class="quarantine-status-pill all-clear"><span class="quarantine-pulse-dot"></span> Holding Area Clear</span>`
+          }
+        </div>
+      </div>
+      ${casesHtml}
+    </div>
+  `;
   table.querySelectorAll('[data-quarantine-item]').forEach((button) => button.addEventListener('click', () => resolveInventoryQuarantineItem_(button.dataset.quarantineItem, button.dataset.quarantineResolution)));
+  table.querySelector('#quarantineReportNavBtn')?.addEventListener('click', () => setView('quarantineReport'));
 }
 
 async function resolveInventoryQuarantineItem_(itemId, resolution) {
@@ -3139,6 +4050,484 @@ async function resolveInventoryQuarantineItem_(itemId, resolution) {
     showToast(result?.returnTransferId ? `Item marked for return. New transfer ${result.returnTransferId} is in transit.` : 'Quarantined item resolved.', 'success');
     await refresh(false);
   } catch (error) { showToast(error.message || 'Unable to resolve quarantined item.', 'error'); }
+}
+
+function getQuarantineReportData_() {
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const dateFrom = $('#quarantineDateFrom')?.value || '';
+  const dateTo = $('#quarantineDateTo')?.value || '';
+
+  const casesMap = new Map(inventoryQuarantineCases.map((c) => [c.id, c]));
+
+  const records = inventoryQuarantineItems
+    .map((item) => {
+      const caseItem = casesMap.get(item.caseId) || {
+        id: item.caseId,
+        reference: 'N/A',
+        sourceType: 'stock_in',
+        sourceBranchName: '',
+        supplierReference: '',
+        reason: 'Inspection holding',
+        status: 'quarantine',
+        createdAt: item.resolvedAt || new Date().toISOString()
+      };
+      const recordDate = item.resolvedAt || caseItem.resolvedAt || caseItem.createdAt;
+      const dateKey = saleDateKey(recordDate);
+
+      let groupKey = 'quarantine';
+      if (item.resolution === 'restocked') groupKey = 'restocked';
+      else if (item.resolution === 'supplier_return' || item.resolution === 'return_to_source') groupKey = 'supplier_return';
+      else if (item.resolution === 'disposed') groupKey = 'disposed';
+
+      return {
+        item,
+        caseItem,
+        recordDate,
+        dateKey,
+        groupKey,
+        productName: item.productName || item.productId,
+        qty: Number(item.qty || 0),
+        unit: item.unit || 'unit',
+        sellingPrice: item.sellingPrice,
+        resolution: item.resolution,
+        reason: caseItem.reason || 'Inspection holding',
+        reference: caseItem.reference || caseItem.id,
+        supplier: caseItem.sourceType === 'stock_in'
+          ? (caseItem.supplierReference || 'Supplier Delivery')
+          : (caseItem.sourceBranchName || caseItem.sourceBranchId || 'Source Branch'),
+        sourceType: caseItem.sourceType
+      };
+    })
+    .filter((r) => {
+      const matchesDate = (!dateFrom || r.dateKey >= dateFrom) && (!dateTo || r.dateKey <= dateTo);
+      const matchesTerm = !term || `${r.item.id} ${r.caseItem.id} ${r.productName} ${r.reference} ${r.supplier} ${r.reason} ${r.resolution}`.toLowerCase().includes(term);
+      return matchesDate && matchesTerm;
+    })
+    .sort((a, b) => new Date(b.recordDate) - new Date(a.recordDate));
+
+  const restocked = records.filter((r) => r.groupKey === 'restocked');
+  const supplierReturn = records.filter((r) => r.groupKey === 'supplier_return');
+  const disposed = records.filter((r) => r.groupKey === 'disposed');
+  const pending = records.filter((r) => r.groupKey === 'quarantine');
+
+  return {
+    records,
+    dateFrom,
+    dateTo,
+    term,
+    restocked,
+    supplierReturn,
+    disposed,
+    pending,
+    totalUnits: records.reduce((s, r) => s + r.qty, 0),
+    restockedUnits: restocked.reduce((s, r) => s + r.qty, 0),
+    supplierReturnUnits: supplierReturn.reduce((s, r) => s + r.qty, 0),
+    disposedUnits: disposed.reduce((s, r) => s + r.qty, 0),
+    pendingUnits: pending.reduce((s, r) => s + r.qty, 0),
+  };
+}
+
+function renderQuarantineReport() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+
+  const data = getQuarantineReportData_();
+  const { records, restocked, supplierReturn, disposed, pending, totalUnits, restockedUnits, supplierReturnUnits, disposedUnits, pendingUnits } = data;
+
+  const groups = [
+    {
+      key: 'restocked',
+      title: 'Restocked to Available Inventory',
+      desc: 'Items inspected, approved, and transferred into available branch inventory',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+      pillClass: 'stock-normal',
+      badgeClass: 'stock-normal',
+      statusText: 'Restocked',
+      items: restocked,
+      units: restockedUnits,
+    },
+    {
+      key: 'supplier_return',
+      title: 'Returned to Supplier / Source Branch',
+      desc: 'Dispatched back to vendor or originating source branch',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 17V7H7"/></svg>',
+      pillClass: 'category-badge',
+      badgeClass: 'category-badge',
+      statusText: 'Supplier Return',
+      items: supplierReturn,
+      units: supplierReturnUnits,
+    },
+    {
+      key: 'disposed',
+      title: 'Disposed / Scrapped Items',
+      desc: 'Damaged, expired, or non-returnable units written off',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+      pillClass: 'stock-low',
+      badgeClass: 'stock-low',
+      statusText: 'Disposed',
+      items: disposed,
+      units: disposedUnits,
+    },
+    {
+      key: 'quarantine',
+      title: 'Pending Quality Inspection (Holding Area)',
+      desc: 'Awaiting quality verification and final disposition resolution',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+      pillClass: 'in-transit-badge',
+      badgeClass: 'in-transit-badge',
+      statusText: 'In Inspection',
+      items: pending,
+      units: pendingUnits,
+    },
+  ];
+
+  const sourceName = (src) => src === 'stock_in' ? 'Stock-In' : 'Transfer';
+
+  const filteredGroups = groups.filter((g) => {
+    if (activeQuarantineFilter !== 'all' && g.key !== activeQuarantineFilter) return false;
+    return g.items.length > 0;
+  });
+
+  const filterChipsHtml = `
+    <div class="quarantine-filter-bar" role="tablist" aria-label="Filter quarantine disposition">
+      <button type="button" class="quarantine-filter-chip ${activeQuarantineFilter === 'all' ? 'active' : ''}" data-quarantine-filter="all">
+        <span class="quarantine-filter-chip-label">All</span>
+        <span class="quarantine-filter-chip-count">${records.length}</span>
+      </button>
+      <button type="button" class="quarantine-filter-chip chip-restocked ${activeQuarantineFilter === 'restocked' ? 'active' : ''}" data-quarantine-filter="restocked">
+        <span class="chip-dot dot-restocked"></span>
+        <span class="quarantine-filter-chip-label">Restocked</span>
+        <span class="quarantine-filter-chip-count">${restocked.length}</span>
+      </button>
+      <button type="button" class="quarantine-filter-chip chip-supplier ${activeQuarantineFilter === 'supplier_return' ? 'active' : ''}" data-quarantine-filter="supplier_return">
+        <span class="chip-dot dot-supplier"></span>
+        <span class="quarantine-filter-chip-label">Supplier Return</span>
+        <span class="quarantine-filter-chip-count">${supplierReturn.length}</span>
+      </button>
+      <button type="button" class="quarantine-filter-chip chip-disposed ${activeQuarantineFilter === 'disposed' ? 'active' : ''}" data-quarantine-filter="disposed">
+        <span class="chip-dot dot-disposed"></span>
+        <span class="quarantine-filter-chip-label">Disposed</span>
+        <span class="quarantine-filter-chip-count">${disposed.length}</span>
+      </button>
+      ${pending.length > 0 ? `
+        <button type="button" class="quarantine-filter-chip chip-pending ${activeQuarantineFilter === 'quarantine' ? 'active' : ''}" data-quarantine-filter="quarantine">
+          <span class="chip-dot dot-pending"></span>
+          <span class="quarantine-filter-chip-label">In Inspection</span>
+          <span class="quarantine-filter-chip-count">${pending.length}</span>
+        </button>
+      ` : ''}
+    </div>
+  `;
+
+  if (records.length === 0) {
+    table.innerHTML = `
+      ${filterChipsHtml}
+      <div class="table-row table-header">
+        <span>Product</span>
+        <span>Case / Date</span>
+        <span>Origin &amp; Reference</span>
+        <span>Inspection Reason</span>
+        <span>Quantity</span>
+        <span>Disposition</span>
+      </div>
+      <div class="empty-state">
+        <p>No quarantine records found</p>
+        <small>No inspection items match the selected date range or search filter.</small>
+      </div>
+    `;
+    bindQuarantineFilterChips_(table);
+    return;
+  }
+
+  if (filteredGroups.length === 0) {
+    table.innerHTML = `
+      ${filterChipsHtml}
+      <div class="table-row table-header">
+        <span>Product</span>
+        <span>Case / Date</span>
+        <span>Origin &amp; Reference</span>
+        <span>Inspection Reason</span>
+        <span>Quantity</span>
+        <span>Disposition</span>
+      </div>
+      <div class="empty-state">
+        <p>No records for this disposition</p>
+        <small>Try selecting a different filter above.</small>
+      </div>
+    `;
+    bindQuarantineFilterChips_(table);
+    return;
+  }
+
+  table.innerHTML = `
+    ${filterChipsHtml}
+    <div class="table-row table-header">
+      <span>Product</span>
+      <span>Case / Date</span>
+      <span>Origin &amp; Reference</span>
+      <span>Inspection Reason</span>
+      <span>Quantity</span>
+      <span>Disposition</span>
+    </div>
+    ${filteredGroups.map((g) => `
+      <div class="quarantine-group-divider ${g.key}">
+        <div class="quarantine-group-divider-content">
+          <span class="quarantine-group-icon ${g.key}">${g.icon}</span>
+          <div class="quarantine-group-text">
+            <strong class="quarantine-group-divider-title">${escapeHtml(g.title)}</strong>
+            <span class="quarantine-group-divider-desc">${escapeHtml(g.desc)}</span>
+          </div>
+        </div>
+        <div class="quarantine-group-badges">
+          <span class="stock-pill category-badge">${g.items.length} Line${g.items.length === 1 ? '' : 's'}</span>
+          <span class="stock-pill ${g.pillClass}">${Number(g.units).toLocaleString('en-PH')} Units</span>
+        </div>
+      </div>
+      ${g.items.map((r) => `
+        <div class="table-row">
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(r.productName)}</strong>
+            <span class="product-meta">${escapeHtml(r.unit)}${r.sellingPrice !== null ? ` &bull; Cost: ${money(r.sellingPrice)}` : ''}</span>
+          </div>
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(r.caseItem.id)}</strong>
+            <span class="product-meta">${escapeHtml(r.recordDate ? new Date(r.recordDate).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown')}</span>
+          </div>
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(r.reference)}</strong>
+            <span class="product-meta" title="${escapeHtml(r.supplier)}">${escapeHtml(sourceName(r.sourceType))}: ${escapeHtml(r.supplier)}</span>
+          </div>
+          <div class="product-cell">
+            <span class="quarantine-reason-text" title="${escapeHtml(r.reason)}">${escapeHtml(r.reason)}</span>
+          </div>
+          <div class="row-middle-cells" style="justify-content:center;">
+            <span class="shipped-badge">${Number(r.qty).toLocaleString('en-PH')}</span>
+          </div>
+          <div class="row-action-cell">
+            <span class="stock-pill ${g.badgeClass}">${g.statusText}</span>
+          </div>
+        </div>
+      `).join('')}
+    `).join('')}
+  `;
+
+  bindQuarantineFilterChips_(table);
+}
+
+function bindQuarantineFilterChips_(table) {
+  table.querySelectorAll('[data-quarantine-filter]').forEach((chip) => {
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      const filter = chip.getAttribute('data-quarantine-filter');
+      if (activeQuarantineFilter !== filter) {
+        activeQuarantineFilter = filter;
+        renderQuarantineReport();
+      }
+    });
+  });
+}
+
+function generateQuarantinePdf() {
+  ensureQuarantineDateDefaults();
+  const data = getQuarantineReportData_();
+  const { records, restocked, supplierReturn, disposed, pending, totalUnits, restockedUnits, supplierReturnUnits, disposedUnits, dateFrom, dateTo } = data;
+  const branch = branches.find((item) => item.id === activeBranchId) || { name: 'Main Branch' };
+
+  const formatDate = (value) => value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'All dates';
+  const periodText = (dateFrom || dateTo)
+    ? `${formatDate(dateFrom)} to ${formatDate(dateTo)}`
+    : 'All Recorded Dates';
+  const generatedTime = new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const groups = [
+    { key: 'restocked', title: 'Restocked to Available Inventory', items: restocked, units: restockedUnits, status: 'Restocked', color: '#10b981', bg: '#ecfdf5', text: '#059669' },
+    { key: 'supplier_return', title: 'Returned to Supplier / Source Branch', items: supplierReturn, units: supplierReturnUnits, status: 'Supplier Return', color: '#0284c7', bg: '#f0f9ff', text: '#0284c7' },
+    { key: 'disposed', title: 'Disposed / Scrapped Items', items: disposed, units: disposedUnits, status: 'Disposed', color: '#e11d48', bg: '#fff1f2', text: '#e11d48' },
+    { key: 'quarantine', title: 'Pending Inspection (Holding Area)', items: pending, units: data.pendingUnits, status: 'In Inspection', color: '#d97706', bg: '#fffbeb', text: '#d97706' },
+  ].filter((g) => g.items.length > 0);
+
+  // Flatten all rows with section headings for paginated printing
+  const printItems = [];
+  groups.forEach((g) => {
+    printItems.push({ type: 'header', title: g.title, count: g.items.length, units: g.units, color: g.color });
+    g.items.forEach((item, idx) => {
+      printItems.push({ type: 'row', item, index: idx + 1, groupColor: g.color, groupBg: g.bg, groupText: g.text, status: g.status });
+    });
+  });
+
+  const signoffHeight = 150;
+  const pages = [];
+  let currentIdx = 0;
+  let isFirst = true;
+
+  while (currentIdx < printItems.length || pages.length === 0) {
+    const pageCapacity = isFirst ? 820 : 980;
+    let usedHeight = 0;
+    const chunk = [];
+
+    while (currentIdx < printItems.length) {
+      const item = printItems[currentIdx];
+      const h = item.type === 'header' ? 36 : 32;
+      if (chunk.length > 0 && (usedHeight + h > pageCapacity)) {
+        break;
+      }
+      chunk.push(item);
+      usedHeight += h;
+      currentIdx++;
+    }
+
+    const isLastChunk = currentIdx >= printItems.length;
+    let hasSignoff = false;
+    if (isLastChunk) {
+      if (pageCapacity - usedHeight >= signoffHeight) {
+        hasSignoff = true;
+      }
+    }
+
+    pages.push({
+      isFirstPage: isFirst,
+      items: chunk,
+      hasSignoff
+    });
+
+    isFirst = false;
+
+    if (isLastChunk && !hasSignoff) {
+      pages.push({
+        isFirstPage: false,
+        items: [],
+        hasSignoff: true
+      });
+      break;
+    }
+  }
+
+  const totalPages = pages.length;
+
+  const renderedQuarantineHtml = pages.map((pageData, pageIndex) => {
+    const pageNum = pageIndex + 1;
+    let pageContentHtml = '';
+
+    if (pageData.isFirstPage) {
+      pageContentHtml += `
+        <header class="report-header">
+          <div class="report-brand-wrap">
+            <svg viewBox="0 0 36 36" class="report-badge-svg" width="42" height="42" style="width:42px;height:42px;max-width:42px;max-height:42px;flex-shrink:0;" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="18" cy="18" r="16.5" fill="#081326"/>
+              <path d="M 2.5 18 A 15.5 15.5 0 0 1 33.5 18" stroke="#E32934" stroke-width="2.6"/>
+              <path d="M 33.5 18 A 15.5 15.5 0 0 1 2.5 18" stroke="#0066F5" stroke-width="2.6"/>
+              <path d="M9 11h7.5v2.6h-4.8v3.5h3.8v2.5h-3.8V25H9V11z M18.5 11h4.6c2.4 0 4 1.3 4 3.6 0 1.6-.9 2.8-2.3 3.3l2.8 7.1h-2.9l-2.5-6.6h-1.1V25H18.5V11zm2.6 2.4v3.1h1.9c1 0 1.6-.6 1.6-1.5s-.6-1.6-1.6-1.6h-1.9z" fill="#FFFFFF"/>
+            </svg>
+            <div>
+              <span class="report-eyebrow">FR MERCHANDISE OPERATIONS</span>
+              <h1 class="report-title">Branch Quarantine Report</h1>
+              <p class="report-subtitle">Quality inspection, restock, supplier return, and scrap disposition audit</p>
+            </div>
+          </div>
+          <div class="report-meta-box">
+            <div class="report-meta-row"><span class="meta-label">Branch:</span><strong class="meta-val">${escapeHtml(branch.name || 'Main Branch')}</strong></div>
+            <div class="report-meta-row"><span class="meta-label">Period:</span><strong class="meta-val">${escapeHtml(periodText)}</strong></div>
+            <div class="report-meta-row"><span class="meta-label">Generated:</span><span class="meta-val">${escapeHtml(generatedTime)}</span></div>
+          </div>
+        </header>
+      `;
+    } else {
+      pageContentHtml += renderReportRunningHeader(branch.name || 'Main Branch', periodText, 'Branch Quarantine Report');
+    }
+
+    if (pageData.items.length > 0 || (pageData.isFirstPage && records.length === 0)) {
+      pageContentHtml += `
+        <section class="report-ledger-body">
+          <div class="report-section-title-wrap">
+            <h2 class="report-section-title">${pageData.isFirstPage ? 'Quarantine & Disposition Ledger' : 'Quarantine & Disposition Ledger (Continued)'}</h2>
+            <span class="report-count-badge">${records.length > 0 ? `Showing ${pageData.items.filter((i) => i.type === 'row').length} of ${records.length} Recorded Lines` : '0 Recorded Lines'}</span>
+          </div>
+          <div class="report-tx-card">
+            <div class="report-tx-items-wrap" style="padding:0;">
+              <table class="report-items-table quarantine-print-table" style="width:100%; border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="width:25px; padding:6px 8px;">#</th>
+                    <th style="width:72px; padding:6px 8px;">Date</th>
+                    <th style="width:170px; padding:6px 8px;">Product</th>
+                    <th style="width:85px; padding:6px 8px;">Case ID</th>
+                    <th style="width:105px; padding:6px 8px;">Source Ref</th>
+                    <th style="padding:6px 8px;">Supplier / Source</th>
+                    <th style="padding:6px 8px;">Reason</th>
+                    <th style="width:48px; text-align:center; padding:6px 8px;">Qty</th>
+                    <th style="width:95px; text-align:right; padding:6px 8px;">Disposition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pageData.items.map((entry) => {
+                    if (entry.type === 'header') {
+                      return `
+                        <tr style="background:#f1f5f9;">
+                          <td colspan="9" style="background:#f1f5f9; font-weight:800; font-size:10px; color:#0f172a; padding:6px 10px; border-top:1.5px solid #cbd5e1; border-bottom:1px solid #cbd5e1;">
+                            <span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${entry.color}; margin-right:6px; vertical-align:middle;"></span>
+                            <span>${escapeHtml(entry.title)}</span>
+                            <span style="color:#64748b; font-weight:600; margin-left:6px;">&bull; ${entry.count} line${entry.count === 1 ? '' : 's'} (${Number(entry.units).toLocaleString('en-PH')} units)</span>
+                          </td>
+                        </tr>
+                      `;
+                    }
+                    const r = entry.item;
+                    return `
+                      <tr style="border-bottom:1px dashed #e2e8f0;">
+                        <td style="color:#94a3b8; font-weight:600; padding:5px 8px;">${entry.index}</td>
+                        <td style="padding:5px 8px; font-size:9.5px; white-space:nowrap;">${escapeHtml(r.recordDate ? new Date(r.recordDate).toLocaleDateString('en-PH', { dateStyle: 'short' }) : '')}</td>
+                        <td style="padding:5px 8px;">
+                          <strong style="color:#0f172a; font-size:10px;">${escapeHtml(r.productName)}</strong>
+                          <div style="font-size:8.5px; color:#64748b;">${escapeHtml(r.unit)}${r.sellingPrice !== null ? ` &bull; Cost: ${money(r.sellingPrice)}` : ''}</div>
+                        </td>
+                        <td style="font-family:monospace; font-weight:700; font-size:9.5px; padding:5px 8px;">${escapeHtml(r.caseItem.id)}</td>
+                        <td style="font-family:monospace; font-size:9px; padding:5px 8px; color:#475569;">${escapeHtml(r.reference)}</td>
+                        <td style="padding:5px 8px; font-size:9.5px;">${escapeHtml(r.supplier)}</td>
+                        <td style="color:#475569; font-size:9px; padding:5px 8px;">${escapeHtml(r.reason)}</td>
+                        <td style="text-align:center; font-weight:800; padding:5px 8px; font-size:10px;">${Number(r.qty).toLocaleString('en-PH')}</td>
+                        <td style="text-align:right; padding:5px 8px;">
+                          <span style="display:inline-block; padding:2px 7px; border-radius:4px; font-size:8.5px; font-weight:700; text-transform:uppercase; background:${entry.groupBg}; color:${entry.groupText}; border:1px solid ${entry.groupColor};">
+                            ${escapeHtml(entry.status)}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('') || '<tr><td colspan="9" style="text-align:center; padding:16px; color:#64748b;">No quarantine records found for the selected period.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    if (pageData.hasSignoff) {
+      pageContentHtml += `
+        <footer class="report-document-footer">
+          <div class="report-sign-block">
+            <div class="sign-column"><div class="sign-line"></div><span class="sign-title">Prepared By (Inspector / Staff)</span><span class="sign-sub">Signature over printed name</span></div>
+            <div class="sign-column"><div class="sign-line"></div><span class="sign-title">Audited &amp; Verified By</span><span class="sign-sub">Branch Manager / Operations</span></div>
+          </div>
+          <div class="report-disclaimer"><p>FR MERCHANDISE SYSTEM-GENERATED QUARANTINE REPORT &bull; CONFIDENTIAL &bull; ALL RIGHTS RESERVED</p></div>
+        </footer>
+      `;
+    }
+
+    return `
+      <div class="report-page quarantine-print-page">
+        <div class="report-page-content">
+          ${pageContentHtml}
+        </div>
+        ${renderReportPageFooter(pageNum, totalPages, generatedTime, 'Quarantine')}
+      </div>
+    `;
+  }).join('');
+
+  const printDoc = $('#salesPrintDocument');
+  if (printDoc) printDoc.innerHTML = renderedQuarantineHtml;
+  openReportInNewPage_(renderedQuarantineHtml, `Quarantine Report - ${branch.name || 'Main Branch'}`);
 }
 
 function renderStockInHistoryTable(filterTerm = '') {
@@ -3719,9 +5108,7 @@ function openCreditHistory(historyId) {
                 <span class="credit-history-notes">${escapeHtml(p.notes || 'Payment settlement')}</span>
               </div>
               <div class="credit-modal-action-col">
-                <button class="icon-button danger-icon credit-modal-del-btn" data-modal-delete-payment="${escapeHtml(p.id)}" aria-label="Delete payment" title="Delete payment record">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-1-1-1-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                </button>
+                <button class="icon-button danger-icon credit-modal-del-btn" data-modal-delete-payment="${escapeHtml(p.id)}" aria-label="Delete payment" title="Delete payment record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-1-1-1-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button>
               </div>
             </div>
           `).join('')}
@@ -3807,26 +5194,18 @@ function renderTransfers() {
   const action = (transfer) => {
     if (transfer.status === 'Draft' && transfer.sourceBranchId === activeBranchId) {
       return `
-        <button class="icon-button primary-icon" data-transfer-action="dispatch" data-transfer-id="${transfer.id}" aria-label="Dispatch transfer" title="Dispatch transfer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-        <button class="icon-button danger-icon" data-transfer-action="cancel" data-transfer-id="${transfer.id}" aria-label="Cancel transfer" title="Cancel transfer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
+        <button class="icon-button primary-icon" data-transfer-action="dispatch" data-transfer-id="${transfer.id}" aria-label="Dispatch transfer" title="Dispatch transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="icon-button danger-icon" data-transfer-action="cancel" data-transfer-id="${transfer.id}" aria-label="Cancel transfer" title="Cancel transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       `;
     }
     if (transfer.status === 'In Transit' && transfer.destinationBranchId === activeBranchId) {
       return `
-        <button class="icon-button success-icon" data-transfer-action="receive" data-transfer-id="${transfer.id}" aria-label="Receive transfer" title="Receive transfer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        </button>
+        <button class="icon-button success-icon" data-transfer-action="receive" data-transfer-id="${transfer.id}" aria-label="Receive transfer" title="Receive transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
       `;
     }
     if (transfer.status === 'In Transit' && transfer.sourceBranchId === activeBranchId) {
       return `
-        <button class="icon-button danger-icon" data-transfer-action="cancel" data-transfer-id="${transfer.id}" aria-label="Cancel transfer" title="Cancel transfer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
+        <button class="icon-button danger-icon" data-transfer-action="cancel" data-transfer-id="${transfer.id}" aria-label="Cancel transfer" title="Cancel transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       `;
     }
     return '<span style="color:var(--text-muted);font-size:13px;font-weight:600;padding-left:4px;">&mdash;</span>';
@@ -3940,7 +5319,218 @@ function openTransferReceiptDialog_(transfer) {
   $('#formSubmit').innerHTML = '<span class="button-text">Receive stock</span>';
   $('#formError').textContent = '';
   $('#formDialog').dataset.formLayout = 'scrollable';
-  $('#formFields').innerHTML = `<div class="form-field-group full-field"><div class="quarantine-summary"><strong>${escapeHtml(transfer.id)}</strong><span>Accepted units become available inventory. Quarantined units stay held for inspection.</span></div></div>${lines.map((line) => `<div class="form-field-group full-field transfer-receipt-line" data-receipt-transfer="${escapeHtml(line.id)}" data-receipt-total="${line.qty}"><div class="bundle-components-head"><div><strong>${escapeHtml(line.productName)}</strong><p class="field-hint">Transferred: ${Number(line.qty).toLocaleString('en-PH')} ${escapeHtml(line.unit)}</p></div><span class="stock-pill category-badge">In Transit</span></div><div class="transfer-receipt-quantities"><label>Available inventory<input name="acceptedQty" type="number" min="0" max="${line.qty}" step="0.001" value="${line.qty}" required></label><label>Quarantine<input name="quarantineQty" type="number" min="0" max="${line.qty}" step="0.001" value="0" required></label></div></div>`).join('')}<div class="form-field-group full-field"><label for="transferQuarantineReason"><span class="label-text">Inspection reason</span></label><input id="transferQuarantineReason" name="quarantineReason" placeholder="Required when any units are quarantined" autocomplete="off"><p class="field-hint">Use this for damaged, incorrect, or questionable transferred items.</p></div>`;
+  $('#formDialog').dataset.formType = 'receiveTransfer';
+  const container = $('#formFields');
+  container.scrollTop = 0;
+
+  const sourceBranch = branches.find((b) => b.id === transfer.sourceBranchId)?.name || transfer.sourceBranchName || transfer.sourceBranchId || 'Source Branch';
+  const destBranch = branches.find((b) => b.id === transfer.destinationBranchId)?.name || transfer.destinationBranchName || transfer.destinationBranchId || 'Destination Branch';
+
+  const catalog = (allProducts && allProducts.length ? allProducts : products) || [];
+  const bundleProducts = catalog.filter((p) => p.productType === 'bundle').sort((a, b) => b.name.length - a.name.length);
+
+  const getLineGroup = (line) => {
+    const note = (line.notes || '').trim();
+
+    // 1. Direct bundle note: "Bundle: <bundleName>"
+    if (/^bundle:/i.test(note)) {
+      const raw = note.replace(/^bundle:\s*/i, '').trim();
+      const matched = bundleProducts.find((p) =>
+        raw.toLowerCase() === p.name.toLowerCase() ||
+        raw.toLowerCase().startsWith(p.name.toLowerCase() + ' -')
+      );
+      if (matched) return { type: 'bundle', name: matched.name, key: `bundle:${matched.id}` };
+      const dashIdx = raw.lastIndexOf(' - ');
+      const bundleName = dashIdx > 0 ? raw.substring(0, dashIdx).trim() : raw;
+      return { type: 'bundle', name: bundleName || 'Bundle / Set', key: `bundle:${(bundleName || 'bundle').toLowerCase()}` };
+    }
+
+    // 2. Note "Bundle <id>:" pattern
+    const bundleIdMatch = note.match(/^bundle\s+([A-Za-z0-9_-]+):?(.*)$/i);
+    if (bundleIdMatch) {
+      const id = bundleIdMatch[1].trim();
+      const matched = catalog.find((p) => p.id === id);
+      return { type: 'bundle', name: matched ? matched.name : `Bundle ${id}`, key: `bundle:${id.toLowerCase()}` };
+    }
+
+    // 3. Note "Set: <setName>" pattern
+    if (/^set:/i.test(note)) {
+      const raw = note.replace(/^set:\s*/i, '').trim();
+      const dashIdx = raw.lastIndexOf(' - ');
+      const setName = dashIdx > 0 ? raw.substring(0, dashIdx).trim() : raw;
+      return { type: 'bundle', name: setName || 'Set', key: `bundle:${(setName || 'set').toLowerCase()}` };
+    }
+
+    // 4. Product itself is a bundle product
+    const directProduct = catalog.find((p) => p.id === line.productId);
+    if (directProduct && directProduct.productType === 'bundle') {
+      return { type: 'bundle', name: directProduct.name, key: `bundle:${directProduct.id}` };
+    }
+
+    // 5. Standalone individual product
+    return { type: 'individual', name: 'Individual Products', key: 'individual' };
+  };
+
+  const groupMap = new Map();
+  lines.forEach((line) => {
+    const grp = getLineGroup(line);
+    if (!groupMap.has(grp.key)) {
+      groupMap.set(grp.key, { type: grp.type, name: grp.name, lines: [] });
+    }
+    groupMap.get(grp.key).lines.push(line);
+  });
+  const lineGroups = [...groupMap.values()];
+
+  container.innerHTML = `
+    <div class="form-field-group full-field transfer-receive-summary-card">
+      <div class="transfer-receive-summary-head">
+        <div class="transfer-receive-id-wrap">
+          <span class="category-badge">MANIFEST</span>
+          <strong>${escapeHtml(transfer.id || transfer.batchId || 'Transfer')}</strong>
+        </div>
+        <span class="stock-pill category-badge">${lines.length} Line${lines.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="transfer-receive-route">
+        <span><b>From:</b> ${escapeHtml(sourceBranch)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="route-arrow"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        <span><b>To:</b> ${escapeHtml(destBranch)}</span>
+      </div>
+      <p class="transfer-receive-hint">Accepted units enter available stock immediately. Quarantined units are isolated for inspection.</p>
+    </div>
+
+    <div class="form-field-group full-field transfer-receive-batch-wrap">
+      <div class="transfer-receive-grid-wrap">
+        <div class="transfer-receive-grid-table">
+          <div class="transfer-receive-grid-header">
+            <span class="col-product">Transferred Product</span>
+            <span class="col-total">Shipped</span>
+            <span class="col-accept">Accept to Stock</span>
+            <span class="col-quarantine">Quarantine</span>
+            <span class="col-status">Status</span>
+          </div>
+          <div class="transfer-receive-lines">
+            ${lineGroups.map((group) => `
+              <div class="transfer-receive-group" data-group-type="${group.type}">
+                <div class="transfer-group-header">
+                  <div class="transfer-group-title-wrap">
+                    <span class="transfer-group-icon ${group.type === 'bundle' ? 'bundle-icon' : 'individual-icon'}" aria-hidden="true">
+                      ${group.type === 'bundle'
+                        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>'
+                        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>'
+                      }
+                    </span>
+                    <div class="transfer-group-title-col">
+                      <span class="transfer-group-type-label">${group.type === 'bundle' ? 'Bundle / Set' : 'Individual Products'}</span>
+                      <strong class="transfer-group-name">${escapeHtml(group.type === 'bundle' ? group.name : 'Standalone Products')}</strong>
+                    </div>
+                    <span class="stock-pill category-badge ${group.type === 'bundle' ? 'bundle-pill' : 'individual-pill'}">
+                      ${group.type === 'bundle' ? 'Bundle Set' : 'Individual'}
+                    </span>
+                  </div>
+                  <span class="transfer-group-count">${group.lines.length} ${group.type === 'bundle' ? 'Component' : 'Product'}${group.lines.length === 1 ? '' : 's'}</span>
+                </div>
+                <div class="transfer-group-rows">
+                  ${group.lines.map((line) => `
+                    <div class="transfer-receive-grid-row ${group.type === 'bundle' ? 'is-bundle-component' : ''}" data-receipt-transfer="${escapeHtml(line.id)}" data-receipt-total="${line.qty}">
+                      <div class="grid-cell col-product">
+                        <div class="product-name-with-indicator">
+                          ${group.type === 'bundle' ? '<span class="bundle-connector-dot" title="Bundle component"></span>' : ''}
+                          <div class="product-name-block">
+                            <strong class="receipt-product-name">${escapeHtml(line.productName)}</strong>
+                            <span class="receipt-unit-hint">${escapeHtml(line.unit || 'unit')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="grid-cell col-total">
+                        <span class="shipped-badge">${Number(line.qty).toLocaleString('en-PH')}</span>
+                      </div>
+                      <div class="grid-cell col-accept">
+                        <input name="acceptedQty" type="number" min="0" max="${line.qty}" step="0.001" value="${line.qty}" required aria-label="Accepted quantity" />
+                      </div>
+                      <div class="grid-cell col-quarantine">
+                        <input name="quarantineQty" type="number" min="0" max="${line.qty}" step="0.001" value="0" required aria-label="Quarantine quantity" />
+                      </div>
+                      <div class="grid-cell col-status">
+                        <span class="stock-pill category-badge in-transit-badge">In Transit</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-field-group full-field transfer-quarantine-reason-field">
+      <label for="transferQuarantineReason">
+        <span class="label-text">Inspection Reason (if quarantining units)</span>
+      </label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <input id="transferQuarantineReason" name="quarantineReason" placeholder="Describe damage, discrepancy, or reason for quarantine" autocomplete="off" />
+      </div>
+      <p class="field-hint">Required only if any line has quarantined units.</p>
+    </div>
+  `;
+
+  const formatQty = (n) => {
+    const num = Math.round(Number(n) * 1000) / 1000;
+    if (!Number.isFinite(num) || num <= 0) return '0';
+    return String(num);
+  };
+
+  // Auto-balance acceptedQty and quarantineQty on input and ensure 0 if blank
+  container.querySelectorAll('.transfer-receive-grid-row').forEach((row) => {
+    const total = Number(row.dataset.receiptTotal) || 0;
+    const acceptInput = row.querySelector('[name="acceptedQty"]');
+    const quarantineInput = row.querySelector('[name="quarantineQty"]');
+    if (!acceptInput || !quarantineInput) return;
+
+    acceptInput.addEventListener('input', () => {
+      const raw = acceptInput.value.trim();
+      if (raw === '') {
+        quarantineInput.value = formatQty(total);
+        return;
+      }
+      const val = parseFloat(raw);
+      if (!Number.isNaN(val)) {
+        const clamped = Math.min(Math.max(0, val), total);
+        if (clamped !== val) acceptInput.value = formatQty(clamped);
+        quarantineInput.value = formatQty(total - clamped);
+      }
+    });
+
+    acceptInput.addEventListener('blur', () => {
+      if (acceptInput.value.trim() === '') {
+        acceptInput.value = '0';
+        quarantineInput.value = formatQty(total);
+      }
+    });
+
+    quarantineInput.addEventListener('input', () => {
+      const raw = quarantineInput.value.trim();
+      if (raw === '') {
+        acceptInput.value = formatQty(total);
+        return;
+      }
+      const val = parseFloat(raw);
+      if (!Number.isNaN(val)) {
+        const clamped = Math.min(Math.max(0, val), total);
+        if (clamped !== val) quarantineInput.value = formatQty(clamped);
+        acceptInput.value = formatQty(total - clamped);
+      }
+    });
+
+    quarantineInput.addEventListener('blur', () => {
+      if (quarantineInput.value.trim() === '') {
+        quarantineInput.value = '0';
+        acceptInput.value = formatQty(total);
+      }
+    });
+  });
+
   $('#formDialog').showModal();
 }
 
@@ -3948,7 +5538,7 @@ function renderBranchSelector() {
   const selector = $('#branchSelector');
   if (!selector) return;
   const account = currentSession?.account;
-  const activeBranches = branches.filter((branch) => branch.status === 'Active' && (account?.role !== 'staff' || branch.id === account.branchId));
+  const activeBranches = sortByName_(branches.filter((branch) => branch.status === 'Active' && (account?.role !== 'staff' || branch.id === account.branchId)));
   if (activeBranches.length === 0) {
     activeBranches.push({ id: 'MAIN', name: 'Main Branch' });
   }
@@ -4168,9 +5758,7 @@ function renderCart() {
             <strong class="cart-item-title">${escapeHtml(item.name)}</strong>
             <span class="cart-item-meta">${escapeHtml(item.unit || 'unit')} &bull; FIFO price: ${money(getCartPriceBreakdown(item)[0]?.sellingPrice || item.price)}</span>
           </div>
-          <button class="remove cart-remove-btn" aria-label="Remove ${escapeHtml(item.name)}" data-remove="${item.id}" title="Remove item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <button class="remove cart-remove-btn" aria-label="Remove ${escapeHtml(item.name)}" data-remove="${item.id}" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div class="cart-card-body">
           <div class="cart-control-col">
@@ -4290,8 +5878,13 @@ async function refresh(showSkeleton = true) {
       if (activeView === 'pos') renderCart();
     }
   } catch (error) {
-    if (activeView !== 'dashboard') renderInventory();
-    showToast(error.message, 'error');
+    try {
+      if (activeView !== 'dashboard') renderInventory();
+    } catch (renderError) {
+      const table = $('#inventoryTable');
+      if (table) table.innerHTML = `<div class="empty-state"><p>Unable to load this view</p><small>${escapeHtml(renderError.message || 'Please refresh and try again.')}</small></div>`;
+    }
+    showToast(error.message || 'Unable to load data.', 'error');
   } finally {
     refreshInFlight = false;
   }
@@ -4401,7 +5994,7 @@ function openForm(type, productId = '') {
   const productType = product?.productType || 'individual';
   const isBundle = productType === 'bundle';
   const bundleItems = product?.components?.length ? product.components : [{ productId: '', qty: 1 }];
-  const bundleOptions = allProducts.filter((item) => item.productType === 'individual' && item.status === 'Active' && item.id !== productId)
+  const bundleOptions = sortByName_(allProducts.filter((item) => item.productType === 'individual' && item.status === 'Active' && item.id !== productId))
     .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.unit || 'unit')})</option>`).join('');
   const bundleRows = bundleItems.map((item) => `
     <div class="bundle-component-row" data-bundle-component-row>
@@ -4453,7 +6046,7 @@ function openForm(type, productId = '') {
     <div class="form-field-group full-field" data-bundle-field${isBundle ? '' : ' hidden'}>
       <div class="bundle-components-head">
         <div><span class="label-text">Bundle Components <span class="required">*</span></span><p class="field-hint">Only individual items can be used. Bundle stock is calculated from these quantities.</p></div>
-        <button type="button" class="button button-secondary bundle-component-add">Add Component</button>
+        <button type="button" class="button button-secondary bundle-component-add"><svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Component</span></button>
       </div>
       <div class="bundle-components-list">${bundleRows}</div>
     </div>
@@ -4485,69 +6078,38 @@ function openForm(type, productId = '') {
     </div>
   `;
 
-  const stockProductList = (allProducts && allProducts.length ? allProducts : products).filter((item) => item.productType !== 'bundle');
-  const stockFields = `
-    <div class="form-field-group full-field">
-      <label for="modalStockProduct">
-        <span class="label-text">Product <span class="required">*</span></span>
-      </label>
-      <select id="modalStockProduct" name="productId" required>
-        <option value="" disabled selected>Select product to stock in</option>
-        ${stockProductList.map((item) => {
-          const branchItem = products.find((p) => p.id === item.id);
-          const currentQty = branchItem ? branchItem.qty : 0;
-          const unit = escapeHtml(item.unit || branchItem?.unit || 'unit');
-          return `<option value="${item.id}">${escapeHtml(item.name)} (Current stock: ${currentQty} ${unit})</option>`;
-        }).join('')}
-      </select>
-    </div>
-    <div class="form-field-group full-field">
-      <label for="modalStockQty">
-        <span class="label-text">Total Quantity Received <span class="required">*</span></span>
-      </label>
-      <div class="number-stepper">
-        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14"/><path d="m19 9-7 7-7-7"/><circle cx="12" cy="21" r="1"/></svg>
-        <input id="modalStockQty" name="qty" type="number" min="1" step="1" placeholder="Enter quantity received" required />
-        <div class="stepper-buttons">
-          <button type="button" class="stepper-btn" data-step-target="modalStockQty" data-step-dir="1" aria-label="Increase quantity" title="Increase">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
-          </button>
-          <button type="button" class="stepper-btn" data-step-target="modalStockQty" data-step-dir="-1" aria-label="Decrease quantity" title="Decrease">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+  const stockProductList = sortByName_((allProducts && allProducts.length ? allProducts : products).filter((item) => item.productType !== 'bundle'));
+  const stockOptions = stockProductList.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (${escapeHtml(item.unit || 'unit')})</option>`).join('');
+  const stockLine = () => `
+    <div class="stock-in-grid-row" data-stock-in-line>
+      <div class="grid-cell cell-product">
+        <select name="productId" required>
+          <option value="" disabled selected>Select product to stock in</option>
+          ${stockOptions}
+        </select>
+      </div>
+      <div class="grid-cell cell-qty">
+        <input name="qty" type="number" min="1" step="1" placeholder="1" required />
+      </div>
+      <div class="grid-cell cell-price">
+        <div class="input-with-prefix compact-prefix">
+          <span class="input-prefix">₱</span>
+          <input name="sellingPrice" type="number" min="0" step="0.01" placeholder="0.00" required />
         </div>
       </div>
-    </div>
-    <div class="form-field-group">
-      <label for="modalStockQuarantineQty"><span class="label-text">Send to Quarantine</span></label>
-      <input id="modalStockQuarantineQty" name="quarantineQty" type="number" min="0" step="1" value="0" inputmode="decimal" />
-      <p class="field-hint">Damaged or questionable units stay out of sellable inventory until inspected.</p>
-    </div>
-    <div class="form-field-group">
-      <label for="modalStockUnitCost">
-        <span class="label-text">Selling Price (PHP) <span class="required">*</span></span>
-      </label>
-      <div class="input-with-prefix">
-        <span class="input-prefix">PHP</span>
-        <input id="modalStockUnitCost" name="sellingPrice" type="number" min="0" step="0.01" placeholder="0.00" required />
+      <div class="grid-cell cell-quarantine">
+        <input name="quarantineQty" type="number" min="0" step="1" value="0" placeholder="0" />
       </div>
-    </div>
-    <div class="form-field-group">
-      <label for="modalStockSupplierReference">
-        <span class="label-text">Supplier / Reference</span>
-      </label>
-      <div class="input-with-icon">
-        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
-        <input id="modalStockSupplierReference" name="supplierReference" placeholder="Supplier or invoice number" autocomplete="off" />
+      <div class="grid-cell cell-reason">
+        <input name="quarantineReason" placeholder="Reason (if quarantined)" autocomplete="off" />
       </div>
-    </div>
-    <div class="form-field-group full-field">
-      <label for="modalStockQuarantineReason"><span class="label-text">Quarantine Reason</span></label>
-      <input id="modalStockQuarantineReason" name="quarantineReason" placeholder="Required when units are quarantined" autocomplete="off" />
+      <div class="grid-cell cell-action">
+        <button type="button" class="icon-button danger-icon stock-in-line-remove" aria-label="Remove item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </div>
     </div>
   `;
 
-  const availableProducts = allProducts.filter((item) => !products.some((productItem) => productItem.id === item.id));
+  const availableProducts = sortByName_(allProducts.filter((item) => !products.some((productItem) => productItem.id === item.id)));
   const linkProductFields = `
     <div class="form-field-group full-field"><label for="modalLinkProduct"><span class="label-text">Catalog Product <span class="required">*</span></span></label><select id="modalLinkProduct" name="productId" required ${availableProducts.length ? '' : 'disabled'}><option value="" disabled selected>${availableProducts.length ? 'Select product to add' : 'All catalog products are already in this branch'}</option>${availableProducts.map((item) => `<option value="${item.id}" data-low-stock="${item.lowStockLevel}">${escapeHtml(item.name)} (${escapeHtml(item.sku)})</option>`).join('')}</select></div>
     <div class="form-field-group"><label for="modalLinkLowStock"><span class="label-text">Low Stock Warning Level <span class="required">*</span></span></label><input id="modalLinkLowStock" name="lowStockLevel" type="number" min="0" step="1" value="5" required /></div>
@@ -4581,6 +6143,39 @@ function openForm(type, productId = '') {
       <div class="input-with-icon">
         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
         <input id="modalBranchAddress" name="address" placeholder="Street, barangay, city" value="${escapeHtml(branch?.address || '')}" autocomplete="off" />
+      </div>
+    </div></div>`;
+  const stockFields = `
+    <div class="form-field-group full-field stock-in-meta-row">
+      <label for="modalStockSupplierReference"><span class="label-text">Supplier / Reference</span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
+        <input id="modalStockSupplierReference" name="supplierReference" placeholder="Supplier name, invoice or receipt number" autocomplete="off" />
+      </div>
+    </div>
+    <div class="form-field-group full-field stock-in-batch-section">
+      <div class="bundle-components-head stock-in-header-bar">
+        <div>
+          <span class="label-text">Stock-In Items <span class="required">*</span></span>
+          <p class="field-hint">Add individual products from this delivery. Enter quarantine quantity & reason if units need inspection.</p>
+        </div>
+        <button type="button" class="button button-primary stock-in-line-add">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Add Item</span>
+        </button>
+      </div>
+      <div class="stock-in-grid-wrap">
+        <div class="stock-in-grid-table">
+          <div class="stock-in-grid-header">
+            <span class="header-product">Product <span class="required">*</span></span>
+            <span class="header-qty">Recv Qty <span class="required">*</span></span>
+            <span class="header-price">Selling Price (PHP) <span class="required">*</span></span>
+            <span class="header-quarantine">Quarantine Qty</span>
+            <span class="header-reason">Quarantine Reason</span>
+            <span class="header-action"></span>
+          </div>
+          <div class="stock-in-lines">${stockLine()}</div>
+        </div>
       </div>
     </div>
   `;
@@ -4623,13 +6218,51 @@ function openForm(type, productId = '') {
     ` : ''}
   `;
 
-  const destinationBranches = branches.filter((item) => item.id !== activeBranchId && item.status === 'Active');
+  const destinationBranches = sortByName_(branches.filter((item) => item.id !== activeBranchId && item.status === 'Active'));
   const transferProducts = sortByName_(products.filter((item) => item.status === 'Active' && Number(item.qty || 0) > 0));
   const transferOptions = transferProducts.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.productType === 'bundle' ? ' (Bundle / Set)' : ''} - Available: ${Number(item.qty || 0)} ${escapeHtml(item.unit || 'unit')}</option>`).join('');
   const transferFields = `
-    <div class="form-field-group full-field"><label for="modalTransferDestination"><span class="label-text">Destination Branch <span class="required">*</span></span></label><select id="modalTransferDestination" name="destinationBranchId" required ${destinationBranches.length ? '' : 'disabled'}><option value="" disabled selected>${destinationBranches.length ? 'Select destination branch' : 'Create another active branch first'}</option>${destinationBranches.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select></div>
-    <div class="form-field-group full-field"><div class="bundle-components-head"><div><span class="label-text">Transfer Items <span class="required">*</span></span><p class="field-hint">Add individual products or Bundle / Set items. Bundles automatically transfer their components.</p></div><button type="button" class="button button-secondary transfer-line-add">Add Item</button></div><div class="transfer-lines"><div class="bundle-component-row" data-transfer-line><select name="transferProduct" required><option value="" disabled selected>${transferProducts.length ? 'Select product or bundle' : 'No available source products'}</option>${transferOptions}</select><input name="transferQty" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" /><button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div></div></div>
-    <div class="form-field-group full-field"><label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label><input id="modalTransferNotes" name="notes" placeholder="Optional reference" autocomplete="off" /></div>
+    <div class="form-field-group full-field">
+      <label for="modalTransferDestination"><span class="label-text">Destination Branch <span class="required">*</span></span></label>
+      <select id="modalTransferDestination" name="destinationBranchId" required ${destinationBranches.length ? '' : 'disabled'}>
+        <option value="" disabled selected>${destinationBranches.length ? 'Select destination branch' : 'Create another active branch first'}</option>
+        ${destinationBranches.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-field-group full-field">
+      <div class="bundle-components-head">
+        <div>
+          <span class="label-text">Transfer Items <span class="required">*</span></span>
+          <p class="field-hint">Add individual products or Bundle / Set items. Bundles automatically transfer their components.</p>
+        </div>
+        <button type="button" class="button button-secondary transfer-line-add">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Add Item</span>
+        </button>
+      </div>
+      <div class="transfer-lines-header">
+        <span>Product or Bundle</span>
+        <span>Qty</span>
+        <span></span>
+      </div>
+      <div class="transfer-lines">
+        <div class="bundle-component-row" data-transfer-line>
+          <select name="transferProduct" required>
+            <option value="" disabled selected>${transferProducts.length ? 'Select product or bundle' : 'No available source products'}</option>
+            ${transferOptions}
+          </select>
+          <input name="transferQty" class="transfer-qty-input" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" placeholder="1" />
+          <button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalTransferNotes"><span class="label-text">Reference / Notes</span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <input id="modalTransferNotes" name="notes" placeholder="Optional transfer memo or driver / shipment reference" autocomplete="off" />
+      </div>
+    </div>
   `;
 
   const menuOptions = [
@@ -4691,7 +6324,7 @@ function openForm(type, productId = '') {
     ` : ''}
     ${type === 'editStaff'
       ? `<div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch</span></label><input id="modalStaffBranch" value="${escapeHtml(branches.find((item) => item.id === staff?.branchId)?.name || staff?.branchId || '')}" readonly aria-describedby="modalStaffBranchHint"><p id="modalStaffBranchHint" class="field-hint">This branch is locked after account creation to protect branch records.</p></div>`
-      : `<div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch <span class="required">*</span></span></label><select id="modalStaffBranch" name="branchId" required><option value="" disabled selected>Select branch</option>${branches.filter((item) => item.status === 'Active').map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select></div>`}
+      : `<div class="form-field-group full-field"><label for="modalStaffBranch"><span class="label-text">Assigned Branch <span class="required">*</span></span></label><select id="modalStaffBranch" name="branchId" required><option value="" disabled selected>Select branch</option>${sortByName_(branches.filter((item) => item.status === 'Active')).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select></div>`}
     <div class="form-field-group full-field">
       <span class="label-text">Allowed Sidebar Menus <span class="required">*</span></span>
       <div class="staff-permission-grid">
@@ -4824,13 +6457,41 @@ function openForm(type, productId = '') {
   `;
 
   const container = $('#formFields');
-  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'stock', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'transfer', 'resetStaff']);
+  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'resetStaff']);
   $('#formDialog').dataset.formLayout = compactFormTypes.has(type) ? 'compact' : 'scrollable';
+  $('#formDialog').dataset.formType = type;
   container.scrollTop = 0;
   container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : stockFields;
 
   // Initialize smooth dropdowns for newly injected selects
   initCustomDropdowns(container);
+
+  // Replace the delegated handler on every modal open; retaining old handlers
+  // was appending two blank lines after the form had been opened before.
+  container.onclick = (event) => {
+    const addBtn = event.target.closest('.stock-in-line-add');
+    if (addBtn) {
+      event.preventDefault();
+      const list = container.querySelector('.stock-in-lines');
+      if (!list) return;
+      const temp = document.createElement('div');
+      temp.innerHTML = stockLine();
+      const newLine = temp.firstElementChild;
+      if (newLine) {
+        list.appendChild(newLine);
+        initCustomDropdowns(newLine);
+        newLine.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      return;
+    }
+    const remove = event.target.closest('.stock-in-line-remove');
+    if (remove) {
+      event.preventDefault();
+      const lines = container.querySelectorAll('[data-stock-in-line]');
+      if (lines.length <= 1) return showToast('A stock-in receipt needs at least one item.', 'error');
+      remove.closest('[data-stock-in-line]')?.remove();
+    }
+  };
 
   // Sync state for permission checkbox cards
   container.querySelectorAll('.staff-permission-option input[type="checkbox"]').forEach((checkbox) => {
@@ -4886,7 +6547,7 @@ function openForm(type, productId = '') {
     if (!transferLineList) return;
     const row = document.createElement('div');
     row.className = 'bundle-component-row'; row.dataset.transferLine = '';
-    row.innerHTML = `<select name="transferProduct" required><option value="" disabled selected>Select product or bundle</option>${transferOptions}</select><input name="transferQty" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" /><button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>`;
+    row.innerHTML = `<select name="transferProduct" required><option value="" disabled selected>Select product or bundle</option>${transferOptions}</select><input name="transferQty" class="transfer-qty-input" type="number" min="1" step="1" value="1" required aria-label="Transfer quantity" placeholder="1" /><button type="button" class="icon-button danger-icon transfer-line-remove" aria-label="Remove transfer item" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>`;
     transferLineList.appendChild(row); initCustomDropdowns(row);
   });
   transferLineList?.addEventListener('click', (event) => {
@@ -4896,24 +6557,24 @@ function openForm(type, productId = '') {
     button.closest('[data-transfer-line]')?.remove();
   });
 
-  // Initialize smooth number steppers
-  container.querySelectorAll('[data-step-target]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const targetId = btn.dataset.stepTarget;
-      const dir = Number(btn.dataset.stepDir) || 1;
-      const input = document.getElementById(targetId);
-      if (!input) return;
-      const step = Number(input.step) || 1;
-      const min = input.min !== '' ? Number(input.min) : -Infinity;
-      const max = input.max !== '' ? Number(input.max) : Infinity;
-      let val = (Number(input.value) || 0) + dir * step;
-      if (val < min) val = min;
-      if (val > max) val = max;
-      input.value = val;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+  // Initialize smooth number steppers with event delegation
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('.stepper-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const targetId = btn.dataset.stepTarget;
+    const input = targetId ? document.getElementById(targetId) : btn.closest('.number-stepper')?.querySelector('input');
+    if (!input) return;
+    const dir = Number(btn.dataset.stepDir) || 1;
+    const step = Number(input.step) || 1;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    let val = (Number(input.value) || 0) + dir * step;
+    if (val < min) val = min;
+    if (val > max) val = max;
+    input.value = val;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
   $('#formDialog').showModal();
@@ -4956,9 +6617,9 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
-  const requiredPermission = view === 'quarantine' ? 'inventory' : view;
+  const requiredPermission = ['quarantine', 'quarantineReport'].includes(view) ? 'inventory' : view;
   if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(requiredPermission)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
@@ -4969,6 +6630,7 @@ function setView(view, preserveSidebarOpen = false) {
     products: ['CATALOG', 'Product Registration', 'PRODUCT CATALOG', 'Registered Products'],
     inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch Stock'],
     quarantine: ['INVENTORY CONTROL', 'Quarantined Items', 'INSPECTION HOLDING AREA', 'Items Awaiting Disposition'],
+    quarantineReport: ['REPORTING', 'Quarantine Report', 'QUARANTINE REPORT', 'Branch Quarantine Report'],
     branches: ['BRANCH OPERATIONS', 'Branches', 'LOCATION DIRECTORY', 'Main and Satellite Branches'],
     customers: ['CUSTOMER ACCOUNTS', 'Customers', 'CUSTOMER DIRECTORY', 'Customers in the Selected Branch'],
     credits: ['CUSTOMER ACCOUNTS', 'Credit History', 'ACCOUNT RECEIVABLES', 'Customer Credit History'],
@@ -4999,15 +6661,20 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search product name, SKU, or category...'
       : view === 'staffAccounts'
       ? 'Search staff name or username...'
+      : view === 'quarantine'
+      ? 'Search case ID, reference, supplier, or reason...'
+      : view === 'quarantineReport'
+      ? 'Search product, case ID, reason, or disposition...'
       : 'Search product name, SKU, or category...';
   }
 
   const viewIcons = {
     dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>`,
     pos: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
-    products: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>`,
+    products: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16h6"/><path d="M19 13v6"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" y2="12"/></svg>`,
     inventory: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>`,
     quarantine: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`,
+    quarantineReport: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="m9 15 2 2 4-4"/><path d="M9 11h6"/></svg>`,
     branches: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 7h4M10 12h4M10 17h4"/></svg>`,
     customers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>`,
     credits: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
@@ -5029,8 +6696,13 @@ function setView(view, preserveSidebarOpen = false) {
   const catalog = $('#products');
   if (dashboard) dashboard.hidden = !isDashboard;
   if (catalog) catalog.hidden = isDashboard;
+  const cartSection = $('#cartSection');
+  if (cartSection) {
+    cartSection.hidden = !isPos;
+    cartSection.style.display = isPos ? '' : 'none';
+  }
   const sectionActions = $('#sectionActions');
-  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' || view === 'quarantine' ? 'none' : 'flex';
+  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' || view === 'quarantine' || view === 'quarantineReport' ? 'none' : 'flex';
   const addBtn = $('#addProductButton');
   if (addBtn) addBtn.hidden = view !== 'products';
   const addExistingProductBtn = $('#addExistingProductButton');
@@ -5060,11 +6732,21 @@ function setView(view, preserveSidebarOpen = false) {
   }
   const salesDateRange = $('#salesDateRange');
   if (salesDateRange) salesDateRange.hidden = view !== 'sales';
+  const quarantineDateRange = $('#quarantineDateRange');
+  if (quarantineDateRange) quarantineDateRange.hidden = view !== 'quarantineReport';
   const profilePanel = $('#accountProfilePanel');
   if (profilePanel && view !== 'adminAccount') profilePanel.hidden = true;
   if (view === 'sales') {
     ensureSalesDateDefaults();
     updateSalesPrintPeriod();
+  }
+  if (view === 'quarantineReport') {
+    ensureQuarantineDateDefaults();
+    updateQuarantinePrintPeriod();
+  }
+  if (view !== 'sales' && view !== 'quarantineReport') {
+    const period = $('#salesPrintPeriod');
+    if (period) period.textContent = '';
   }
 
   // Reset mobile cart view state when navigating
@@ -5272,6 +6954,12 @@ $('#modalForm').addEventListener('submit', async (event) => {
   }
   const form = new FormData(formEl);
   if (activeForm === 'receiveTransfer') {
+    formEl.querySelectorAll('[data-receipt-transfer]').forEach((row) => {
+      const a = row.querySelector('[name="acceptedQty"]');
+      const q = row.querySelector('[name="quarantineQty"]');
+      if (a && a.value.trim() === '') a.value = '0';
+      if (q && q.value.trim() === '') q.value = '0';
+    });
     const transfer = pendingTransferReceipt;
     const lines = transfer ? (transfer.isBatch ? transfer.members : [transfer]) : [];
     const receiptLines = [...formEl.querySelectorAll('[data-receipt-transfer]')].map((row) => ({
@@ -5304,6 +6992,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
   }
   let productBundleComponents = [];
   let transferLines = [];
+  let stockInLines = [];
   if (activeForm === 'product' || activeForm === 'edit') {
     try {
       productBundleComponents = readBundleComponents_(formEl, String(form.get('productType') || 'individual'));
@@ -5314,6 +7003,9 @@ $('#modalForm').addEventListener('submit', async (event) => {
   }
   if (activeForm === 'transfer') {
     try { transferLines = readTransferLines_(formEl); } catch (error) { showToast(error.message, 'error'); return; }
+  }
+  if (activeForm === 'stock') {
+    try { stockInLines = readStockInLines_(formEl); } catch (error) { showToast(error.message, 'error'); return; }
   }
 
   let confirmConfig = {
@@ -5434,16 +7126,12 @@ $('#modalForm').addEventListener('submit', async (event) => {
       confirmType: 'primary'
     };
   } else {
-    const prod = products.find((p) => p.id === form.get('productId')) || allProducts.find((p) => p.id === form.get('productId'));
-    const qty = form.get('qty') || '0';
-    const quarantineQty = Number(form.get('quarantineQty') || 0);
+    const prod = products.find((p) => p.id === stockInLines[0]?.productId) || allProducts.find((p) => p.id === stockInLines[0]?.productId);
+    const qty = stockInLines.reduce((total, line) => total + line.qty, 0);
+    const quarantineQty = stockInLines.reduce((total, line) => total + line.quarantineQty, 0);
     const sellingPrice = form.get('sellingPrice') || '0';
     if (!Number.isFinite(quarantineQty) || quarantineQty < 0 || quarantineQty > Number(qty)) {
       showToast('Quarantine quantity must be between zero and the received quantity.', 'error');
-      return;
-    }
-    if (quarantineQty > 0 && !String(form.get('quarantineReason') || '').trim()) {
-      showToast('Enter the reason for the quarantined units.', 'error');
       return;
     }
     const acceptedQty = Number(qty) - quarantineQty;
@@ -5451,7 +7139,7 @@ $('#modalForm').addEventListener('submit', async (event) => {
       title: 'Confirm Stock In',
       eyebrow: 'INVENTORY STOCK',
       subtitle: 'Add physical inventory stock',
-      message: `Receive <strong>${escapeHtml(qty)} ${escapeHtml(prod?.unit || 'units')}</strong> for <strong class="confirm-highlight-name">${escapeHtml(prod?.name || 'item')}</strong>? <strong>${acceptedQty}</strong> will become available inventory${quarantineQty ? ` and <strong>${quarantineQty}</strong> will be held in quarantine` : ''}.`,
+      message: `Receive <strong>${stockInLines.length}</strong> item line${stockInLines.length === 1 ? '' : 's'} with <strong>${acceptedQty}</strong> accepted unit${acceptedQty === 1 ? '' : 's'}${quarantineQty ? ` and <strong>${quarantineQty}</strong> quarantined` : ''}?`,
       confirmText: 'Update Stock',
       confirmType: 'primary'
     };
@@ -5540,30 +7228,9 @@ $('#modalForm').addEventListener('submit', async (event) => {
       if (result?.transfers?.length) showToast(`Transfer draft ${result.batchId} created with ${result.transfers.length} component line${result.transfers.length === 1 ? '' : 's'}.`, 'success');
     } else {
       // stockIn
-      const productId = form.get('productId');
       const branchId = activeBranchId;
-      const isInBranch = products.some((p) => p.id === productId);
-      if (!isInBranch) {
-        const catItem = allProducts.find((p) => p.id === productId);
-        await api('addProductToBranch', {
-          productId,
-          branchId,
-          price: catItem?.price,
-          lowStockLevel: catItem?.lowStockLevel || 5,
-          status: 'Active',
-        });
-      }
-      const result = await api('receiveStockIn', { ...Object.fromEntries(form), branchId });
-      if (result?.productId) {
-        const branchItem = products.find((p) => p.id === result.productId);
-        if (branchItem) {
-          products = products.map((p) => (p.id === result.productId ? { ...p, qty: (Number(p.qty) || 0) + Number(result.qty || 0) } : p));
-        } else {
-          const cat = allProducts.find((p) => p.id === result.productId);
-          products = [{ ...(cat || {}), id: result.productId, qty: Number(result.qty || 0), status: 'Active' }, ...products];
-        }
-      }
-      showToast(Number(result?.quarantineQty || 0) > 0 ? 'Stock received; quarantined units are ready for inspection.' : 'Stock received successfully.', 'success');
+      const result = await api('receiveStockInBatch', { branchId, lines: stockInLines, supplierReference: form.get('supplierReference') || '' });
+      showToast(`Stock receipt ${result.stockInBatchId} saved with ${result.lineCount} item line${result.lineCount === 1 ? '' : 's'}.`, 'success');
     }
     $('#formDialog').close();
     renderInventory();
@@ -5604,6 +7271,41 @@ $('#salesDateTo').addEventListener('change', () => {
   renderInventory();
 });
 $('#generateSalesPdfButton').addEventListener('click', generateSalesPdf);
+
+const quarantineDateFrom = $('#quarantineDateFrom');
+if (quarantineDateFrom) {
+  quarantineDateFrom.addEventListener('change', () => {
+    const dateFrom = $('#quarantineDateFrom');
+    const dateTo = $('#quarantineDateTo');
+    if (dateFrom.value && dateTo.value && dateFrom.value > dateTo.value) {
+      dateTo.value = dateFrom.value;
+      syncCustomDatePicker(dateTo);
+    }
+    syncCustomDatePicker(dateFrom);
+    updateQuarantinePrintPeriod();
+    renderInventory();
+  });
+}
+
+const quarantineDateTo = $('#quarantineDateTo');
+if (quarantineDateTo) {
+  quarantineDateTo.addEventListener('change', () => {
+    const dateFrom = $('#quarantineDateFrom');
+    const dateTo = $('#quarantineDateTo');
+    if (dateFrom.value && dateTo.value && dateTo.value < dateFrom.value) {
+      dateFrom.value = dateTo.value;
+      syncCustomDatePicker(dateFrom);
+    }
+    syncCustomDatePicker(dateTo);
+    updateQuarantinePrintPeriod();
+    renderInventory();
+  });
+}
+
+const generateQuarantinePdfButton = $('#generateQuarantinePdfButton');
+if (generateQuarantinePdfButton) {
+  generateQuarantinePdfButton.addEventListener('click', generateQuarantinePdf);
+}
 
 $('#branchSelector').addEventListener('change', (event) => {
   setActiveBranch(event.target.value).catch((error) => showToast(error.message, 'error'));
@@ -5687,7 +7389,7 @@ function syncSaleCustomerOptions(paymentType) {
   const customerSelect = $('#saleCustomer');
   if (!customerSelect || customerSelect.dataset.paymentMode === paymentType) return;
   const selectedCustomerId = customerSelect.value;
-  const activeCustomers = customers.filter((customer) => customer.status === 'Active');
+  const activeCustomers = sortByName_(customers.filter((customer) => customer.status === 'Active'));
   const placeholder = paymentType === 'credit'
     ? '<option value="" disabled>Select active customer</option>'
     : '<option value="">WALK-IN CUSTOMER</option>';
@@ -6000,7 +7702,7 @@ function applySession(session, useRoleDefaultView = false) {
   const account = session.account;
   const permittedViews = account.permissions || [];
   document.querySelectorAll('[data-view]').forEach((item) => {
-    const requiredPermission = item.dataset.view === 'quarantine' ? 'inventory' : item.dataset.view;
+    const requiredPermission = ['quarantine', 'quarantineReport'].includes(item.dataset.view) ? 'inventory' : item.dataset.view;
     const allowed = item.dataset.view === 'dashboard' || permittedViews.includes('*') || permittedViews.includes(requiredPermission);
     item.hidden = !allowed;
   });
