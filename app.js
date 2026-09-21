@@ -3950,8 +3950,14 @@ function renderQuarantinedItems() {
   const table = $('#inventoryTable');
   if (!table) return;
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const pendingItemsByCase = inventoryQuarantineItems
+    .filter((item) => item.resolution === 'quarantine')
+    .reduce((itemsByCase, item) => {
+      (itemsByCase[item.caseId] ||= []).push(item);
+      return itemsByCase;
+    }, {});
   const cases = inventoryQuarantineCases
-    .filter((item) => `${item.id} ${item.reference} ${item.sourceType} ${item.supplierReference} ${item.sourceBranchName} ${item.reason} ${item.status}`.toLowerCase().includes(term))
+    .filter((item) => pendingItemsByCase[item.id] && `${item.id} ${item.reference} ${item.sourceType} ${item.supplierReference} ${item.sourceBranchName} ${item.reason} ${item.status}`.toLowerCase().includes(term))
     .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
   const sourceLabel = (source) => source === 'stock_in' ? 'Stock-In Receipt' : 'Stock Transfer Receipt';
   const resolutionLabel = (resolution) => ({ restocked: 'Restock', supplier_return: 'Return to Supplier', return_to_source: 'Return to Source Branch', disposed: 'Dispose' }[resolution] || resolution);
@@ -3977,7 +3983,7 @@ function renderQuarantinedItems() {
 
   const casesHtml = cases.length > 0
     ? cases.map((caseItem) => {
-        const items = inventoryQuarantineItems.filter((item) => item.caseId === caseItem.id);
+        const items = pendingItemsByCase[caseItem.id] || [];
         return `<section class="quarantine-case-card">
           <header class="quarantine-case-header">
             <div>
@@ -4223,7 +4229,7 @@ function renderQuarantineReport() {
     },
   ];
 
-  const sourceName = (src) => src === 'stock_in' ? 'Stock-In' : src === 'sales_return' ? 'Sales Return' : 'Transfer';
+  const sourceName = (src) => src === 'stock_in' ? 'Stock-In' : src === 'sales_return' ? 'Sales Return' : 'Stock Transfer';
 
   const filteredGroups = groups.filter((g) => {
     if (activeQuarantineFilter !== 'all' && g.key !== activeQuarantineFilter) return false;
@@ -4492,11 +4498,9 @@ function generateQuarantinePdf() {
                 <thead>
                   <tr style="background:#f8fafc;">
                     <th style="width:25px; padding:6px 8px;">#</th>
-                    <th style="width:72px; padding:6px 8px;">Date</th>
-                    <th style="width:170px; padding:6px 8px;">Product</th>
-                    <th style="width:85px; padding:6px 8px;">Case ID</th>
-                    <th style="width:105px; padding:6px 8px;">Source Ref</th>
-                    <th style="padding:6px 8px;">Supplier / Source</th>
+                    <th style="width:180px; padding:6px 8px;">Product</th>
+                    <th style="width:112px; padding:6px 8px;">Case ID</th>
+                    <th style="width:138px; padding:6px 8px;">Source Ref</th>
                     <th style="padding:6px 8px;">Reason</th>
                     <th style="width:48px; text-align:center; padding:6px 8px;">Qty</th>
                     <th style="width:95px; text-align:right; padding:6px 8px;">Disposition</th>
@@ -4507,7 +4511,7 @@ function generateQuarantinePdf() {
                     if (entry.type === 'header') {
                       return `
                         <tr style="background:#f1f5f9;">
-                          <td colspan="9" style="background:#f1f5f9; font-weight:800; font-size:10px; color:#0f172a; padding:6px 10px; border-top:1.5px solid #cbd5e1; border-bottom:1px solid #cbd5e1;">
+                          <td colspan="7" style="background:#f1f5f9; font-weight:800; font-size:10px; color:#0f172a; padding:6px 10px; border-top:1.5px solid #cbd5e1; border-bottom:1px solid #cbd5e1;">
                             <span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${entry.color}; margin-right:6px; vertical-align:middle;"></span>
                             <span>${escapeHtml(entry.title)}</span>
                             <span style="color:#64748b; font-weight:600; margin-left:6px;">&bull; ${entry.count} line${entry.count === 1 ? '' : 's'} (${Number(entry.units).toLocaleString('en-PH')} units)</span>
@@ -4519,14 +4523,12 @@ function generateQuarantinePdf() {
                     return `
                       <tr style="border-bottom:1px dashed #e2e8f0;">
                         <td style="color:#94a3b8; font-weight:600; padding:5px 8px;">${entry.index}</td>
-                        <td style="padding:5px 8px; font-size:9.5px; white-space:nowrap;">${escapeHtml(r.recordDate ? new Date(r.recordDate).toLocaleDateString('en-PH', { dateStyle: 'short' }) : '')}</td>
                         <td style="padding:5px 8px;">
                           <strong style="color:#0f172a; font-size:10px;">${escapeHtml(r.productName)}</strong>
                           <div style="font-size:8.5px; color:#64748b;">${escapeHtml(r.unit)}${r.sellingPrice !== null ? ` &bull; Cost: ${money(r.sellingPrice)}` : ''}</div>
                         </td>
-                        <td style="font-family:monospace; font-weight:700; font-size:9.5px; padding:5px 8px;">${escapeHtml(r.caseItem.id)}</td>
-                        <td style="font-family:monospace; font-size:9px; padding:5px 8px; color:#475569;">${escapeHtml(r.reference)}</td>
-                        <td style="padding:5px 8px; font-size:9.5px;">${escapeHtml(r.sourceType === 'sales_return' ? `Sales Return: ${r.supplier}` : r.supplier)}</td>
+                        <td style="padding:5px 8px;"><strong style="font-family:monospace; font-size:9.5px;">${escapeHtml(r.caseItem.id)}</strong><div style="font-size:8.5px; color:#64748b; white-space:nowrap;">${escapeHtml(r.recordDate ? new Date(r.recordDate).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }) : '')}</div></td>
+                        <td style="padding:5px 8px;"><strong style="font-family:monospace; font-size:9px; color:#475569;">${escapeHtml(r.reference)}</strong><div style="font-size:8.5px; color:#64748b;">${escapeHtml(r.sourceType === 'sales_return' ? `Sales Return: ${r.supplier}` : r.supplier)}</div></td>
                         <td style="color:#475569; font-size:9px; padding:5px 8px;">${escapeHtml(r.reason)}</td>
                         <td style="text-align:center; font-weight:800; padding:5px 8px; font-size:10px;">${Number(r.qty).toLocaleString('en-PH')}</td>
                         <td style="text-align:right; padding:5px 8px;">
@@ -4536,7 +4538,7 @@ function generateQuarantinePdf() {
                         </td>
                       </tr>
                     `;
-                  }).join('') || '<tr><td colspan="9" style="text-align:center; padding:16px; color:#64748b;">No quarantine records found for the selected period.</td></tr>'}
+                  }).join('') || '<tr><td colspan="7" style="text-align:center; padding:16px; color:#64748b;">No quarantine records found for the selected period.</td></tr>'}
                 </tbody>
               </table>
             </div>
