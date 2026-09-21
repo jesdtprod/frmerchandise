@@ -1613,7 +1613,10 @@ async function getAppData_(branchId) {
       id: row.return_item_id, returnId: row.return_id, saleItemId: row.original_sale_item_id, productId: row.product_id, qty: Number(row.qty || 0),
       actionType: row.action_type || 'return', refundAmount: Number(row.refund_amount || 0), condition: row.condition_state, replacementProductId: row.replacement_product_id || '', replacementQty: Number(row.replacement_qty || 0),
     })),
-    inventoryReturnLots: returnLotRows.map((row) => ({ id: row.return_lot_id, returnItemId: row.return_item_id, productId: row.product_id, qty: Number(row.qty || 0), state: row.state || 'quarantine' })),
+    inventoryReturnLots: returnLotRows.map((row) => ({
+      id: row.return_lot_id, returnItemId: row.return_item_id, productId: row.product_id, qty: Number(row.qty || 0), state: row.state || 'quarantine',
+      sellingPrice: row.selling_price === null ? null : Number(row.selling_price), resolvedAt: row.resolved_at || null, createdAt: row.created_at || null,
+    })),
     inventoryQuarantineCases: quarantineCaseRows.map((row) => ({ id: row.case_id, branchId: row.branch_id, sourceType: row.source_type, reference: row.source_reference, sourceBranchId: row.source_branch_id || '', sourceBranchName: branchMap[row.source_branch_id]?.name || '', supplierReference: row.supplier_reference || '', reason: row.reason || '', status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at || null })),
     inventoryQuarantineItems: quarantineItemRows.map((row) => ({ id: row.quarantine_item_id, caseId: row.case_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || 'unit', qty: Number(row.qty || 0), sellingPrice: row.selling_price === null ? null : Number(row.selling_price), resolution: row.resolution || 'quarantine', resolvedAt: row.resolved_at || null })),
     inventoryReport,
@@ -4059,7 +4062,7 @@ function getQuarantineReportData_() {
 
   const casesMap = new Map(inventoryQuarantineCases.map((c) => [c.id, c]));
 
-  const records = inventoryQuarantineItems
+  const receiptRecords = inventoryQuarantineItems
     .map((item) => {
       const caseItem = casesMap.get(item.caseId) || {
         id: item.caseId,
@@ -4097,7 +4100,46 @@ function getQuarantineReportData_() {
           : (caseItem.sourceBranchName || caseItem.sourceBranchId || 'Source Branch'),
         sourceType: caseItem.sourceType
       };
-    })
+    });
+
+  const returnItemsById = new Map(saleReturnItems.map((item) => [item.id, item]));
+  const returnsById = new Map(saleReturns.map((item) => [item.id, item]));
+  const salesById = new Map(salesHistory.map((item) => [item.saleId, item]));
+  const productsById = new Map(allProducts.map((item) => [item.id, item]));
+  const salesReturnRecords = inventoryReturnLots.map((lot) => {
+    const returnItem = returnItemsById.get(lot.returnItemId);
+    const returnRecord = returnsById.get(returnItem?.returnId);
+    const sale = salesById.get(returnRecord?.saleId);
+    const product = productsById.get(lot.productId);
+    const recordDate = lot.resolvedAt || lot.createdAt || returnRecord?.resolvedAt || returnRecord?.createdAt;
+    const resolution = lot.state || 'quarantine';
+    const groupKey = resolution === 'restocked'
+      ? 'restocked'
+      : resolution === 'supplier_return'
+        ? 'supplier_return'
+        : resolution === 'disposed'
+          ? 'disposed'
+          : 'quarantine';
+
+    return {
+      item: { id: lot.id },
+      caseItem: { id: returnRecord?.id || returnItem?.returnId || lot.returnItemId },
+      recordDate,
+      dateKey: saleDateKey(recordDate),
+      groupKey,
+      productName: product?.name || lot.productId,
+      qty: Number(lot.qty || 0),
+      unit: product?.unit || 'unit',
+      sellingPrice: lot.sellingPrice,
+      resolution,
+      reason: returnRecord?.reason || 'Sales return inspection',
+      reference: sale?.saleId || returnRecord?.saleId || returnRecord?.id || 'Sales Return',
+      supplier: sale?.customerName || 'Walk-in customer',
+      sourceType: 'sales_return',
+    };
+  });
+
+  const records = [...receiptRecords, ...salesReturnRecords]
     .filter((r) => {
       const matchesDate = (!dateFrom || r.dateKey >= dateFrom) && (!dateTo || r.dateKey <= dateTo);
       const matchesTerm = !term || `${r.item.id} ${r.caseItem.id} ${r.productName} ${r.reference} ${r.supplier} ${r.reason} ${r.resolution}`.toLowerCase().includes(term);
@@ -4181,7 +4223,7 @@ function renderQuarantineReport() {
     },
   ];
 
-  const sourceName = (src) => src === 'stock_in' ? 'Stock-In' : 'Transfer';
+  const sourceName = (src) => src === 'stock_in' ? 'Stock-In' : src === 'sales_return' ? 'Sales Return' : 'Transfer';
 
   const filteredGroups = groups.filter((g) => {
     if (activeQuarantineFilter !== 'all' && g.key !== activeQuarantineFilter) return false;
@@ -4484,7 +4526,7 @@ function generateQuarantinePdf() {
                         </td>
                         <td style="font-family:monospace; font-weight:700; font-size:9.5px; padding:5px 8px;">${escapeHtml(r.caseItem.id)}</td>
                         <td style="font-family:monospace; font-size:9px; padding:5px 8px; color:#475569;">${escapeHtml(r.reference)}</td>
-                        <td style="padding:5px 8px; font-size:9.5px;">${escapeHtml(r.supplier)}</td>
+                        <td style="padding:5px 8px; font-size:9.5px;">${escapeHtml(r.sourceType === 'sales_return' ? `Sales Return: ${r.supplier}` : r.supplier)}</td>
                         <td style="color:#475569; font-size:9px; padding:5px 8px;">${escapeHtml(r.reason)}</td>
                         <td style="text-align:center; font-weight:800; padding:5px 8px; font-size:10px;">${Number(r.qty).toLocaleString('en-PH')}</td>
                         <td style="text-align:right; padding:5px 8px;">
