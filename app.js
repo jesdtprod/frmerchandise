@@ -2105,26 +2105,26 @@ function renderSkeletonTable() {
 
   if (activeView === 'quarantineReport') {
     const quarantineRows = Array.from({ length: 5 }).map(() => `
-      <div class="table-row skeleton-row" style="grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(180px, 1.4fr) 90px 130px;">
-        <div class="product-cell skeleton-prod-col">
+      <div class="table-row skeleton-row">
+        <div class="product-cell qr-product-cell skeleton-prod-col">
           <div class="skeleton-shimmer skeleton-line title"></div>
           <div class="skeleton-shimmer skeleton-line meta"></div>
         </div>
-        <div class="product-cell skeleton-col">
+        <div class="product-cell qr-case-cell skeleton-col">
           <div class="skeleton-shimmer skeleton-line title" style="width: 105px;"></div>
           <div class="skeleton-shimmer skeleton-line meta" style="width: 75px;"></div>
         </div>
-        <div class="product-cell skeleton-col">
+        <div class="product-cell qr-origin-cell skeleton-col">
           <div class="skeleton-shimmer skeleton-line title" style="width: 120px;"></div>
           <div class="skeleton-shimmer skeleton-line meta" style="width: 90px;"></div>
         </div>
-        <div class="product-cell">
+        <div class="product-cell qr-reason-cell">
           <div class="skeleton-shimmer skeleton-line text" style="width: 140px;"></div>
         </div>
-        <div class="row-middle-cells" style="justify-content: center; display: flex;">
+        <div class="row-middle-cells qr-qty-cell" style="justify-content: center; display: flex;">
           <div class="skeleton-shimmer skeleton-line pill" style="width: 48px; height: 22px;"></div>
         </div>
-        <div class="row-action-cell" style="justify-content: center; display: flex;">
+        <div class="row-action-cell qr-disposition-cell" style="justify-content: center; display: flex;">
           <div class="skeleton-shimmer skeleton-line pill" style="width: 90px; height: 22px;"></div>
         </div>
       </div>
@@ -2137,7 +2137,7 @@ function renderSkeletonTable() {
         <div class="skeleton-shimmer skeleton-line pill" style="width: 130px; height: 32px; border-radius: 9999px;"></div>
         <div class="skeleton-shimmer skeleton-line pill" style="width: 85px; height: 32px; border-radius: 9999px;"></div>
       </div>
-      <div class="table-row table-header" style="grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(180px, 1.4fr) 90px 130px;">
+      <div class="table-row table-header">
         ${headers.map((header) => `<span>${header}</span>`).join('')}
       </div>
       ${quarantineRows}
@@ -3044,11 +3044,11 @@ function renderInventoryReports() {
       return `<div class="table-row">
         <div class="product-cell"><strong class="product-name">${escapeHtml(product.name)}</strong><span class="product-meta">${escapeHtml(product.sku || product.id)} &bull; ${escapeHtml(product.unit || 'unit')}</span></div>
         <div class="row-middle-cells">
-          <span class="stock-pill stock-quantity report-qty-sold">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
-          <span class="stock-pill stock-quantity report-qty-stock-in">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
-          <span class="transfer-quantity">${renderTransferQuantity(movement)}</span>
-          <span class="stock-pill stock-quantity report-qty-remaining">${qty.toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
-          <span class="stock-pill report-stock-status ${status.className}">${status.label}</span>
+          <span class="stock-pill stock-quantity report-qty-sold" data-report-label="Sold">${(Number(movement.qtySold) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="stock-pill stock-quantity report-qty-stock-in" data-report-label="Stock In">${(Number(movement.qtyStockIn) || 0).toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="transfer-quantity" data-report-label="Transfer">${renderTransferQuantity(movement)}</span>
+          <span class="stock-pill stock-quantity report-qty-remaining" data-report-label="Remaining">${qty.toLocaleString('en-PH')} ${escapeHtml(product.unit || 'unit')}</span>
+          <span class="stock-pill report-stock-status ${status.className}" data-report-label="Status">${status.label}</span>
         </div>
       </div>`;
     }).join('') || '<div class="empty-state"><p>No products found</p><small>Try adjusting your search query.</small></div>'}
@@ -4333,25 +4333,25 @@ function renderQuarantineReport() {
       </div>
       ${g.items.map((r) => `
         <div class="table-row">
-          <div class="product-cell">
+          <div class="product-cell qr-product-cell">
             <strong class="product-name">${escapeHtml(r.productName)}</strong>
             <span class="product-meta">${escapeHtml(r.unit)}${r.sellingPrice !== null ? ` &bull; Cost: ${money(r.sellingPrice)}` : ''}</span>
           </div>
-          <div class="product-cell">
+          <div class="product-cell qr-case-cell">
             <strong class="product-name">${escapeHtml(r.caseItem.id)}</strong>
             <span class="product-meta">${escapeHtml(r.recordDate ? new Date(r.recordDate).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown')}</span>
           </div>
-          <div class="product-cell">
+          <div class="product-cell qr-origin-cell">
             <strong class="product-name">${escapeHtml(r.reference)}</strong>
             <span class="product-meta" title="${escapeHtml(r.supplier)}">${escapeHtml(sourceName(r.sourceType))}: ${escapeHtml(r.supplier)}</span>
           </div>
-          <div class="product-cell">
+          <div class="product-cell qr-reason-cell">
             <span class="quarantine-reason-text" title="${escapeHtml(r.reason)}">${escapeHtml(r.reason)}</span>
           </div>
-          <div class="row-middle-cells" style="justify-content:center;">
-            <span class="shipped-badge">${Number(r.qty).toLocaleString('en-PH')}</span>
+          <div class="row-middle-cells qr-qty-cell" style="justify-content:center;">
+            <span class="shipped-badge" data-report-label="Qty">${Number(r.qty).toLocaleString('en-PH')}</span>
           </div>
-          <div class="row-action-cell">
+          <div class="row-action-cell qr-disposition-cell">
             <span class="stock-pill ${g.badgeClass}">${g.statusText}</span>
           </div>
         </div>

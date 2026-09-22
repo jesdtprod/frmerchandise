@@ -3520,9 +3520,32 @@ body::after {
   font-size: 12px;
 }
 
+@media (max-width: 960px) {
+  .workspace[data-view="sales"] .toolbar,
+  .workspace[data-view="quarantineReport"] .toolbar,
+  .workspace[data-view="inventoryReports"] .toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .workspace[data-view="sales"] .search-wrap,
+  .workspace[data-view="quarantineReport"] .search-wrap,
+  .workspace[data-view="inventoryReports"] .search-wrap {
+    min-width: 200px;
+    flex: 1 1 240px;
+  }
+
+  .workspace[data-view="sales"] .sales-date-range,
+  .workspace[data-view="quarantineReport"] .sales-date-range {
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+  }
+}
+
 @media (max-width: 640px) {
   .workspace[data-view="sales"] .toolbar,
-  .workspace[data-view="quarantineReport"] .toolbar {
+  .workspace[data-view="quarantineReport"] .toolbar,
+  .workspace[data-view="inventoryReports"] .toolbar {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -3533,7 +3556,8 @@ body::after {
   }
 
   .workspace[data-view="sales"] .search-wrap,
-  .workspace[data-view="quarantineReport"] .search-wrap {
+  .workspace[data-view="quarantineReport"] .search-wrap,
+  .workspace[data-view="inventoryReports"] .search-wrap {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -3564,11 +3588,13 @@ body::after {
     box-sizing: border-box;
   }
 
-  .sales-pdf-button {
+  .sales-pdf-button,
+  #generateInventoryPdfButton {
     grid-column: 1 / -1;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    justify-content: center;
   }
 }
 
@@ -8122,32 +8148,98 @@ dialog.receipt-dialog {
   font-weight: 700;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 860px) {
   .quarantine-view {
-    padding: 12px;
+    padding: 14px;
   }
   .quarantine-banner {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
   }
-  .quarantine-banner-status {
-    width: 100%;
-  }
-  .quarantine-status-pill {
-    width: 100%;
-    justify-content: center;
-  }
-  .quarantine-case-header,
   .quarantine-item-row {
-    align-items: flex-start;
     flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 0;
   }
   .quarantine-item-action {
     width: 100%;
     justify-content: flex-start;
   }
   .quarantine-actions {
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+  .quarantine-actions .resolve-btn,
+  .quarantine-actions .quarantine-resolution {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    padding: 0 8px !important;
+    font-size: 11.5px !important;
+    justify-content: center !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .quarantine-view {
+    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .quarantine-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .quarantine-banner-status {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .quarantine-banner-status #quarantineReportNavBtn {
+    flex: 1 1 auto;
+    min-width: 130px;
+    height: 36px !important;
+    justify-content: center;
+  }
+  .quarantine-banner-status .quarantine-status-pill {
+    flex: 1 1 auto;
+    min-width: 130px;
+    justify-content: center;
+    height: 36px;
+  }
+  .quarantine-case-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .quarantine-case-header > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+  }
+  .quarantine-case-details {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 440px) {
+  .quarantine-actions {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .quarantine-actions .resolve-btn,
+  .quarantine-actions .quarantine-resolution {
+    min-height: 42px !important;
+    font-size: 12px !important;
   }
 }
 
@@ -9045,6 +9137,111 @@ dialog .form-grid {
 dialog#formDialog[data-form-layout="compact"] #formFields {
   overflow-y: hidden;
   overscroll-behavior: none;
+}
+
+/* ==========================================================================
+   UNIVERSAL MODAL RESPONSIVENESS (Mobile, Tablet, Desktop - Portrait & Landscape)
+   ========================================================================== */
+@media (max-height: 560px), (orientation: landscape) and (max-height: 640px) {
+  dialog.pepsi-dialog {
+    max-height: min(96vh, 100dvh - 12px) !important;
+    border-radius: 14px !important;
+    margin: auto !important;
+  }
+  dialog form,
+  dialog .confirm-modal-wrap,
+  dialog .stock-in-history-wrap,
+  dialog .credit-history-wrap,
+  dialog.sale-return-dialog form,
+  dialog .receipt-wrap {
+    max-height: min(96vh, 100dvh - 12px) !important;
+    padding: 10px 16px !important;
+  }
+  .modal-head {
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    gap: 8px !important;
+  }
+  .modal-icon-badge {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+  }
+  .modal-icon-badge svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+  .modal-title-content h2 {
+    font-size: 15px !important;
+  }
+  .modal-eyebrow {
+    font-size: 9px !important;
+    margin-bottom: 1px !important;
+  }
+  .modal-subtitle {
+    display: none !important;
+  }
+  .modal-actions {
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+    gap: 8px !important;
+  }
+  .modal-cancel-btn,
+  .modal-save-btn,
+  .button.modal-delete-btn,
+  .receipt-print-btn,
+  .receipt-new-btn {
+    min-height: 34px !important;
+    height: 34px !important;
+    padding: 0 14px !important;
+    font-size: 12px !important;
+  }
+  dialog .form-grid {
+    gap: 10px !important;
+  }
+  dialog .form-field-group {
+    gap: 3px !important;
+  }
+  dialog .form-field-group input,
+  dialog .form-field-group select {
+    height: 34px !important;
+    min-height: 34px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  dialog.pepsi-dialog {
+    width: min(calc(100vw - 20px), 540px) !important;
+    max-height: min(94vh, 100dvh - 16px) !important;
+    border-radius: 16px !important;
+    margin: auto !important;
+  }
+  dialog form,
+  dialog .confirm-modal-wrap,
+  dialog .stock-in-history-wrap,
+  dialog .credit-history-wrap,
+  dialog.sale-return-dialog form,
+  dialog .receipt-wrap {
+    padding: 16px 16px !important;
+    max-height: min(94vh, 100dvh - 16px) !important;
+  }
+  .modal-actions {
+    display: flex !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .modal-actions .modal-cancel-btn,
+  .modal-actions .modal-save-btn,
+  .modal-actions .button {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+    min-height: 42px !important;
+  }
+  dialog .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
 }
 
 .form-field-group:has(.custom-dropdown.open),
@@ -11327,6 +11524,51 @@ dialog.confirm-dialog {
     padding: 16px;
   }
 
+  /* Fixed page width for reports & workspace on Tablet */
+  .workspace[data-view="sales"],
+  .workspace[data-view="inventoryReports"],
+  .workspace[data-view="quarantineReport"],
+  .workspace[data-view="quarantine"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+
+  .workspace[data-view="sales"] .table-container,
+  .workspace[data-view="inventoryReports"] .table-container,
+  .workspace[data-view="quarantineReport"] .table-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .workspace[data-view="sales"] .table-row,
+  .workspace[data-view="sales"] .skeleton-row {
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) 75px minmax(90px, 0.8fr) 105px;
+    gap: 10px;
+    padding: 0 14px;
+  }
+
+  .workspace[data-view="inventoryReports"] .table-row,
+  .workspace[data-view="inventoryReports"] .skeleton-row {
+    grid-template-columns: minmax(170px, 1.8fr) 95px 110px 125px 120px 95px;
+    gap: 10px;
+    padding: 0 14px;
+  }
+
+  .workspace[data-view="quarantineReport"] .table-row,
+  .workspace[data-view="quarantineReport"] .skeleton-row {
+    grid-template-columns: minmax(150px, 1.3fr) minmax(115px, 0.9fr) minmax(135px, 1.1fr) minmax(145px, 1.2fr) 75px 115px !important;
+    gap: 10px;
+    padding: 0 14px;
+  }
+
   /* Touch-friendly buttons on Tablet */
   .button {
     min-height: 44px;
@@ -11786,32 +12028,105 @@ dialog.confirm-dialog {
     flex-wrap: wrap;
   }
 
+  /* Inventory Reports Mobile Card Layout */
   .workspace[data-view="inventoryReports"] .table-row:not(.table-header) {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    padding: 12px 14px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+    padding: 14px 16px;
     min-height: auto;
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(15, 28, 52, 0.4);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .workspace[data-view="inventoryReports"] .table-row .product-cell {
+    width: 100%;
+    min-width: 0;
   }
 
   .workspace[data-view="inventoryReports"] .table-row .row-middle-cells {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  .workspace[data-view="inventoryReports"] .skeleton-row,
-  .workspace[data-view="quarantineReport"] .skeleton-row {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    padding: 12px 14px;
+  .workspace[data-view="inventoryReports"] .table-row .stock-pill,
+  .workspace[data-view="inventoryReports"] .table-row .transfer-quantity {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+    border-radius: 8px !important;
+    width: 100% !important;
+    min-height: 30px !important;
+    box-sizing: border-box !important;
+    white-space: nowrap;
+  }
+
+  .workspace[data-view="inventoryReports"] [data-report-label]::before {
+    content: attr(data-report-label);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    opacity: 0.72;
+    margin-right: 6px;
+  }
+
+  .workspace[data-view="inventoryReports"] .table-row .report-stock-status {
+    grid-column: 1 / -1 !important;
+    justify-content: center !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .workspace[data-view="inventoryReports"] .skeleton-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+    padding: 14px 16px;
     min-height: auto;
+    background: rgba(15, 28, 52, 0.4);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
   }
 
+  .workspace[data-view="inventoryReports"] .skeleton-row .row-middle-cells {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100%;
+  }
+
+  .workspace[data-view="quarantineReport"] .skeleton-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+    padding: 14px 16px;
+    min-height: auto;
+    background: rgba(15, 28, 52, 0.4);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+  }
+
+  .workspace[data-view="quarantineReport"] .skeleton-row .row-middle-cells,
+  .workspace[data-view="quarantineReport"] .skeleton-row .row-action-cell {
+    display: flex !important;
+    width: 100%;
+  }
 
   .workspace[data-view="branches"] .table-row:not(.table-header) {
     display: grid;
@@ -11859,19 +12174,24 @@ dialog.confirm-dialog {
   .workspace[data-view="credits"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
   .workspace[data-view="credits"] .credit-payment-button { min-width: 0; }
 
+  /* Sales History Mobile Card Layout */
   .workspace[data-view="sales"] .table-row:not(.table-header) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-areas:
       "prod action"
-      "details action";
-    gap: 7px 12px;
-    padding: 12px 14px;
+      "details details" !important;
+    gap: 10px 12px;
+    padding: 14px 16px;
     min-height: auto;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    background: rgba(15, 28, 52, 0.4);
+    border-radius: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 8px;
   }
 
   .workspace[data-view="sales"] .table-row .product-cell {
@@ -11880,18 +12200,40 @@ dialog.confirm-dialog {
     max-width: 100%;
     overflow: hidden;
   }
+  .workspace[data-view="sales"] .table-row .row-action-cell {
+    grid-area: action;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
   .workspace[data-view="sales"] .table-row .row-middle-cells {
     grid-area: details;
-    display: flex;
-    flex-wrap: wrap;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
     gap: 6px 10px;
     align-items: center;
     min-width: 0;
     max-width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .workspace[data-view="sales"] .table-row .row-middle-cells .branch-address {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .workspace[data-view="sales"] .table-row .row-middle-cells .stock-pill {
+    justify-self: end;
   }
   .workspace[data-view="sales"] .table-row .row-middle-cells .product-cell {
     min-width: 0;
-    max-width: 100%;
+  }
+  .workspace[data-view="sales"] .table-row .row-middle-cells .price-text {
+    justify-self: end;
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #38bdf8;
   }
   .workspace[data-view="sales"] .table-row .product-name {
     display: block;
@@ -11900,48 +12242,74 @@ dialog.confirm-dialog {
     white-space: nowrap;
     max-width: 100%;
   }
-  .workspace[data-view="sales"] .table-row .row-action-cell {
-    grid-area: action;
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
 
+  /* Quarantine Report Mobile Card Layout */
   .workspace[data-view="quarantineReport"] .table-row:not(.table-header) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "prod action"
-      "details action";
-    gap: 7px 12px;
-    padding: 12px 14px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+    padding: 14px 16px;
     min-height: auto;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    background: rgba(15, 28, 52, 0.45);
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    margin-bottom: 8px;
   }
 
-  .workspace[data-view="quarantineReport"] .table-row .product-cell {
-    grid-area: prod;
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-  }
-  .workspace[data-view="quarantineReport"] .table-row .row-middle-cells {
-    grid-area: details;
+  .workspace[data-view="quarantineReport"] .qr-product-cell {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    align-items: center;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
     min-width: 0;
-    max-width: 100%;
   }
-  .workspace[data-view="quarantineReport"] .table-row .row-action-cell {
-    grid-area: action;
+
+  .workspace[data-view="quarantineReport"] .qr-case-cell,
+  .workspace[data-view="quarantineReport"] .qr-origin-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
+    padding: 6px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .workspace[data-view="quarantineReport"] .qr-reason-cell {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 7px;
+    border-left: 3px solid var(--pepsi-blue);
+    box-sizing: border-box;
+  }
+
+  .workspace[data-view="quarantineReport"] .qr-qty-cell {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
+    gap: 6px;
+    width: 100%;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .workspace[data-view="quarantineReport"] .qr-qty-cell .shipped-badge::before {
+    content: "Quantity: ";
+    font-weight: 600;
+    opacity: 0.75;
+  }
+
+  .workspace[data-view="quarantineReport"] .qr-disposition-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
   }
 
   .workspace[data-view="transfers"] .table-row:not(.table-header) {
