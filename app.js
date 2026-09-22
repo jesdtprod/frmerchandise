@@ -2046,10 +2046,10 @@ function renderSkeletonTable() {
     }
     if (activeView === 'sales') {
       return `
-        <div><div class="skeleton-shimmer skeleton-line text" style="width:130px;"></div></div>
-        <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:135px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:85px;"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line pill" style="width:70px;"></div></div>
-        <div><div class="skeleton-shimmer skeleton-line price" style="width:90px;"></div></div>
+        <span class="branch-address sales-date-text"><div class="skeleton-shimmer skeleton-line text" style="width:110px;"></div></span>
+        <div class="product-cell sales-customer-cell skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:130px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:75px;"></div></div>
+        <span class="stock-pill sales-payment-badge"><div class="skeleton-shimmer skeleton-line pill" style="width:55px;height:22px;border-radius:6px;"></div></span>
+        <span class="price-text sales-total-price"><div class="skeleton-shimmer skeleton-line price" style="width:85px;"></div></span>
       `;
     }
     if (activeView === 'staffAccounts') {
@@ -2138,10 +2138,10 @@ function renderSkeletonTable() {
         <div class="product-cell qr-reason-cell">
           <div class="skeleton-shimmer skeleton-line text" style="width: 140px;"></div>
         </div>
-        <div class="row-middle-cells qr-qty-cell" style="justify-content: center; display: flex;">
+        <div class="row-middle-cells qr-qty-cell">
           <div class="skeleton-shimmer skeleton-line pill" style="width: 48px; height: 22px;"></div>
         </div>
-        <div class="row-action-cell qr-disposition-cell" style="justify-content: center; display: flex;">
+        <div class="row-action-cell qr-disposition-cell">
           <div class="skeleton-shimmer skeleton-line pill" style="width: 90px; height: 22px;"></div>
         </div>
       </div>
@@ -4365,7 +4365,7 @@ function renderQuarantineReport() {
           <div class="product-cell qr-reason-cell">
             <span class="quarantine-reason-text" title="${escapeHtml(r.reason)}">${escapeHtml(r.reason)}</span>
           </div>
-          <div class="row-middle-cells qr-qty-cell" style="justify-content:center;">
+          <div class="row-middle-cells qr-qty-cell">
             <span class="shipped-badge" data-report-label="Qty">${Number(r.qty).toLocaleString('en-PH')}</span>
           </div>
           <div class="row-action-cell qr-disposition-cell">
@@ -4790,20 +4790,20 @@ function renderSalesHistory() {
       const hasReturnHistory = saleReturns.some((item) => item.saleId === sale.saleId);
       return `
         <div class="table-row">
-          <div class="product-cell">
+          <div class="product-cell sales-receipt-cell">
             <strong class="product-name">${escapeHtml(sale.saleId)}</strong>
             <span class="product-meta sales-items-summary" title="${escapeHtml(itemsSummary)}">${escapeHtml(itemsSummary)}</span>
           </div>
           <div class="row-middle-cells">
-            <span class="branch-address">${escapeHtml(sale.date ? new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }) : '')}</span>
-            <div class="product-cell">
+            <span class="branch-address sales-date-text">${escapeHtml(sale.date ? new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }) : '')}</span>
+            <div class="product-cell sales-customer-cell">
               <strong class="product-name">${escapeHtml(displayCustomerName(sale.customerName))}</strong>
               <span class="product-meta">${!isCash ? `Balance: ${money(sale.creditBalance)}` : 'Paid in cash'}</span>
             </div>
-            <span class="stock-pill ${isCash ? 'stock-normal' : 'category-badge'}">${escapeHtml(isCash ? 'Cash' : 'Credit')}</span>
-            <span class="price-text">${money(sale.total)}</span>
+            <span class="stock-pill sales-payment-badge ${isCash ? 'stock-normal' : 'category-badge'}">${escapeHtml(isCash ? 'Cash' : 'Credit')}</span>
+            <span class="price-text sales-total-price">${money(sale.total)}</span>
           </div>
-          <div class="row-action-cell">
+          <div class="row-action-cell sales-action-cell">
             <span class="table-actions">
               <button class="icon-button" data-view-sale="${escapeHtml(sale.saleId)}" aria-label="View sale receipt" title="View sale receipt">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
