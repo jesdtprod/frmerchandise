@@ -223,11 +223,6 @@ function updateQuarantinePrintPeriod() {
 }
 
 function openReportInNewPage_(htmlContent, title = 'Report') {
-  const reportWindow = window.open('', '_blank');
-  if (!reportWindow) {
-    showToast('Please allow popups to open the report in a new tab.', 'error');
-    return;
-  }
   const documentHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -741,9 +736,31 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
 </body>
 </html>`;
 
-  reportWindow.document.open();
-  reportWindow.document.write(documentHtml);
-  reportWindow.document.close();
+  const reportId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const reportStorageKey = `fr-pos-report-${reportId}`;
+  const maxReportAge = 7 * 24 * 60 * 60 * 1000;
+
+  try {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('fr-pos-report-'))
+      .forEach((key) => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(key));
+          if (!saved?.createdAt || Date.now() - saved.createdAt > maxReportAge) localStorage.removeItem(key);
+        } catch {
+          localStorage.removeItem(key);
+        }
+      });
+    localStorage.setItem(reportStorageKey, JSON.stringify({ createdAt: Date.now(), documentHtml }));
+  } catch {
+    showToast('Unable to prepare the report for a reloadable tab. Please check browser storage settings.', 'error');
+    return;
+  }
+
+  const reportUrl = new URL('report.html', window.location.href);
+  reportUrl.searchParams.set('report', reportId);
+  const reportWindow = window.open(reportUrl.href, '_blank');
+  if (!reportWindow) showToast('Please allow popups to open the report in a new tab.', 'error');
 }
 
 function renderReportPageFooter(pageNumber, totalPages, generatedTime, reportType = 'Sales Audit') {
