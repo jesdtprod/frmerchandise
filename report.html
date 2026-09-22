@@ -20,9 +20,10 @@
         try {
           const saved = JSON.parse(localStorage.getItem(`fr-pos-report-${reportId}`));
           if (!saved?.documentHtml || !saved?.createdAt || Date.now() - saved.createdAt > 7 * 24 * 60 * 60 * 1000) return;
-          document.open();
-          document.write(saved.documentHtml);
-          document.close();
+          const reportDocument = new DOMParser().parseFromString(saved.documentHtml, 'text/html');
+          window.addEventListener('DOMContentLoaded', () => {
+            document.documentElement.replaceWith(document.importNode(reportDocument.documentElement, true));
+          }, { once: true });
         } catch {
           // Leave the safe unavailable message visible.
         }
