@@ -5873,6 +5873,16 @@ dialog form {
 
 .bundle-components-list { display: grid; gap: 8px; }
 
+/* Keep the product dialog actions visible while long bundle lists scroll. */
+dialog#formDialog[data-form-type="product"] .bundle-components-list,
+dialog#formDialog[data-form-type="edit"] .bundle-components-list {
+  max-height: 176px; /* Four 38px component rows plus their three gaps. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .transfer-lines-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px 34px;
