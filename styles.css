@@ -11628,7 +11628,7 @@ dialog.confirm-dialog {
 
   .workspace[data-view="sales"] .table-row,
   .workspace[data-view="sales"] .skeleton-row {
-    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) 75px minmax(90px, 0.8fr) 105px;
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) 75px minmax(90px, 0.8fr) 112px;
     gap: 10px;
     padding: 0 14px;
   }
@@ -11678,6 +11678,18 @@ dialog.confirm-dialog {
     height: 38px;
     min-width: 38px;
     min-height: 38px;
+  }
+
+  /* Three sales actions remain icon-only and fit their table column. */
+  .workspace[data-view="sales"] .table-actions {
+    gap: 6px;
+  }
+
+  .workspace[data-view="sales"] .table-actions .icon-button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
   }
 
   .workspace[data-view="staffAccounts"] .table-row,
@@ -11777,6 +11789,20 @@ dialog.confirm-dialog {
     min-height: 46px;
     padding: 10px 14px;
     font-size: 14px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* Keep return-resolution controls compact while retaining their labels for assistive technology. */
+  .sale-return-resolution-actions .resolve-btn {
+    width: 32px;
+    min-width: 32px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .sale-return-resolution-actions .resolve-btn-text {
+    display: none;
   }
 }
 
