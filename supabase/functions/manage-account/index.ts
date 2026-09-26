@@ -122,6 +122,13 @@ Deno.serve(async (request) => {
     return json(data);
   }
 
+  if (action === 'clearOperationalData') {
+    if (body.confirmation !== 'CLEAR_OPERATIONAL_DATA') return fail('Clear-data confirmation is required.');
+    const { data, error } = await admin.rpc('clear_operational_data');
+    if (error) return fail(error.message);
+    return json(data);
+  }
+
   const targetId = String(body.staffId || body.adminId || '');
   if (!targetId) return fail('Account is required.');
   const { data: target, error: targetError } = await admin.from('profiles').select('*').eq('user_id', targetId).maybeSingle();

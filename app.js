@@ -1912,7 +1912,7 @@ async function api(action, payload = {}) {
     if (data?.error) throw new Error(data.error);
     return data;
   }
-  if (['createOperationalBackup', 'restoreOperationalBackup'].includes(action)) {
+  if (['createOperationalBackup', 'restoreOperationalBackup', 'clearOperationalData'].includes(action)) {
     const { data, error } = await client.functions.invoke('manage-account', { body: { action, ...payload } });
     await throwIfFunctionError_(error);
     if (data?.error) throw new Error(data.error);
@@ -3239,6 +3239,16 @@ function renderAdminAccount() {
           </div>
           <svg class="backup-card-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
+        <button class="backup-action-card backup-restore-card" id="clearOperationalDataButton" type="button" title="Clear all operational POS records while preserving branches and accounts">
+          <div class="backup-card-icon">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          </div>
+          <div class="backup-card-details">
+            <span class="backup-card-heading">Clear Operational Data</span>
+            <span class="backup-card-caption">Keep branches and all accounts</span>
+          </div>
+          <svg class="backup-card-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
         <input id="restoreBackupFile" type="file" accept="application/json,.json" hidden>
       </div>
     </div>
@@ -3257,6 +3267,7 @@ function renderAdminAccount() {
   $('#downloadBackupButton')?.addEventListener('click', downloadOperationalBackup);
   $('#restoreBackupButton')?.addEventListener('click', () => $('#restoreBackupFile')?.click());
   $('#restoreBackupFile')?.addEventListener('change', restoreOperationalBackup);
+  $('#clearOperationalDataButton')?.addEventListener('click', clearOperationalData);
 }
 
 async function downloadOperationalBackup() {
@@ -3309,6 +3320,27 @@ async function restoreOperationalBackup(event) {
     await refresh();
   } catch (error) {
     showToast(error.message || 'Unable to restore the backup.', 'error');
+  }
+}
+
+async function clearOperationalData() {
+  const confirmed = await askConfirmation({
+    title: 'Clear Operational Data',
+    eyebrow: 'ADMINISTRATION',
+    subtitle: 'Start with a clean POS dataset',
+    message: 'Clear all products, inventory, customers, sales, returns, payments, stock-ins, and transfers?',
+    warning: 'Branches, administrator accounts, and staff accounts will be kept. This cannot be undone.',
+    confirmText: 'Clear Data',
+    confirmType: 'danger',
+  });
+  if (!confirmed) return;
+  try {
+    await api('clearOperationalData', { confirmation: 'CLEAR_OPERATIONAL_DATA' });
+    cart = [];
+    showToast('Operational data cleared. Branches and accounts were preserved.', 'success');
+    await refresh();
+  } catch (error) {
+    showToast(error.message || 'Unable to clear operational data.', 'error');
   }
 }
 
