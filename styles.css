@@ -11792,7 +11792,7 @@ dialog.confirm-dialog {
   }
 }
 
-@media (min-width: 641px) and (max-width: 1024px) {
+@media (max-width: 1024px) {
   /* Keep return-resolution controls compact while retaining their labels for assistive technology. */
   .sale-return-resolution-actions .resolve-btn {
     width: 32px;
