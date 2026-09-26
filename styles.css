@@ -11792,18 +11792,16 @@ dialog.confirm-dialog {
   }
 }
 
-@media (max-width: 1024px) {
-  /* Keep return-resolution controls compact while retaining their labels for assistive technology. */
-  .sale-return-resolution-actions .resolve-btn {
-    width: 32px;
-    min-width: 32px;
-    padding: 0;
-    gap: 0;
-  }
+/* Return-resolution controls are icon-only across desktop, tablet, and mobile. */
+.sale-return-resolution-actions .resolve-btn {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  gap: 0;
+}
 
-  .sale-return-resolution-actions .resolve-btn-text {
-    display: none;
-  }
+.sale-return-resolution-actions .resolve-btn-text {
+  display: none;
 }
 
 /* Mobile & Small Tablet Breakpoint (<= 860px) */
