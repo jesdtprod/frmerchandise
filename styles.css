@@ -3253,9 +3253,8 @@ body::after {
 }
 
 .grid-table {
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
+  min-width: 100%;
+  width: max-content;
   box-sizing: border-box;
 }
 
@@ -3368,7 +3367,7 @@ body::after {
 }
 
 .workspace[data-view="sales"] .table-row {
-  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 118px;
+  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 126px;
 }
 
 .workspace[data-view="quarantineReport"] .table-row,
@@ -4446,7 +4445,7 @@ dialog.credit-history-dialog {
 }
 
 .workspace[data-view="sales"] .skeleton-row {
-  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 118px;
+  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 126px;
 }
 
 .workspace[data-view="staffAccounts"] .skeleton-row {
@@ -11628,7 +11627,7 @@ dialog.confirm-dialog {
 
   .workspace[data-view="sales"] .table-row,
   .workspace[data-view="sales"] .skeleton-row {
-    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) 75px minmax(90px, 0.8fr) 112px;
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) 75px minmax(90px, 0.8fr) 126px;
     gap: 10px;
     padding: 0 14px;
   }
@@ -11682,7 +11681,12 @@ dialog.confirm-dialog {
 
   /* Three sales actions remain icon-only and fit their table column. */
   .workspace[data-view="sales"] .table-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
     gap: 6px;
+    width: max-content;
   }
 
   .workspace[data-view="sales"] .table-actions .icon-button {
@@ -11690,6 +11694,7 @@ dialog.confirm-dialog {
     height: 32px;
     min-width: 32px;
     min-height: 32px;
+    flex-shrink: 0;
   }
 
   .workspace[data-view="staffAccounts"] .table-row,
