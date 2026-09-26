@@ -11804,6 +11804,27 @@ dialog.confirm-dialog {
   display: none;
 }
 
+/* Return-history component rows must not inherit the product-form's 3-column grid. */
+dialog .return-item-group .bundle-component-row {
+  display: flex !important;
+  grid-template-columns: none !important;
+  justify-content: space-between;
+  align-items: center;
+}
+
+dialog .return-item-group .sale-return-resolution-actions {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: max-content;
+}
+
+dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px;
+  padding: 0 !important;
+}
+
 /* Mobile & Small Tablet Breakpoint (<= 860px) */
 @media (max-width: 860px) {
   body::before {
