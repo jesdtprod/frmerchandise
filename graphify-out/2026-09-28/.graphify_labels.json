@@ -1,1 +1,20 @@
-{"0": "POS Application Shell", "1": "Application Functions", "2": "Report Generation", "3": "Forms and Date Utilities", "4": "Credit Account Management", "5": "Operations and POS Architecture", "6": "Sales Navigation and Setup", "7": "Cart and Checkout", "8": "Datepicker and Dropdown UI", "9": "Supabase Edge Function", "10": "Quality Assurance Scripts", "11": "Responsive Sidebar UI", "12": "Deno Configuration", "13": "Table Badge Alignment", "14": "Stock-In History", "15": "Progressive Web App", "16": "Supabase Configuration"}
+{
+  "0": "app.js",
+  "1": "api",
+  "2": "renderDashboard",
+  "3": "escapeHtml",
+  "4": "money",
+  "5": "FR Merchandise POS",
+  "6": "initCustomDropdowns",
+  "7": "renderCart",
+  "8": "initCustomDatePickers",
+  "9": "index.ts",
+  "10": "check-pos.mjs",
+  "11": "isMobileScreen",
+  "12": "compilerOptions",
+  "13": "alignTableBadges",
+  "14": "renderStockInHistoryTable",
+  "15": "service-worker.js",
+  "16": "supabase-config.js",
+  "17": "graphify-hook-test.js"
+}

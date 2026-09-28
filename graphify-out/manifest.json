@@ -287,12 +287,6 @@
     "ast_hash": "2a85f3c62ea3f1e9e35612008294686b",
     "semantic_hash": "2a85f3c62ea3f1e9e35612008294686b"
   },
-  "graphify-hook-test.js": {
-    "mtime": 1790560385.606645,
-    "seen": 1790560426.4235773,
-    "ast_hash": "6af921ee63db8707fbcc6a8b98705f46",
-    "semantic_hash": ""
-  },
   ".codex/skills/graphify/SKILL.md": {
     "mtime": 1790559423.3646033,
     "seen": 1790560426.4235773,

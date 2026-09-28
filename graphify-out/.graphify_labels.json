@@ -1,13 +1,13 @@
 {
   "0": "app.js",
-  "1": "api",
-  "2": "renderDashboard",
+  "1": "refresh",
+  "2": "generateSalesPdf",
   "3": "escapeHtml",
   "4": "money",
   "5": "FR Merchandise POS",
   "6": "initCustomDropdowns",
-  "7": "renderCart",
-  "8": "initCustomDatePickers",
+  "7": "What You Must Do When Invoked",
+  "8": "closeDropdown",
   "9": "index.ts",
   "10": "check-pos.mjs",
   "11": "isMobileScreen",
@@ -16,5 +16,13 @@
   "14": "renderStockInHistoryTable",
   "15": "service-worker.js",
   "16": "supabase-config.js",
-  "17": "graphify-hook-test.js"
+  "17": "graphify reference: extra exports and benchmark",
+  "18": "graphify reference: query, path, explain",
+  "19": "loadSupabaseSession_",
+  "20": "graphify reference: add a URL and watch a folder",
+  "21": "graphify reference: commit hook and native CLAUDE.md integration",
+  "22": "graphify reference: incremental update and cluster-only",
+  "23": "graphify reference: GitHub clone and cross-repo merge",
+  "24": "graphify reference: transcribe video and audio",
+  "25": "extraction-spec.md"
 }

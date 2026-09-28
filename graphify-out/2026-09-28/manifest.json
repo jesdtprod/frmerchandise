@@ -286,5 +286,83 @@
     "seen": 1790560080.8434715,
     "ast_hash": "2a85f3c62ea3f1e9e35612008294686b",
     "semantic_hash": "2a85f3c62ea3f1e9e35612008294686b"
+  },
+  "graphify-hook-test.js": {
+    "mtime": 1790560385.606645,
+    "seen": 1790560426.4235773,
+    "ast_hash": "6af921ee63db8707fbcc6a8b98705f46",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/SKILL.md": {
+    "mtime": 1790559423.3646033,
+    "seen": 1790560426.4235773,
+    "ast_hash": "0f57b61141afe7b743273aec47c49dcc",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/add-watch.md": {
+    "mtime": 1790558873.2847743,
+    "seen": 1790560426.4235773,
+    "ast_hash": "c1f65eb4102ad515149303c7f296b718",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/exports.md": {
+    "mtime": 1790558873.2852893,
+    "seen": 1790560426.4235773,
+    "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1790558873.2863138,
+    "seen": 1790560426.4235773,
+    "ast_hash": "bf895ec4d4e40f5f66f7d31c2a9bd4a7",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1790558873.2863138,
+    "seen": 1790560426.4235773,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/hooks.md": {
+    "mtime": 1790558873.2873125,
+    "seen": 1790560426.4235773,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/query.md": {
+    "mtime": 1790558873.288315,
+    "seen": 1790560426.4235773,
+    "ast_hash": "3c46f8ad006874260614ed8657d02307",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/transcribe.md": {
+    "mtime": 1790558873.2893074,
+    "seen": 1790560426.4235773,
+    "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/update.md": {
+    "mtime": 1790558873.290315,
+    "seen": 1790560426.4235773,
+    "ast_hash": "9378bd03d56baaf78bd738ab3848f142",
+    "semantic_hash": ""
+  },
+  "index.html": {
+    "mtime": 1790432314.1623313,
+    "seen": 1790560426.4235773,
+    "ast_hash": "dda4b277044e6de025b0c0f7d3aacfa8",
+    "semantic_hash": ""
+  },
+  "report.html": {
+    "mtime": 1790037701.0711029,
+    "seen": 1790560426.4235773,
+    "ast_hash": "6b78d9bcf240be80ae3320b491a66cf4",
+    "semantic_hash": ""
+  },
+  "favicon.svg": {
+    "mtime": 1788956000.4460034,
+    "seen": 1790560426.4235773,
+    "ast_hash": "0de02893db8ae510685a7db6b9385e8a",
+    "semantic_hash": ""
   }
 }
