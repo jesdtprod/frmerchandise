@@ -52,6 +52,7 @@ const checks = [
   ['sales history exposes return, refund, and replacement actions', /data-manage-sale-return/.test(files.app) && /receiveSaleReturn/.test(files.app) && /releaseSaleReplacement/.test(files.app)],
   ['sales history shows the separate return-history action only for recorded returns', /hasReturnHistory = saleReturns\.some[\s\S]*data-view-sale-returns[\s\S]*openSaleReturnHistoryDialog/.test(files.app) && /saleReturnHistoryDialog[\s\S]*saleReturnHistoryExisting/.test(files.index)],
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
+  ['sales report calculates and displays net income at 20% of net sales', /const netIncome = netSales \* 0\.20;/.test(files.app) && /Net Sales:[\s\S]*Net Income:[\s\S]*money\(netIncome\)/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],
   ['a sale return accepts only refund or same-item replacement actions', /action_value not in \('refund', 'replacement'\)/.test(files.refundReplacementOnly) && /option value="refund">Refund[\s\S]*option value="replacement">Replace/.test(files.app) && !/option value="return">Return Only/.test(files.app)],

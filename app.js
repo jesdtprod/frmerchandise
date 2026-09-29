@@ -842,6 +842,7 @@ function generateSalesPdf() {
   const creditRefunds = totalRefunds - cashRefunds;
   const netCashCollected = totalCash - cashRefunds;
   const netSales = totalSales - totalRefunds;
+  const netIncome = netSales * 0.20;
   const returnedUnits = returnItemsInPeriod.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   const replacementUnits = releasedReplacements.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id)).reduce((sum, item) => sum + Number(item.replacementQty || 0), 0);
   const returnOutcomes = returnItemsInPeriod.reduce((totals, item) => {
@@ -1188,6 +1189,10 @@ function generateSalesPdf() {
             <div class="final-row final-grand-total net-sales-row">
               <span>Net Sales:</span>
               <strong class="grand-total-val">${money(netSales)}</strong>
+            </div>
+            <div class="final-row final-grand-total net-income-row">
+              <span>Net Income:</span>
+              <strong class="grand-total-val">${money(netIncome)}</strong>
             </div>
           </div>
 
