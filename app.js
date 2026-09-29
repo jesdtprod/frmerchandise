@@ -3510,7 +3510,7 @@ function renderDashboard() {
   const todaySpotCash = dailySpotCash
     .filter((item) => item.businessDate === todayKey)
     .reduce((sum, item) => sum + Number(item.openingCash || 0), 0);
-  const todayCashOnHand = todayCashCollected + todaySpotCash;
+  const todayCashOnHand = todayCashCollected + todaySpotCash - todayExpenses;
   const todayNetSales = Math.max(todaySales - todayExpenses, 0);
   const todayNetIncome = todayNetSales * 0.20;
 
@@ -3662,11 +3662,11 @@ function renderDashboard() {
           <span class="kpi-badge badge-cyan">Liquid Cash</span>
         </div>
         <div class="kpi-body">
-          <span class="kpi-label">Cash Collected + Today's Spot Cash</span>
+          <span class="kpi-label">Cash Collected + Today's Spot Cash - Expenses</span>
           <strong class="kpi-value text-cyan">${money(todayCashOnHand)}</strong>
         </div>
         <div class="kpi-foot">
-          <span class="kpi-foot-sub">Cash collected + opening float</span>
+          <span class="kpi-foot-sub">Cash collected + opening float - expenses</span>
           <span class="kpi-foot-link">Float &rarr;</span>
         </div>
       </article>
