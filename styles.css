@@ -3362,6 +3362,10 @@ body::after {
   grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
 }
 
+.workspace[data-view="dailyExpenses"] .table-row {
+  grid-template-columns: minmax(170px, 1.3fr) minmax(160px, 1.2fr) minmax(130px, 1fr) minmax(200px, 2fr) 96px;
+}
+
 .workspace[data-view="credits"] .table-row {
   grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
 }
@@ -4446,6 +4450,10 @@ dialog.credit-history-dialog {
 
 .workspace[data-view="dailySpotCash"] .skeleton-row {
   grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
+}
+
+.workspace[data-view="dailyExpenses"] .skeleton-row {
+  grid-template-columns: minmax(170px, 1.3fr) minmax(160px, 1.2fr) minmax(130px, 1fr) minmax(200px, 2fr) 96px;
 }
 
 .workspace[data-view="credits"] .skeleton-row {
@@ -11720,6 +11728,13 @@ dialog.confirm-dialog {
     padding: 0 14px;
   }
 
+  .workspace[data-view="dailyExpenses"] .table-row,
+  .workspace[data-view="dailyExpenses"] .skeleton-row {
+    grid-template-columns: minmax(150px, 1.3fr) minmax(130px, 1.1fr) minmax(110px, 1fr) minmax(160px, 1.6fr) 96px;
+    gap: 10px;
+    padding: 0 14px;
+  }
+
   .workspace[data-view="inventoryReports"] .table-row,
   .workspace[data-view="inventoryReports"] .skeleton-row {
     grid-template-columns: minmax(170px, 1.8fr) 95px 110px 125px 120px 95px;
@@ -12657,7 +12672,8 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
 
   .workspace[data-view="staffAccounts"] .table-row:not(.table-header),
   .workspace[data-view="adminAccount"] .table-row:not(.table-header),
-  .workspace[data-view="dailySpotCash"] .table-row:not(.table-header) {
+  .workspace[data-view="dailySpotCash"] .table-row:not(.table-header),
+  .workspace[data-view="dailyExpenses"] .table-row:not(.table-header) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -12670,13 +12686,16 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
 
   .workspace[data-view="staffAccounts"] .table-row .product-cell,
   .workspace[data-view="adminAccount"] .table-row .product-cell,
-  .workspace[data-view="dailySpotCash"] .table-row .product-cell { grid-area: prod; }
+  .workspace[data-view="dailySpotCash"] .table-row .product-cell,
+  .workspace[data-view="dailyExpenses"] .table-row .product-cell { grid-area: prod; }
   .workspace[data-view="staffAccounts"] .table-row .row-middle-cells,
   .workspace[data-view="adminAccount"] .table-row .row-middle-cells,
-  .workspace[data-view="dailySpotCash"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .workspace[data-view="dailySpotCash"] .table-row .row-middle-cells,
+  .workspace[data-view="dailyExpenses"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
   .workspace[data-view="staffAccounts"] .table-row .row-action-cell,
   .workspace[data-view="adminAccount"] .table-row .row-action-cell,
-  .workspace[data-view="dailySpotCash"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
+  .workspace[data-view="dailySpotCash"] .table-row .row-action-cell,
+  .workspace[data-view="dailyExpenses"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
   /* Skeleton rows matching mobile layout */
   .workspace[data-view="pos"] .skeleton-row,
@@ -12688,7 +12707,8 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
   .workspace[data-view="sales"] .skeleton-row,
   .workspace[data-view="staffAccounts"] .skeleton-row,
   .workspace[data-view="adminAccount"] .skeleton-row,
-  .workspace[data-view="dailySpotCash"] .skeleton-row {
+  .workspace[data-view="dailySpotCash"] .skeleton-row,
+  .workspace[data-view="dailyExpenses"] .skeleton-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:

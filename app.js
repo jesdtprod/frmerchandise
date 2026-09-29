@@ -1991,6 +1991,8 @@ function renderSkeletonTable() {
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
     : activeView === 'dailySpotCash'
     ? ['Business Date', 'Opening Cash Float', 'Notes', 'Last Updated', 'Action']
+    : activeView === 'dailyExpenses'
+    ? ['Business Date', 'Category', 'Amount', 'Description & Receipt', 'Action']
     : activeView === 'credits'
     ? ['Customer', 'Credit Sale', 'Credit Date', 'Item Count', 'Credit Amount']
     : activeView === 'sales'
@@ -2054,6 +2056,13 @@ function renderSkeletonTable() {
         <div><div class="skeleton-shimmer skeleton-line price" style="width:85px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line text" style="width:140px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line text" style="width:95px;"></div></div>
+      `;
+    }
+    if (activeView === 'dailyExpenses') {
+      return `
+        <div><div class="skeleton-shimmer skeleton-line pill" style="width:110px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line price" style="width:85px;"></div></div>
+        <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line text" style="width:140px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:75px;"></div></div>
       `;
     }
     if (activeView === 'credits') {
@@ -2123,7 +2132,7 @@ function renderSkeletonTable() {
         </div>
       `;
     }
-    if (activeView === 'products' || activeView === 'dailySpotCash') {
+    if (activeView === 'products' || activeView === 'dailySpotCash' || activeView === 'dailyExpenses') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -3178,8 +3187,9 @@ const STAFF_MENU_DEFS = {
     label: 'Reports',
     fullName: 'Inventory Reports',
     icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>'
-  }
-  ,dailySpotCash: { key: 'dailySpotCash', label: 'Spot Cash', fullName: 'Daily Spot Cash', icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v12H3z"/><path d="M7 7V5a5 5 0 0 1 10 0v2"/></svg>' }
+  },
+  dailySpotCash: { key: 'dailySpotCash', label: 'Spot Cash', fullName: 'Daily Spot Cash', icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v12H3z"/><path d="M7 7V5a5 5 0 0 1 10 0v2"/></svg>' },
+  dailyExpenses: { key: 'dailyExpenses', label: 'Expenses', fullName: 'Daily Expenses', icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/></svg>' }
 };
 
 function renderStaffPermissions(permissions = []) {
@@ -4890,21 +4900,88 @@ function renderDailySpotCash() {
   });
 }
 
-const DAILY_EXPENSE_CATEGORIES = ['Inventory / Merchandise Purchase','Freight / Delivery','Fuel','Transportation','Electricity','Water','Internet / Phone','Rent','Staff Wages / Allowances','Staff Meals','Office / Store Supplies','Cleaning Supplies','Repairs & Maintenance','Equipment / Tools','Marketing / Advertising','Permits / Licenses','Taxes / Government Fees','Bank / Payment Charges','Security','Miscellaneous / Other'];
 function renderDailyExpenses() {
-  const table = $('#inventoryTable'); if (!table) return;
-  const save = async (item = null) => {
-    const businessDate = prompt('Business date (YYYY-MM-DD):', item?.businessDate || new Date().toISOString().slice(0,10)); if (!businessDate) return;
-    const category = prompt(`Expense category:\n${DAILY_EXPENSE_CATEGORIES.join('\n')}`, item?.category || ''); if (!category) return;
-    const amount = prompt('Cash amount:', item?.amount ?? ''); if (amount === null) return;
-    const description = prompt('Description:', item?.description || ''); if (description === null) return;
-    const receipt = prompt('Receipt / reference (optional):', item?.receiptReference || ''); if (receipt === null) return;
-    const args = { target_business_date: businessDate, target_category: category, target_description: description, target_amount: Number(amount), target_receipt_reference: receipt };
-    const client = requireSupabase_(); const { error } = item ? await client.rpc('update_daily_expense', { ...args, target_expense_id: item.id }) : await client.rpc('create_daily_expense', { ...args, target_branch_id: activeBranchId });
-    if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Expense saved.', 'success');
-  };
-  table.innerHTML = `<div class="section-toolbar"><strong>Cash-only Daily Expenses</strong><button class="button" id="addDailyExpense">Add Daily Expense</button></div><div class="table-row table-header"><span>Date</span><span>Category</span><span>Amount</span><span>Description</span><span>Action</span></div>${dailyExpenses.map((item)=>`<div class="table-row"><span>${escapeHtml(item.businessDate)}</span><span>${escapeHtml(item.category)}</span><strong class="price-text">${money(item.amount)}</strong><span>${escapeHtml(item.description || '—')}</span><span class="table-actions"><button class="icon-button" data-edit-expense="${item.id}">Edit</button><button class="icon-button danger-icon" data-delete-expense="${item.id}">Delete</button></span></div>`).join('') || '<div class="empty-state"><p>No Daily Expenses recorded</p></div>'}`;
-  table.querySelector('#addDailyExpense')?.addEventListener('click',()=>save()); table.querySelectorAll('[data-edit-expense]').forEach(b=>b.addEventListener('click',()=>save(dailyExpenses.find(x=>x.id===b.dataset.editExpense)))); table.querySelectorAll('[data-delete-expense]').forEach(b=>b.addEventListener('click',async()=>{if(!await askConfirmation({title:'Delete Daily Expense',confirmText:'Delete Record',confirmType:'danger'}))return;const {error}=await requireSupabase_().rpc('delete_daily_expense',{target_expense_id:b.dataset.deleteExpense});if(error)return showToast(error.message,'error');await refresh();}));
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const filtered = dailyExpenses
+    .filter((item) => `${item.businessDate} ${item.category} ${item.description || ''} ${item.receiptReference || ''} ${item.amount}`.toLowerCase().includes(term))
+    .sort((a, b) => new Date(b.businessDate) - new Date(a.businessDate));
+
+  table.innerHTML = `
+    <div class="table-row table-header">
+      <span>Business Date</span>
+      <span>Category</span>
+      <span>Amount</span>
+      <span>Description & Receipt</span>
+      <span>Action</span>
+    </div>
+    ${filtered.map((item) => {
+      const dateObj = item.businessDate ? new Date(`${item.businessDate}T00:00:00`) : null;
+      const formattedDate = dateObj && !isNaN(dateObj.getTime())
+        ? dateObj.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
+        : item.businessDate;
+      return `
+        <div class="table-row">
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(formattedDate)}</strong>
+            <span class="product-meta">${escapeHtml(item.businessDate)}</span>
+          </div>
+          <div class="row-middle-cells">
+            <span class="category-badge">${escapeHtml(item.category)}</span>
+            <strong class="price-text" style="color: #f87171; font-size: 14px;">${money(item.amount)}</strong>
+            <div class="product-cell" style="min-width:0;">
+              <span class="branch-address" title="${escapeHtml(item.description || '')}">${escapeHtml(item.description || '—')}</span>
+              ${item.receiptReference ? `<span class="product-meta" style="font-size:11px;">Ref: ${escapeHtml(item.receiptReference)}</span>` : ''}
+            </div>
+          </div>
+          <div class="row-action-cell">
+            <span class="table-actions">
+              <button class="icon-button" data-edit-expense="${item.id}" aria-label="Edit Daily Expense" title="Edit Daily Expense">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </button>
+              <button class="icon-button danger-icon" data-delete-expense="${item.id}" aria-label="Delete Daily Expense" title="Delete Daily Expense">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              </button>
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('') || '<div class="empty-state"><p>No Daily Expenses recorded</p><small>Track cash expenses for this branch.</small></div>'}
+  `;
+
+  table.querySelectorAll('[data-edit-expense]').forEach((button) => {
+    button.addEventListener('click', () => openForm('editDailyExpense', button.dataset.editExpense));
+  });
+  table.querySelectorAll('[data-delete-expense]').forEach((button) => {
+    button.addEventListener('click', () => deleteDailyExpense(button.dataset.deleteExpense));
+  });
+}
+
+async function deleteDailyExpense(id) {
+  const item = dailyExpenses.find((entry) => entry.id === id);
+  if (!item) return;
+  const confirmed = await askConfirmation({
+    title: 'Delete Daily Expense',
+    eyebrow: 'DAILY EXPENSES',
+    subtitle: 'Confirm expense deletion',
+    message: `Delete the expense of <strong class="confirm-highlight-name">${money(item.amount)}</strong> (${escapeHtml(item.category)}) for <strong>${escapeHtml(item.businessDate)}</strong>?`,
+    warning: 'This action cannot be undone and will be recorded in the audit trail.',
+    confirmText: 'Delete Record',
+    confirmType: 'danger',
+  });
+  if (!confirmed) return;
+  try {
+    const client = requireSupabase_();
+    const { error } = await client.rpc('delete_daily_expense', { target_expense_id: id });
+    if (error) return showToast(error.message, 'error');
+    dailyExpenses = dailyExpenses.filter((entry) => entry.id !== id);
+    renderInventory();
+    showToast('Daily Expense record deleted.', 'success');
+    backgroundRefresh();
+  } catch (error) {
+    showToast(error.message || 'Unable to delete record.', 'error');
+  }
 }
 
 async function deleteDailySpotCash(id) {
@@ -6209,6 +6286,20 @@ function openForm(type, productId = '') {
       submit: 'Save changes',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
     },
+    dailyExpenses: {
+      title: 'Add Daily Expense',
+      eyebrow: 'BRANCH OPERATIONS',
+      subtitle: 'Record a cash expense for the active branch.',
+      submit: 'Save Expense',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v12"/></svg>`,
+    },
+    editDailyExpense: {
+      title: 'Edit Daily Expense',
+      eyebrow: 'BRANCH OPERATIONS',
+      subtitle: 'Update the recorded cash expense details.',
+      submit: 'Save changes',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+    },
     transfer: {
       title: 'New stock transfer', eyebrow: 'BRANCH OPERATIONS', subtitle: 'Create a draft transfer from the selected branch.', submit: 'Create draft',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
@@ -6721,12 +6812,49 @@ function openForm(type, productId = '') {
     </div>
   `;
 
+  const expenseItem = dailyExpenses.find((item) => item.id === productId);
+  const expenseToday = new Date().toISOString().slice(0, 10);
+  const dailyExpenseFields = `
+    <div class="form-field-group">
+      <label for="modalExpenseDate"><span class="label-text">Business Date <span class="required">*</span></span></label>
+      <input id="modalExpenseDate" name="businessDate" type="date" value="${escapeHtml(expenseItem?.businessDate || expenseToday)}" required />
+    </div>
+    <div class="form-field-group">
+      <label for="modalExpenseCategory"><span class="label-text">Category <span class="required">*</span></span></label>
+      <select id="modalExpenseCategory" name="category" required>
+        <option value="" disabled ${!expenseItem ? 'selected' : ''}>Select category</option>
+        ${DAILY_EXPENSE_CATEGORIES.map((cat) => `<option value="${escapeHtml(cat)}" ${expenseItem?.category === cat ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-field-group">
+      <label for="modalExpenseAmount"><span class="label-text">Cash Amount (PHP) <span class="required">*</span></span></label>
+      <div class="input-with-prefix">
+        <span class="input-prefix">PHP</span>
+        <input id="modalExpenseAmount" name="amount" type="number" min="0.01" step="0.01" placeholder="0.00" value="${expenseItem ? escapeHtml(expenseItem.amount) : ''}" required inputmode="decimal" />
+      </div>
+    </div>
+    <div class="form-field-group">
+      <label for="modalExpenseReceipt"><span class="label-text">Receipt / Invoice No. <span class="optional-label">(optional)</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <input id="modalExpenseReceipt" name="receiptReference" placeholder="e.g. OR-10824" value="${escapeHtml(expenseItem?.receiptReference || '')}" autocomplete="off" />
+      </div>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalExpenseDesc"><span class="label-text">Description / Remarks <span class="optional-label">(optional)</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <input id="modalExpenseDesc" name="description" placeholder="e.g. Purchased cleaning supplies from store" value="${escapeHtml(expenseItem?.description || '')}" autocomplete="off" />
+      </div>
+    </div>
+  `;
+
   const container = $('#formFields');
-  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'resetStaff', 'dailySpotCash', 'editDailySpotCash']);
+  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'resetStaff', 'dailySpotCash', 'editDailySpotCash', 'dailyExpenses', 'editDailyExpense']);
   $('#formDialog').dataset.formLayout = compactFormTypes.has(type) ? 'compact' : 'scrollable';
   $('#formDialog').dataset.formType = type;
   container.scrollTop = 0;
-  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : type === 'dailySpotCash' || type === 'editDailySpotCash' ? dailySpotCashFields : stockFields;
+  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : type === 'dailySpotCash' || type === 'editDailySpotCash' ? dailySpotCashFields : type === 'dailyExpenses' || type === 'editDailyExpense' ? dailyExpenseFields : stockFields;
 
   // Initialize smooth dropdowns and custom datepickers for newly injected fields
   initCustomDropdowns(container);
@@ -6908,6 +7036,7 @@ function setView(view, preserveSidebarOpen = false) {
     inventoryReports: ['REPORTING', 'Inventory Reports', 'INVENTORY REPORT', 'Active Branch Stock Report'],
     transfers: ['BRANCH OPERATIONS', 'Stock Transfers', 'TRANSFER TRACKING', 'Outgoing and Incoming Branch Stock'],
     dailySpotCash: ['BRANCH OPERATIONS', 'Daily Spot Cash', 'OPENING CASH', 'Daily Branch Opening Float'],
+    dailyExpenses: ['BRANCH OPERATIONS', 'Daily Expenses', 'DAILY EXPENSES', 'Cash-only Daily Expenses'],
     staffAccounts: ['ADMINISTRATION', 'Staff Accounts', 'STAFF ACCOUNTS', 'Manage Staff Access'],
     adminAccount: ['ADMINISTRATION', 'Admin Account', 'ADMINISTRATION', 'Administrator Accounts'],
   }[view] || ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'];
@@ -6938,6 +7067,8 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search product, case ID, reason, or disposition...'
       : view === 'dailySpotCash'
       ? 'Search date, notes, or opening cash...'
+      : view === 'dailyExpenses'
+      ? 'Search date, category, description, or receipt...'
       : 'Search product name, SKU, or category...';
   }
 
@@ -6957,6 +7088,7 @@ function setView(view, preserveSidebarOpen = false) {
     staffAccounts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M19 8v6M22 11h-6"/></svg>`,
     adminAccount: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
     dailySpotCash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`,
+    dailyExpenses: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v12"/></svg>`,
   };
 
   const catalogIconWrap = $('#catalogIconWrap');
@@ -6993,6 +7125,8 @@ function setView(view, preserveSidebarOpen = false) {
   if (transferBtn) transferBtn.hidden = view !== 'transfers';
   const spotCashBtn = $('#addDailySpotCashButton');
   if (spotCashBtn) spotCashBtn.hidden = view !== 'dailySpotCash';
+  const expenseBtn = $('#addDailyExpenseButton');
+  if (expenseBtn) expenseBtn.hidden = view !== 'dailyExpenses';
   const staffBtn = $('#addStaffButton');
   if (staffBtn) staffBtn.hidden = view !== 'staffAccounts';
   const adminBtn = $('#addAdminButton');
@@ -7218,6 +7352,7 @@ $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
 $('#addDailySpotCashButton')?.addEventListener('click', () => openForm('dailySpotCash'));
+$('#addDailyExpenseButton')?.addEventListener('click', () => openForm('dailyExpenses'));
 $('#addStaffButton').addEventListener('click', () => openForm('staff'));
 $('#addAdminButton').addEventListener('click', () => openForm('admin'));
 $('#generateInventoryPdfButton').addEventListener('click', generateInventoryReportPdf);
@@ -7413,6 +7548,18 @@ $('#modalForm').addEventListener('submit', async (event) => {
       confirmText: activeForm === 'editDailySpotCash' ? 'Save Changes' : 'Record Spot Cash',
       confirmType: 'primary',
     };
+  } else if (activeForm === 'dailyExpenses' || activeForm === 'editDailyExpense') {
+    const businessDate = form.get('businessDate') || '';
+    const category = form.get('category') || '';
+    const amount = Number(form.get('amount') || 0);
+    confirmConfig = {
+      title: activeForm === 'editDailyExpense' ? 'Save Expense Changes' : 'Record Daily Expense',
+      eyebrow: 'DAILY EXPENSES',
+      subtitle: 'Cash expense confirmation',
+      message: `${activeForm === 'editDailyExpense' ? 'Save changes to' : 'Record'} cash expense of <strong class="confirm-highlight-name">${money(amount)}</strong> (${escapeHtml(category)}) for <strong>${escapeHtml(businessDate)}</strong>?`,
+      confirmText: activeForm === 'editDailyExpense' ? 'Save Changes' : 'Record Expense',
+      confirmType: 'primary',
+    };
   } else {
     const prod = products.find((p) => p.id === stockInLines[0]?.productId) || allProducts.find((p) => p.id === stockInLines[0]?.productId);
     const qty = stockInLines.reduce((total, line) => total + line.qty, 0);
@@ -7516,6 +7663,27 @@ $('#modalForm').addEventListener('submit', async (event) => {
         dailySpotCash = dailySpotCash.map((item) => item.id === editingProductId ? { ...item, businessDate, openingCash, notes, updatedAt: new Date().toISOString() } : item);
       }
       showToast(activeForm === 'editDailySpotCash' ? 'Daily Spot Cash updated.' : 'Daily Spot Cash recorded.', 'success');
+      backgroundRefresh();
+    } else if (activeForm === 'dailyExpenses' || activeForm === 'editDailyExpense') {
+      const businessDate = form.get('businessDate');
+      const category = String(form.get('category') || '').trim();
+      const amount = Number(form.get('amount') || 0);
+      const description = String(form.get('description') || '').trim();
+      const receiptReference = String(form.get('receiptReference') || '').trim();
+      if (!businessDate) throw new Error('Please select a valid business date.');
+      if (!category) throw new Error('Please select an expense category.');
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Please enter a valid cash amount greater than zero.');
+      const client = requireSupabase_();
+      const { data, error } = activeForm === 'editDailyExpense'
+        ? await client.rpc('update_daily_expense', { target_expense_id: editingProductId, target_business_date: businessDate, target_category: category, target_description: description, target_amount: amount, target_receipt_reference: receiptReference })
+        : await client.rpc('create_daily_expense', { target_branch_id: activeBranchId, target_business_date: businessDate, target_category: category, target_description: description, target_amount: amount, target_receipt_reference: receiptReference });
+      throwIfError_(error);
+      if (activeForm === 'dailyExpenses') {
+        dailyExpenses = [{ id: data.expense_id, branchId: activeBranchId, businessDate, category, description, amount, receiptReference, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...dailyExpenses];
+      } else {
+        dailyExpenses = dailyExpenses.map((item) => item.id === editingProductId ? { ...item, businessDate, category, description, amount, receiptReference, updatedAt: new Date().toISOString() } : item);
+      }
+      showToast(activeForm === 'editDailyExpense' ? 'Daily Expense updated.' : 'Daily Expense recorded.', 'success');
       backgroundRefresh();
     } else if (activeForm === 'admin') {
       await api('createAdminAccount', Object.fromEntries(form));

@@ -19,6 +19,7 @@ const files = {
   bundleReturnComponents: await readFile(new URL('../supabase/migrations/20260918009000_resolve_bundle_return_components.sql', import.meta.url), 'utf8'),
   refundReplacementOnly: await readFile(new URL('../supabase/migrations/20260918010000_refund_replacement_sales_returns.sql', import.meta.url), 'utf8'),
   dailySpotCash: await readFile(new URL('../supabase/migrations/20260929100000_daily_spot_cash.sql', import.meta.url), 'utf8'),
+  dailyExpenses: await readFile(new URL('../supabase/migrations/20260929110000_daily_expenses.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -55,6 +56,8 @@ const checks = [
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
   ['sales report calculates and displays net income at 20% of net sales', /const netIncome = netSales \* 0\.20;/.test(files.app) && /Net Sales:[\s\S]*Net Income:[\s\S]*money\(netIncome\)/.test(files.app)],
   ['daily spot cash protects branch opening floats and staff access', /dailySpotCash/.test(files.app) && /daily_spot_cash/.test(files.app) && /daily_spot_cash/.test(files.dailySpotCash) && /can_access_branch\(target_branch_id\)/.test(files.dailySpotCash) && /has_permission\('dailySpotCash'\)/.test(files.dailySpotCash) && /deleted_at/.test(files.dailySpotCash)],
+  ['daily expenses can be granted to staff and saved per branch', /dailyExpenses:\s*\{\s*key:\s*'dailyExpenses'/.test(files.app) && /dailyExpenses/.test(files.accountFunction) && /daily_expenses/.test(files.dailyExpenses) && /create_daily_expense/.test(files.app) && /can_access_branch\(target_branch_id\)/.test(files.dailyExpenses) && /has_permission\('dailyExpenses'\)/.test(files.dailyExpenses)],
+  ['daily expenses loads the current click handler bundle', /app\.js\?v=daily-expenses-1/.test(files.index) && /addDailyExpenseButton'\)\?\.addEventListener\('click', \(\) => openForm\('dailyExpenses'\)\)/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],
   ['a sale return accepts only refund or same-item replacement actions', /action_value not in \('refund', 'replacement'\)/.test(files.refundReplacementOnly) && /option value="refund">Refund[\s\S]*option value="replacement">Replace/.test(files.app) && !/option value="return">Return Only/.test(files.app)],
