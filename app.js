@@ -1986,6 +1986,8 @@ function renderSkeletonTable() {
     ? ['Customer', 'Contact', 'Credit', 'Remaining Balance', 'Action']
     : activeView === 'transfers'
     ? ['Transfer', 'Route', 'Product', 'Status', 'Action']
+    : activeView === 'dailySpotCash'
+    ? ['Business Date', 'Opening Cash Float', 'Notes', 'Last Updated', 'Action']
     : activeView === 'credits'
     ? ['Customer', 'Credit Sale', 'Credit Date', 'Item Count', 'Credit Amount']
     : activeView === 'sales'
@@ -2042,6 +2044,13 @@ function renderSkeletonTable() {
         <div><div class="skeleton-shimmer skeleton-line text" style="width:140px;"></div></div>
         <div class="skeleton-col"><div class="skeleton-shimmer skeleton-line title" style="width:110px;"></div><div class="skeleton-shimmer skeleton-line meta" style="width:60px;"></div></div>
         <div><div class="skeleton-shimmer skeleton-line pill"></div></div>
+      `;
+    }
+    if (activeView === 'dailySpotCash') {
+      return `
+        <div><div class="skeleton-shimmer skeleton-line price" style="width:85px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line text" style="width:140px;"></div></div>
+        <div><div class="skeleton-shimmer skeleton-line text" style="width:95px;"></div></div>
       `;
     }
     if (activeView === 'credits') {
@@ -2111,7 +2120,7 @@ function renderSkeletonTable() {
         </div>
       `;
     }
-    if (activeView === 'products') {
+    if (activeView === 'products' || activeView === 'dailySpotCash') {
       return `
         <div class="row-action-cell skeleton-action-cell">
           <span class="table-actions" style="display:flex;gap:6px;align-items:center;">
@@ -2587,12 +2596,23 @@ function initCustomDatePickers(container = document) {
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-label', input.getAttribute('aria-label') || 'Choose date');
     trigger.innerHTML = `
-      <span class="datepicker-display-value">${formatDisplay(input.value)}</span>
-      <svg class="datepicker-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-        <line x1="16" y1="2" x2="16" y2="6"/>
-        <line x1="8" y1="2" x2="8" y2="6"/>
-        <line x1="3" y1="10" x2="21" y2="10"/>
+      <div class="datepicker-trigger-left">
+        <svg class="datepicker-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2v4"/>
+          <path d="M16 2v4"/>
+          <rect width="18" height="18" x="3" y="4" rx="3"/>
+          <path d="M3 10h18"/>
+          <circle cx="8" cy="14" r="1.1" fill="#ffffff" stroke="none"/>
+          <circle cx="12" cy="14" r="1.1" fill="#ffffff" stroke="none"/>
+          <circle cx="16" cy="14" r="1.1" fill="#ffffff" stroke="none"/>
+          <circle cx="8" cy="18" r="1.1" fill="#ffffff" stroke="none"/>
+          <circle cx="12" cy="18" r="1.1" fill="#ffffff" stroke="none"/>
+          <circle cx="16" cy="18" r="1.1" fill="#ffffff" stroke="none"/>
+        </svg>
+        <span class="datepicker-display-value">${formatDisplay(input.value)}</span>
+      </div>
+      <svg class="datepicker-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m6 9 6 6 6-6"/>
       </svg>
     `;
 
@@ -2960,9 +2980,25 @@ function openDatePicker(wrapper, trigger, popover) {
   wrapper.classList.add('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'true');
 
-  if (popover) {
-    const rect = popover.getBoundingClientRect();
-    if (rect.right > window.innerWidth - 16) {
+  const parentGroup = wrapper.closest('.form-field-group');
+  if (parentGroup) parentGroup.classList.add('has-open-datepicker');
+  const dialog = wrapper.closest('dialog');
+  if (dialog) {
+    dialog.classList.add('has-open-datepicker');
+    const form = dialog.querySelector('form');
+    if (form) form.classList.add('has-open-datepicker');
+    const fields = dialog.querySelector('#formFields');
+    if (fields) fields.classList.add('has-open-datepicker');
+  }
+
+  if (popover && trigger) {
+    const triggerRect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - triggerRect.bottom;
+    const spaceAbove = triggerRect.top;
+    const opensUp = spaceBelow < 330 && spaceAbove > spaceBelow;
+    popover.classList.toggle('opens-up', opensUp);
+
+    if (triggerRect.right + 296 > window.innerWidth - 16 || triggerRect.left + 296 > window.innerWidth - 16) {
       popover.classList.add('anchor-right');
     } else {
       popover.classList.remove('anchor-right');
@@ -2973,6 +3009,17 @@ function openDatePicker(wrapper, trigger, popover) {
 function closeDatePicker(wrapper, trigger) {
   wrapper.classList.remove('open');
   if (trigger) trigger.setAttribute('aria-expanded', 'false');
+
+  const parentGroup = wrapper.closest('.form-field-group');
+  if (parentGroup) parentGroup.classList.remove('has-open-datepicker');
+  const dialog = wrapper.closest('dialog');
+  if (dialog) {
+    dialog.classList.remove('has-open-datepicker');
+    const form = dialog.querySelector('form');
+    if (form) form.classList.remove('has-open-datepicker');
+    const fields = dialog.querySelector('#formFields');
+    if (fields) fields.classList.remove('has-open-datepicker');
+  }
 }
 
 function syncCustomDatePicker(input) {
@@ -4782,22 +4829,87 @@ function renderCreditPayments() {
 }
 
 function renderDailySpotCash() {
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const table = $('#inventoryTable');
   if (!table) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || activeBranchId;
-  table.innerHTML = `<div class="section-toolbar"><div><strong>Daily Spot Cash</strong><span class="product-meta">Opening cash float for ${escapeHtml(branchName)}</span></div><button class="button" id="addDailySpotCash">Add Daily Spot Cash</button></div><div class="table-row table-header"><span>Business Date</span><span>Opening Cash</span><span>Notes</span><span>Updated</span><span>Action</span></div>${dailySpotCash.map((item) => `<div class="table-row"><span>${escapeHtml(item.businessDate)}</span><strong class="price-text">${money(item.openingCash)}</strong><span>${escapeHtml(item.notes || '—')}</span><span>${escapeHtml(item.updatedAt ? new Date(item.updatedAt).toLocaleString('en-PH') : '')}</span><span class="table-actions"><button class="icon-button" data-edit-spot-cash="${item.id}" title="Edit Daily Spot Cash">Edit</button><button class="icon-button danger-icon" data-delete-spot-cash="${item.id}" title="Delete Daily Spot Cash">Delete</button></span></div>`).join('') || '<div class="empty-state"><p>No Daily Spot Cash recorded</p><small>Record the opening cash before branch operations begin.</small></div>'}`;
-  const save = async (item = null) => {
-    const businessDate = prompt('Business date (YYYY-MM-DD):', item?.businessDate || today); if (!businessDate) return;
-    const openingCash = prompt('Opening cash:', item?.openingCash ?? '0'); if (openingCash === null) return;
-    const notes = prompt('Notes (optional):', item?.notes || ''); if (notes === null) return;
+  const filtered = dailySpotCash
+    .filter((item) => `${item.businessDate} ${item.openingCash} ${item.notes || ''}`.toLowerCase().includes(term))
+    .sort((a, b) => new Date(b.businessDate) - new Date(a.businessDate));
+
+  table.innerHTML = `
+    <div class="table-row table-header">
+      <span>Business Date</span>
+      <span>Opening Cash Float</span>
+      <span>Notes</span>
+      <span>Last Updated</span>
+      <span>Action</span>
+    </div>
+    ${filtered.map((item) => {
+      const dateObj = item.businessDate ? new Date(`${item.businessDate}T00:00:00`) : null;
+      const formattedDate = dateObj && !isNaN(dateObj.getTime())
+        ? dateObj.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
+        : item.businessDate;
+      const formattedUpdated = item.updatedAt
+        ? new Date(item.updatedAt).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' })
+        : '—';
+      return `
+        <div class="table-row">
+          <div class="product-cell">
+            <strong class="product-name">${escapeHtml(formattedDate)}</strong>
+            <span class="product-meta">${escapeHtml(item.businessDate)}</span>
+          </div>
+          <div class="row-middle-cells">
+            <strong class="price-text" style="color:var(--accent-emerald, #10b981); font-size:14px;">${money(item.openingCash)}</strong>
+            <span class="branch-address" title="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '—')}</span>
+            <span class="product-meta" style="font-size:11.5px;">${escapeHtml(formattedUpdated)}</span>
+          </div>
+          <div class="row-action-cell">
+            <span class="table-actions">
+              <button class="icon-button" data-edit-spot-cash="${item.id}" aria-label="Edit Daily Spot Cash" title="Edit Daily Spot Cash">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </button>
+              <button class="icon-button danger-icon" data-delete-spot-cash="${item.id}" aria-label="Delete Daily Spot Cash" title="Delete Daily Spot Cash">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              </button>
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('') || '<div class="empty-state"><p>No Daily Spot Cash recorded</p><small>Record the opening cash before branch operations begin.</small></div>'}
+  `;
+
+  table.querySelectorAll('[data-edit-spot-cash]').forEach((button) => {
+    button.addEventListener('click', () => openForm('editDailySpotCash', button.dataset.editSpotCash));
+  });
+  table.querySelectorAll('[data-delete-spot-cash]').forEach((button) => {
+    button.addEventListener('click', () => deleteDailySpotCash(button.dataset.deleteSpotCash));
+  });
+}
+
+async function deleteDailySpotCash(id) {
+  const item = dailySpotCash.find((entry) => entry.id === id);
+  if (!item) return;
+  const confirmed = await askConfirmation({
+    title: 'Delete Daily Spot Cash',
+    eyebrow: 'DAILY SPOT CASH',
+    subtitle: 'Confirm record deletion',
+    message: `Delete the opening float of <strong class="confirm-highlight-name">${money(item.openingCash)}</strong> for <strong>${escapeHtml(item.businessDate)}</strong>?`,
+    warning: 'This action cannot be undone and will be recorded in the audit trail.',
+    confirmText: 'Delete Record',
+    confirmType: 'danger',
+  });
+  if (!confirmed) return;
+  try {
     const client = requireSupabase_();
-    const { error } = item ? await client.rpc('update_daily_spot_cash', { target_spot_cash_id: item.id, target_business_date: businessDate, opening_cash_input: Number(openingCash), notes_input: notes }) : await client.rpc('create_daily_spot_cash', { target_branch_id: activeBranchId, target_business_date: businessDate, opening_cash_input: Number(openingCash), notes_input: notes });
-    if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Spot Cash saved.', 'success');
-  };
-  table.querySelector('#addDailySpotCash')?.addEventListener('click', () => save());
-  table.querySelectorAll('[data-edit-spot-cash]').forEach((button) => button.addEventListener('click', () => save(dailySpotCash.find((item) => item.id === button.dataset.editSpotCash))));
-  table.querySelectorAll('[data-delete-spot-cash]').forEach((button) => button.addEventListener('click', async () => { if (!confirm('Delete this Daily Spot Cash record?')) return; const { error } = await requireSupabase_().rpc('delete_daily_spot_cash', { target_spot_cash_id: button.dataset.deleteSpotCash }); if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Spot Cash deleted.', 'success'); }));
+    const { error } = await client.rpc('delete_daily_spot_cash', { target_spot_cash_id: id });
+    if (error) return showToast(error.message, 'error');
+    dailySpotCash = dailySpotCash.filter((entry) => entry.id !== id);
+    renderInventory();
+    showToast('Daily Spot Cash record deleted.', 'success');
+    backgroundRefresh();
+  } catch (error) {
+    showToast(error.message || 'Unable to delete record.', 'error');
+  }
 }
 
 function renderSalesHistory() {
@@ -6061,6 +6173,20 @@ function openForm(type, productId = '') {
       title: 'Edit administrator', eyebrow: 'ADMINISTRATION', subtitle: 'Update your administrator profile.', submit: 'Save changes',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
     },
+    dailySpotCash: {
+      title: 'Add Daily Spot Cash',
+      eyebrow: 'BRANCH OPERATIONS',
+      subtitle: 'Record the opening cash float for today’s operations.',
+      submit: 'Save Spot Cash',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`,
+    },
+    editDailySpotCash: {
+      title: 'Edit Daily Spot Cash',
+      eyebrow: 'BRANCH OPERATIONS',
+      subtitle: 'Update the opening float amount or notes.',
+      submit: 'Save changes',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+    },
     transfer: {
       title: 'New stock transfer', eyebrow: 'BRANCH OPERATIONS', subtitle: 'Create a draft transfer from the selected branch.', submit: 'Create draft',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
@@ -6550,15 +6676,39 @@ function openForm(type, productId = '') {
     </div>
   `;
 
+  const spotCash = dailySpotCash.find((item) => item.id === productId);
+  const today = new Date().toISOString().slice(0, 10);
+  const dailySpotCashFields = `
+    <div class="form-field-group">
+      <label for="modalSpotCashDate"><span class="label-text">Business Date <span class="required">*</span></span></label>
+      <input id="modalSpotCashDate" name="businessDate" type="date" value="${escapeHtml(spotCash?.businessDate || today)}" required />
+    </div>
+    <div class="form-field-group">
+      <label for="modalSpotCashAmount"><span class="label-text">Opening Cash Float (PHP) <span class="required">*</span></span></label>
+      <div class="input-with-prefix">
+        <span class="input-prefix">PHP</span>
+        <input id="modalSpotCashAmount" name="openingCash" type="number" min="0" step="0.01" placeholder="0.00" value="${spotCash ? escapeHtml(spotCash.openingCash) : ''}" required inputmode="decimal" />
+      </div>
+    </div>
+    <div class="form-field-group full-field">
+      <label for="modalSpotCashNotes"><span class="label-text">Notes / Remarks <span class="optional-label">(optional)</span></span></label>
+      <div class="input-with-icon">
+        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <input id="modalSpotCashNotes" name="notes" placeholder="e.g. Verified opening float before counter opens" value="${escapeHtml(spotCash?.notes || '')}" autocomplete="off" />
+      </div>
+    </div>
+  `;
+
   const container = $('#formFields');
-  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'resetStaff']);
+  const compactFormTypes = new Set(['product', 'edit', 'linkProduct', 'branch', 'editBranch', 'customer', 'editCustomer', 'admin', 'editAdmin', 'resetStaff', 'dailySpotCash', 'editDailySpotCash']);
   $('#formDialog').dataset.formLayout = compactFormTypes.has(type) ? 'compact' : 'scrollable';
   $('#formDialog').dataset.formType = type;
   container.scrollTop = 0;
-  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : stockFields;
+  container.innerHTML = type === 'product' || type === 'edit' ? productFields : type === 'linkProduct' ? linkProductFields : type === 'branch' || type === 'editBranch' ? branchFields : type === 'customer' || type === 'editCustomer' ? customerFields : type === 'staff' || type === 'editStaff' ? staffFields : type === 'resetStaff' ? resetStaffFields : type === 'admin' || type === 'editAdmin' ? adminFields : type === 'transfer' ? transferFields : type === 'dailySpotCash' || type === 'editDailySpotCash' ? dailySpotCashFields : stockFields;
 
-  // Initialize smooth dropdowns for newly injected selects
+  // Initialize smooth dropdowns and custom datepickers for newly injected fields
   initCustomDropdowns(container);
+  initCustomDatePickers(container);
 
   // Replace the delegated handler on every modal open; retaining old handlers
   // was appending two blank lines after the form had been opened before.
@@ -6762,6 +6912,8 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search case ID, reference, supplier, or reason...'
       : view === 'quarantineReport'
       ? 'Search product, case ID, reason, or disposition...'
+      : view === 'dailySpotCash'
+      ? 'Search date, notes, or opening cash...'
       : 'Search product name, SKU, or category...';
   }
 
@@ -6780,6 +6932,7 @@ function setView(view, preserveSidebarOpen = false) {
     transfers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>`,
     staffAccounts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M19 8v6M22 11h-6"/></svg>`,
     adminAccount: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
+    dailySpotCash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`,
   };
 
   const catalogIconWrap = $('#catalogIconWrap');
@@ -6814,6 +6967,8 @@ function setView(view, preserveSidebarOpen = false) {
   if (customerBtn) customerBtn.hidden = view !== 'customers';
   const transferBtn = $('#addTransferButton');
   if (transferBtn) transferBtn.hidden = view !== 'transfers';
+  const spotCashBtn = $('#addDailySpotCashButton');
+  if (spotCashBtn) spotCashBtn.hidden = view !== 'dailySpotCash';
   const staffBtn = $('#addStaffButton');
   if (staffBtn) staffBtn.hidden = view !== 'staffAccounts';
   const adminBtn = $('#addAdminButton');
@@ -7038,6 +7193,7 @@ if (stockInSearchBtn) {
 $('#addBranchButton').addEventListener('click', () => openForm('branch'));
 $('#addCustomerButton').addEventListener('click', () => openForm('customer'));
 $('#addTransferButton').addEventListener('click', () => openForm('transfer'));
+$('#addDailySpotCashButton')?.addEventListener('click', () => openForm('dailySpotCash'));
 $('#addStaffButton').addEventListener('click', () => openForm('staff'));
 $('#addAdminButton').addEventListener('click', () => openForm('admin'));
 $('#generateInventoryPdfButton').addEventListener('click', generateInventoryReportPdf);
@@ -7222,6 +7378,17 @@ $('#modalForm').addEventListener('submit', async (event) => {
       confirmText: 'Create Draft',
       confirmType: 'primary'
     };
+  } else if (activeForm === 'dailySpotCash' || activeForm === 'editDailySpotCash') {
+    const businessDate = form.get('businessDate') || '';
+    const openingCash = Number(form.get('openingCash') || 0);
+    confirmConfig = {
+      title: activeForm === 'editDailySpotCash' ? 'Save Spot Cash Changes' : 'Record Daily Spot Cash',
+      eyebrow: 'DAILY SPOT CASH',
+      subtitle: 'Opening cash float confirmation',
+      message: `Save opening cash float of <strong class="confirm-highlight-name">${money(openingCash)}</strong> for <strong>${escapeHtml(businessDate)}</strong>?`,
+      confirmText: activeForm === 'editDailySpotCash' ? 'Save Changes' : 'Record Spot Cash',
+      confirmType: 'primary',
+    };
   } else {
     const prod = products.find((p) => p.id === stockInLines[0]?.productId) || allProducts.find((p) => p.id === stockInLines[0]?.productId);
     const qty = stockInLines.reduce((total, line) => total + line.qty, 0);
@@ -7308,6 +7475,24 @@ $('#modalForm').addEventListener('submit', async (event) => {
       if (!password || password.length < 8) throw new Error('Temporary password must be at least 8 characters.');
       await api('resetStaffPassword', { staffId: editingProductId, temporaryPassword: password });
       showToast('Temporary password saved.', 'success');
+    } else if (activeForm === 'dailySpotCash' || activeForm === 'editDailySpotCash') {
+      const businessDate = form.get('businessDate');
+      const openingCash = Number(form.get('openingCash') || 0);
+      const notes = String(form.get('notes') || '').trim();
+      if (!businessDate) throw new Error('Please select a valid business date.');
+      if (!Number.isFinite(openingCash) || openingCash < 0) throw new Error('Please enter a valid opening cash float.');
+      const client = requireSupabase_();
+      const { data, error } = activeForm === 'editDailySpotCash'
+        ? await client.rpc('update_daily_spot_cash', { target_spot_cash_id: editingProductId, target_business_date: businessDate, opening_cash_input: openingCash, notes_input: notes })
+        : await client.rpc('create_daily_spot_cash', { target_branch_id: activeBranchId, target_business_date: businessDate, opening_cash_input: openingCash, notes_input: notes });
+      throwIfError_(error);
+      if (activeForm === 'dailySpotCash') {
+        dailySpotCash = [{ id: data.spot_cash_id, branchId: activeBranchId, businessDate, openingCash, notes, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...dailySpotCash];
+      } else {
+        dailySpotCash = dailySpotCash.map((item) => item.id === editingProductId ? { ...item, businessDate, openingCash, notes, updatedAt: new Date().toISOString() } : item);
+      }
+      showToast(activeForm === 'editDailySpotCash' ? 'Daily Spot Cash updated.' : 'Daily Spot Cash recorded.', 'success');
+      backgroundRefresh();
     } else if (activeForm === 'admin') {
       await api('createAdminAccount', Object.fromEntries(form));
       showToast('Administrator account created.', 'success');

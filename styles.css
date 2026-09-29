@@ -3358,6 +3358,10 @@ body::after {
   grid-template-columns: minmax(160px, 1.2fr) minmax(220px, 1.8fr) minmax(180px, 1.4fr) 110px 80px;
 }
 
+.workspace[data-view="dailySpotCash"] .table-row {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
+}
+
 .workspace[data-view="credits"] .table-row {
   grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
 }
@@ -4440,6 +4444,10 @@ dialog.credit-history-dialog {
   grid-template-columns: minmax(160px, 1.2fr) minmax(220px, 1.8fr) minmax(180px, 1.4fr) 110px 80px;
 }
 
+.workspace[data-view="dailySpotCash"] .skeleton-row {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
+}
+
 .workspace[data-view="credits"] .skeleton-row {
   grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
 }
@@ -5286,7 +5294,7 @@ input.native-hidden {
 
 /* ==========================================================================
    SMOOTH CUSTOM DATE PICKER & CALENDAR SYSTEM
-   (User Requirement: Redesign date picker and calendar, make it smooth)
+   (User Requirement: Redesign date picker and calendar, make it smooth, white calendar icon)
    ========================================================================== */
 
 .custom-datepicker {
@@ -5295,12 +5303,34 @@ input.native-hidden {
   user-select: none;
 }
 
+input[type="date"].native-hidden,
+.native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+
 /* Trigger Button */
 .datepicker-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   height: 42px;
   min-height: 42px;
@@ -5308,8 +5338,8 @@ input.native-hidden {
   padding: 0 12px;
   border: 1px solid var(--border-card);
   border-radius: 9px;
-  color: var(--text-pure);
-  background: #091224;
+  color: #ffffff;
+  background: #081329;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -5334,25 +5364,46 @@ input.native-hidden {
   background: #0d1a34;
 }
 
+.datepicker-trigger-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .datepicker-display-value {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .datepicker-trigger-icon {
-  width: 16px;
-  height: 16px;
-  color: #60a5fa;
+  width: 17px;
+  height: 17px;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
   flex-shrink: 0;
-  transition: transform 0.26s var(--ease-inertia), color 0.2s var(--ease-inertia);
+  transition: transform 0.26s var(--ease-inertia);
 }
 
 .custom-datepicker.open .datepicker-trigger-icon {
+  transform: scale(1.08);
+}
+
+.datepicker-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.24s var(--ease-inertia), color 0.2s var(--ease-inertia);
+}
+
+.custom-datepicker.open .datepicker-chevron {
   color: var(--pepsi-blue);
-  transform: scale(1.1);
+  transform: rotate(180deg);
 }
 
 /* Calendar Popover */
@@ -5360,11 +5411,11 @@ input.native-hidden {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 120;
-  width: 292px;
+  z-index: 1000;
+  width: 296px;
   box-sizing: border-box;
   padding: 14px;
-  background: rgba(11, 20, 38, 0.98);
+  background: rgba(10, 19, 38, 0.98);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(0, 102, 245, 0.38);
@@ -5384,6 +5435,16 @@ input.native-hidden {
   left: auto;
   right: 0;
   transform-origin: top right;
+}
+
+.custom-calendar-popover.opens-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform-origin: bottom left;
+}
+
+.custom-calendar-popover.opens-up.anchor-right {
+  transform-origin: bottom right;
 }
 
 .custom-datepicker.open .custom-calendar-popover {
@@ -9323,8 +9384,28 @@ dialog#formDialog[data-form-layout="compact"] #formFields {
 
 .form-field-group:has(.custom-dropdown.open),
 .form-field-group.has-open-dropdown,
-.custom-dropdown.open {
-  z-index: 60 !important;
+.custom-dropdown.open,
+dialog.has-open-dropdown,
+dialog.has-open-dropdown form,
+dialog.has-open-dropdown #formFields,
+dialog.has-open-dropdown .form-grid,
+dialog.pepsi-dialog:has(.custom-dropdown.open),
+dialog.pepsi-dialog:has(.custom-dropdown.open) form,
+dialog.pepsi-dialog:has(.custom-dropdown.open) #formFields,
+dialog.pepsi-dialog:has(.custom-dropdown.open) .form-grid,
+.form-field-group:has(.custom-datepicker.open),
+.form-field-group.has-open-datepicker,
+.custom-datepicker.open,
+dialog.has-open-datepicker,
+dialog.has-open-datepicker form,
+dialog.has-open-datepicker #formFields,
+dialog.has-open-datepicker .form-grid,
+dialog.pepsi-dialog:has(.custom-datepicker.open),
+dialog.pepsi-dialog:has(.custom-datepicker.open) form,
+dialog.pepsi-dialog:has(.custom-datepicker.open) #formFields,
+dialog.pepsi-dialog:has(.custom-datepicker.open) .form-grid {
+  overflow: visible !important;
+  z-index: 150 !important;
   position: relative;
 }
 
@@ -11632,6 +11713,13 @@ dialog.confirm-dialog {
     padding: 0 14px;
   }
 
+  .workspace[data-view="dailySpotCash"] .table-row,
+  .workspace[data-view="dailySpotCash"] .skeleton-row {
+    grid-template-columns: minmax(150px, 1.3fr) minmax(130px, 1.1fr) minmax(160px, 1.6fr) minmax(120px, 1fr) 96px;
+    gap: 10px;
+    padding: 0 14px;
+  }
+
   .workspace[data-view="inventoryReports"] .table-row,
   .workspace[data-view="inventoryReports"] .skeleton-row {
     grid-template-columns: minmax(170px, 1.8fr) 95px 110px 125px 120px 95px;
@@ -12568,7 +12656,8 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
   .workspace[data-view="transfers"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
   .workspace[data-view="staffAccounts"] .table-row:not(.table-header),
-  .workspace[data-view="adminAccount"] .table-row:not(.table-header) {
+  .workspace[data-view="adminAccount"] .table-row:not(.table-header),
+  .workspace[data-view="dailySpotCash"] .table-row:not(.table-header) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -12580,11 +12669,14 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
   }
 
   .workspace[data-view="staffAccounts"] .table-row .product-cell,
-  .workspace[data-view="adminAccount"] .table-row .product-cell { grid-area: prod; }
+  .workspace[data-view="adminAccount"] .table-row .product-cell,
+  .workspace[data-view="dailySpotCash"] .table-row .product-cell { grid-area: prod; }
   .workspace[data-view="staffAccounts"] .table-row .row-middle-cells,
-  .workspace[data-view="adminAccount"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .workspace[data-view="adminAccount"] .table-row .row-middle-cells,
+  .workspace[data-view="dailySpotCash"] .table-row .row-middle-cells { grid-area: details; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
   .workspace[data-view="staffAccounts"] .table-row .row-action-cell,
-  .workspace[data-view="adminAccount"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
+  .workspace[data-view="adminAccount"] .table-row .row-action-cell,
+  .workspace[data-view="dailySpotCash"] .table-row .row-action-cell { grid-area: action; display: flex; align-items: center; }
 
   /* Skeleton rows matching mobile layout */
   .workspace[data-view="pos"] .skeleton-row,
@@ -12595,7 +12687,8 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
   .workspace[data-view="credits"] .skeleton-row,
   .workspace[data-view="sales"] .skeleton-row,
   .workspace[data-view="staffAccounts"] .skeleton-row,
-  .workspace[data-view="adminAccount"] .skeleton-row {
+  .workspace[data-view="adminAccount"] .skeleton-row,
+  .workspace[data-view="dailySpotCash"] .skeleton-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
