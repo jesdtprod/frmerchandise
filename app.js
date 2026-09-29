@@ -462,6 +462,18 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
       border-radius: 8px;
       padding: 7px 11px;
     }
+    .report-kpi-grid > .report-kpi-card:nth-child(1) { order: 1; }
+    .report-kpi-grid > .report-kpi-card:nth-child(2) { order: 2; }
+    .report-kpi-grid > .report-kpi-card:nth-child(3) { order: 3; }
+    .report-kpi-grid > .report-kpi-card:nth-child(9) { order: 4; }
+    .report-kpi-grid > .report-kpi-card:nth-child(6) { order: 5; }
+    .report-kpi-grid > .report-kpi-card:nth-child(10) { order: 6; }
+    .report-kpi-grid > .report-kpi-card:nth-child(11) { order: 7; }
+    .report-kpi-grid > .report-kpi-card:nth-child(12) { order: 8; }
+    .report-kpi-grid > .report-kpi-card:nth-child(4) { order: 9; }
+    .report-kpi-grid > .report-kpi-card:nth-child(5) { order: 10; }
+    .report-kpi-grid > .report-kpi-card:nth-child(7) { order: 11; }
+    .report-kpi-grid > .report-kpi-card:nth-child(8) { order: 12; }
     .report-kpi-card .kpi-label {
       font-size: 8.5px;
       font-weight: 700;
@@ -1000,9 +1012,9 @@ function generateSalesPdf() {
             <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
           </div>
           <div class="report-kpi-card">
-            <span class="kpi-label">Net Sales</span>
-            <strong class="kpi-val text-success">${money(netSales)}</strong>
-            <span class="kpi-sub">Gross sales less refunds &amp; expenses</span>
+            <span class="kpi-label">Spot Cash</span>
+            <strong class="kpi-val text-success">${money(totalSpotCash)}</strong>
+            <span class="kpi-sub">Recorded opening cash</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Returned Units</span>
