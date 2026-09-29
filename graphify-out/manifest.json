@@ -18,9 +18,9 @@
     "semantic_hash": "85060dd50c382cc8aa0c77b96f7f5760"
   },
   "app.js": {
-    "mtime": 1790686460.5244513,
-    "seen": 1790686508.5278583,
-    "ast_hash": "c24440178960f1b15a7384e8642359b5",
+    "mtime": 1790690452.4493346,
+    "seen": 1790690486.6366687,
+    "ast_hash": "55b89a30e8977972bf3c82546dd9498b",
     "semantic_hash": ""
   },
   "deno.json": {
@@ -30,9 +30,9 @@
     "semantic_hash": "95a618367181f1e65ad002d51664c8b6"
   },
   "scripts/check-pos.mjs": {
-    "mtime": 1790684867.9396503,
-    "seen": 1790685046.5451684,
-    "ast_hash": "4bcb33682687bd7a3c73c6cca6ce0320",
+    "mtime": 1790690465.8830535,
+    "seen": 1790690486.6366687,
+    "ast_hash": "0ff579bca4ecba3ee2e260b67feb66e4",
     "semantic_hash": ""
   },
   "service-worker.js": {
@@ -48,218 +48,218 @@
     "semantic_hash": "4f3713170ac278feef43f41ef8d283c5"
   },
   "supabase/functions/manage-account/index.ts": {
-    "mtime": 1790684909.9464219,
-    "seen": 1790685046.5451684,
-    "ast_hash": "cadcd0a809acd341571af2a572a5e70c",
+    "mtime": 1790688602.726637,
+    "seen": 1790688688.1183639,
+    "ast_hash": "06b91d52ec435a78c28dbc248c231e25",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915120000_initial_schema.sql": {
     "mtime": 1789451026.7002015,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "b9bdb97b78c54eb773b691e2fb16e524",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915130000_access_policies.sql": {
     "mtime": 1789451441.8893287,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "0cb133669f1e6917f4f87e298aa88f56",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915140000_transaction_functions.sql": {
     "mtime": 1789451769.819903,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "191a6ba8fa00903fbcb025551cef7c69",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915150000_auth_bootstrap.sql": {
     "mtime": 1789454257.1044888,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "db686ac2d9372b1e2c0f7ce7e783f768",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915160000_catalog_profile_functions.sql": {
     "mtime": 1789454870.8261802,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "86c3399c7477e531e6f40d287cf929a2",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915170000_complete_password_change.sql": {
     "mtime": 1789457710.3448894,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "fc388ffbea0c063ed49bbccc44587555",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915180000_transfer_destination_registration.sql": {
     "mtime": 1789458139.6306708,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "6b91dca2ff5543e4a48185f34b93a0d5",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915190000_enforce_password_reset.sql": {
     "mtime": 1789458315.327689,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "b1c430ba93d233f36808ca7974f9adc0",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915193000_lock_staff_branch.sql": {
     "mtime": 1789459164.0106244,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "32703fc22fbc505bd072b2637785c05f",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915194000_operational_backup_restore.sql": {
     "mtime": 1789460137.1540873,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "3f028646ab44811316a9757485e66bde",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915195000_repair_shared_transfer_products.sql": {
     "mtime": 1789460610.0168364,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "2cbe5f1b54c694eae1d0aa53fc05f71e",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915196000_shared_transfer_products_rpc.sql": {
     "mtime": 1789460967.716722,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "cc162dc750456b2d03bdb4a2c43342a6",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915197000_fifo_inventory_costing.sql": {
     "mtime": 1789462549.2700148,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "138e6959bdea62676ff64559e5c655a1",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915198000_fifo_batch_selling_prices.sql": {
     "mtime": 1789485812.2922685,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "6ec9eec59d78b44a01367a1576c16eba",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915199000_safe_product_archiving.sql": {
     "mtime": 1789486561.962744,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "c5935b2f6a169eb327deb0cf5a456a12",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915200000_transfer_fifo_selling_prices.sql": {
     "mtime": 1789486914.1282127,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "28ae06f208b3946cb195a0f1d5fc4eda",
     "semantic_hash": ""
   },
   "supabase/migrations/20260916000000_restore_fifo_backup_compatibility.sql": {
     "mtime": 1789488924.7904227,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "da8f1f6e7fee34200668a4777bec840b",
     "semantic_hash": ""
   },
   "supabase/migrations/20260916001000_restore_safe_delete.sql": {
     "mtime": 1789489263.1626713,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "0a66380fd7b1ff5a30b645b691902ea2",
     "semantic_hash": ""
   },
   "supabase/migrations/20260917001000_customer_opening_credit_balances.sql": {
     "mtime": 1789646230.796582,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "fb9f1fa3b93e722ac75f7ed320fc4b5c",
     "semantic_hash": ""
   },
   "supabase/migrations/20260917002000_opening_balance_wording.sql": {
     "mtime": 1789649229.68934,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "81ce8599b3ead051b4a6161a0a9982ca",
     "semantic_hash": ""
   },
   "supabase/migrations/20260917003000_editable_customer_previous_balance.sql": {
     "mtime": 1789649585.171873,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "0c487ee2719bc1dffa01d161b176dc78",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918000000_bundles_returns_replacements.sql": {
     "mtime": 1789664342.542435,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "3f7be794faa86ecabf0d3f17bccfc03c",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918001000_bundle_sales_transactions.sql": {
     "mtime": 1789664647.5148594,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "a6383f00da8bfba185e867ba1f76a87f",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918002000_bundle_transfer_return_resolution.sql": {
     "mtime": 1789664739.157264,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "0ca0d99c45f379611100b42842994b5e",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918003000_multi_line_bundle_transfers.sql": {
     "mtime": 1789719613.155376,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "dae918453b8c546576161b00ef396fb0",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918004000_transfer_batch_actions.sql": {
     "mtime": 1789719843.7555726,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "e97d974e3bf035ff442deaf62f7e4457",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918005000_complete_sales_return_workflow.sql": {
     "mtime": 1789753494.6339905,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "ede7b80307c22c0d9aa6a30fe3ac7fca",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918006000_fix_sales_return_fifo_lots.sql": {
     "mtime": 1789753494.6559865,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "ee3885fa20feb7235c0b38dee7545e2d",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918007000_mixed_sales_return_actions.sql": {
     "mtime": 1789755968.0189495,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "6f1ad8add3b0683b63282eabad8fb0a8",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918008000_same_item_replacements.sql": {
     "mtime": 1789799415.7581134,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "119934627411657f0a5b3965bebe9253",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918009000_resolve_bundle_return_components.sql": {
     "mtime": 1789809987.0900273,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "fc93b3cd3447d6834819d39e23e884cf",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918010000_refund_replacement_sales_returns.sql": {
     "mtime": 1789810761.8122969,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "f67ac28dbd53756918722b0856ebbf2a",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918011000_quarantined_receipts.sql": {
     "mtime": 1789813289.424495,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "475fdb3b1aa47576f4da1ebea0107a84",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918012000_multi_item_stock_in.sql": {
     "mtime": 1789835580.6621027,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "fbd246969639e648759bc861b14c45cc",
     "semantic_hash": ""
   },
   "supabase/migrations/20260926000000_clear_operational_data.sql": {
     "mtime": 1790431767.7684903,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "19122932690159578dae5a41c2481ce1",
     "semantic_hash": ""
   },
@@ -342,9 +342,9 @@
     "semantic_hash": ""
   },
   "index.html": {
-    "mtime": 1790686492.804384,
-    "seen": 1790686508.5338938,
-    "ast_hash": "da5bc207b200112015702c0f35597e88",
+    "mtime": 1790690475.312205,
+    "seen": 1790690486.640029,
+    "ast_hash": "28b2bc1f2a7b9608a9ab332b15f61f89",
     "semantic_hash": ""
   },
   "report.html": {
@@ -373,8 +373,20 @@
   },
   "supabase/migrations/20260929100000_daily_spot_cash.sql": {
     "mtime": 1790684903.4131906,
-    "seen": 1790686547.0607145,
+    "seen": 1790690490.3009307,
     "ast_hash": "78e79e2b30bb6c1061e5933a4963a40e",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260929110000_daily_expenses.sql": {
+    "mtime": 1790687192.5448353,
+    "seen": 1790690490.3009307,
+    "ast_hash": "7887ff6ddeeffc45c43d09b896c2ac6d",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260929120000_backup_daily_operations.sql": {
+    "mtime": 1790688619.859356,
+    "seen": 1790690490.3009307,
+    "ast_hash": "f9c9fd25906ab7ab9e1c09f1b27b1596",
     "semantic_hash": ""
   }
 }

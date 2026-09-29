@@ -1,9 +1,9 @@
 {
   "0": "app.js",
-  "1": "renderCart",
-  "2": "generateInventoryReportPdf",
-  "3": "escapeHtml",
-  "4": "api",
+  "1": "cartItemTotal",
+  "2": "renderBranchSelector",
+  "3": "generateSalesPdf",
+  "4": "showToast",
   "5": "FR Merchandise POS",
   "6": "Review Focus",
   "7": "What You Must Do When Invoked",
@@ -13,7 +13,7 @@
   "11": "isMobileScreen",
   "12": "compilerOptions",
   "13": "alignTableBadges",
-  "14": "initCustomDatePickers",
+  "14": "escapeHtml",
   "15": "service-worker.js",
   "16": "supabase-config.js",
   "17": "graphify reference: extra exports and benchmark",
@@ -24,5 +24,6 @@
   "22": "graphify reference: incremental update and cluster-only",
   "23": "graphify reference: GitHub clone and cross-repo merge",
   "24": "graphify reference: transcribe video and audio",
-  "25": "extraction-spec.md"
+  "25": "extraction-spec.md",
+  "26": "renderStockInHistoryTable"
 }

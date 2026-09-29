@@ -1627,6 +1627,42 @@ body::after {
   background: linear-gradient(90deg, #c8102e, #ff4d5a);
 }
 
+.dashboard-kpi-card.kpi-cashonhand:hover,
+.dashboard-kpi-card.kpi-cashonhand:focus-visible {
+  border-color: rgba(6, 182, 212, 0.65);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.75), 0 0 24px -4px rgba(6, 182, 212, 0.25);
+}
+.dashboard-kpi-card.kpi-cashonhand::before {
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+}
+
+.dashboard-kpi-card.kpi-expense:hover,
+.dashboard-kpi-card.kpi-expense:focus-visible {
+  border-color: rgba(239, 68, 68, 0.65);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.75), 0 0 24px -4px rgba(239, 68, 68, 0.25);
+}
+.dashboard-kpi-card.kpi-expense::before {
+  background: linear-gradient(90deg, #dc2626, #f87171);
+}
+
+.dashboard-kpi-card.kpi-netsales:hover,
+.dashboard-kpi-card.kpi-netsales:focus-visible {
+  border-color: rgba(168, 85, 247, 0.65);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.75), 0 0 24px -4px rgba(168, 85, 247, 0.25);
+}
+.dashboard-kpi-card.kpi-netsales::before {
+  background: linear-gradient(90deg, #6366f1, #a855f7);
+}
+
+.dashboard-kpi-card.kpi-income:hover,
+.dashboard-kpi-card.kpi-income:focus-visible {
+  border-color: rgba(16, 185, 129, 0.65);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.75), 0 0 24px -4px rgba(16, 185, 129, 0.25);
+}
+.dashboard-kpi-card.kpi-income::before {
+  background: linear-gradient(90deg, #059669, #34d399);
+}
+
 .kpi-head {
   display: flex;
   align-items: center;
@@ -1672,6 +1708,24 @@ body::after {
   color: #ff4d5a;
 }
 
+.kpi-icon-wrap.icon-cyan {
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  color: #22d3ee;
+}
+
+.kpi-icon-wrap.icon-purple {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+
+.kpi-icon-wrap.icon-teal {
+  background: rgba(20, 184, 166, 0.15);
+  border: 1px solid rgba(20, 184, 166, 0.35);
+  color: #2dd4bf;
+}
+
 .kpi-badge {
   font-size: 11px;
   font-weight: 700;
@@ -1702,6 +1756,24 @@ body::after {
   background: rgba(227, 41, 52, 0.12);
   color: #ff646e;
   border: 1px solid rgba(227, 41, 52, 0.25);
+}
+
+.kpi-badge.badge-cyan {
+  background: rgba(6, 182, 212, 0.12);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.25);
+}
+
+.kpi-badge.badge-purple {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.kpi-badge.badge-teal {
+  background: rgba(20, 184, 166, 0.12);
+  color: #2dd4bf;
+  border: 1px solid rgba(20, 184, 166, 0.25);
 }
 
 .kpi-body {
@@ -1741,6 +1813,18 @@ body::after {
 
 .text-danger {
   color: #ff385c !important;
+}
+
+.text-cyan {
+  color: #38bdf8 !important;
+}
+
+.text-purple {
+  color: #c084fc !important;
+}
+
+.text-teal {
+  color: #2dd4bf !important;
 }
 
 .kpi-foot {
@@ -3355,19 +3439,19 @@ body::after {
 }
 
 .workspace[data-view="transfers"] .table-row {
-  grid-template-columns: minmax(160px, 1.2fr) minmax(220px, 1.8fr) minmax(180px, 1.4fr) 110px 80px;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(180px, 1.6fr) minmax(140px, 1.2fr) 100px 76px;
 }
 
 .workspace[data-view="dailySpotCash"] .table-row {
-  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(140px, 1.1fr) minmax(0, 1.8fr) minmax(120px, 1fr) 92px;
 }
 
 .workspace[data-view="dailyExpenses"] .table-row {
-  grid-template-columns: minmax(170px, 1.3fr) minmax(160px, 1.2fr) minmax(130px, 1fr) minmax(200px, 2fr) 96px;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(140px, 1.1fr) minmax(120px, 0.9fr) minmax(0, 1.8fr) 92px;
 }
 
 .workspace[data-view="credits"] .table-row {
-  grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
+  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 1.1fr) minmax(120px, 1fr) 80px minmax(130px, 1fr);
 }
 
 .workspace[data-view="credits"] .row-action-cell {
@@ -3375,25 +3459,27 @@ body::after {
 }
 
 .workspace[data-view="sales"] .table-row {
-  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 126px;
+  grid-template-columns: minmax(150px, 1.3fr) minmax(120px, 0.9fr) minmax(140px, 1.2fr) 76px minmax(95px, 0.9fr) 115px;
 }
 
 .workspace[data-view="quarantineReport"] .table-row,
 .workspace[data-view="quarantineReport"] .skeleton-row,
 .workspace[data-view="quarantineReport"] .table-row.skeleton-row {
-  grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(160px, 1.2fr) minmax(180px, 1.4fr) 90px 130px !important;
+  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.9fr) minmax(130px, 1.1fr) minmax(140px, 1.2fr) 76px 115px !important;
 }
 
 .workspace[data-view="inventoryReports"] .table-row {
-  grid-template-columns: minmax(220px, 2fr) 110px 130px 145px 140px 110px;
+  grid-template-columns: minmax(180px, 1.8fr) 85px 100px 110px 110px 85px;
 }
 
 .workspace[data-view="staffAccounts"] .table-row {
-  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.9fr) minmax(150px, 1.5fr) 78px 116px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(130px, 1fr) minmax(260px, 1.8fr) 80px 110px;
+  min-height: 64px;
+  padding: 10px 18px;
 }
 
 .workspace[data-view="adminAccount"] .table-row {
-  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.9fr) minmax(140px, 1.2fr) 78px 80px;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(100px, 0.9fr) minmax(0, 1.2fr) 74px 76px;
 }
 
 .workspace[data-view="inventoryReports"] .toolbar {
@@ -4445,31 +4531,33 @@ dialog.credit-history-dialog {
 }
 
 .workspace[data-view="transfers"] .skeleton-row {
-  grid-template-columns: minmax(160px, 1.2fr) minmax(220px, 1.8fr) minmax(180px, 1.4fr) 110px 80px;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(180px, 1.6fr) minmax(140px, 1.2fr) 100px 76px;
 }
 
 .workspace[data-view="dailySpotCash"] .skeleton-row {
-  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) minmax(200px, 2fr) minmax(140px, 1.1fr) 96px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(140px, 1.1fr) minmax(0, 1.8fr) minmax(120px, 1fr) 92px;
 }
 
 .workspace[data-view="dailyExpenses"] .skeleton-row {
-  grid-template-columns: minmax(170px, 1.3fr) minmax(160px, 1.2fr) minmax(130px, 1fr) minmax(200px, 2fr) 96px;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(140px, 1.1fr) minmax(120px, 0.9fr) minmax(0, 1.8fr) 92px;
 }
 
 .workspace[data-view="credits"] .skeleton-row {
-  grid-template-columns: minmax(240px, 1.7fr) minmax(160px, 1.1fr) minmax(150px, 1fr) minmax(100px, 0.7fr) minmax(160px, 1fr);
+  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 1.1fr) minmax(120px, 1fr) 80px minmax(130px, 1fr);
 }
 
 .workspace[data-view="sales"] .skeleton-row {
-  grid-template-columns: minmax(180px, 1.5fr) minmax(130px, 0.9fr) minmax(160px, 1.3fr) 85px minmax(105px, 0.9fr) 126px;
+  grid-template-columns: minmax(150px, 1.3fr) minmax(120px, 0.9fr) minmax(140px, 1.2fr) 76px minmax(95px, 0.9fr) 115px;
 }
 
 .workspace[data-view="staffAccounts"] .skeleton-row {
-  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.9fr) minmax(150px, 1.5fr) 78px 116px;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(130px, 1fr) minmax(260px, 1.8fr) 80px 110px;
+  min-height: 64px;
+  padding: 10px 18px;
 }
 
 .workspace[data-view="adminAccount"] .skeleton-row {
-  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.9fr) minmax(140px, 1.2fr) 78px 80px;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(100px, 0.9fr) minmax(0, 1.2fr) 74px 76px;
 }
 
 .skeleton-col {
@@ -6809,20 +6897,20 @@ input[type="radio"] {
 .account-permissions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
+  gap: 5px 6px;
   align-items: center;
-  max-width: 100%;
-  width: fit-content;
-  justify-self: flex-start;
+  max-width: 380px;
+  min-width: 0;
+  padding: 4px 0;
 }
 
 .menu-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 3.5px 9px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.2px;
@@ -6833,9 +6921,7 @@ input[type="radio"] {
   transition: all var(--transition-fast);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   user-select: none;
-  width: fit-content;
-  max-width: fit-content;
-  justify-self: flex-start;
+  flex-shrink: 0;
 }
 
 .menu-chip:hover {
@@ -6844,8 +6930,8 @@ input[type="radio"] {
 }
 
 .menu-chip-icon {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -6920,31 +7006,29 @@ input[type="radio"] {
   background: linear-gradient(135deg, rgba(0, 102, 245, 0.16), rgba(56, 189, 248, 0.1));
   border-color: rgba(56, 189, 248, 0.45);
   color: #38bdf8;
+  font-size: 12px;
   font-weight: 700;
-  padding: 3px 9px;
+  padding: 4px 10px;
   box-shadow: 0 2px 10px rgba(0, 102, 245, 0.2);
-  width: fit-content;
-  max-width: fit-content;
-  justify-self: flex-start;
 }
 .menu-chip-all .menu-chip-icon {
   color: #38bdf8;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
 }
 .menu-chip-all-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 5px;
-  height: 15px;
-  min-width: 15px;
+  padding: 0 6px;
+  height: 17px;
+  min-width: 17px;
   border-radius: 9999px;
   background: rgba(56, 189, 248, 0.22);
   color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  margin-left: 2px;
+  margin-left: 3px;
 }
 
 /* Empty State */
@@ -6953,7 +7037,8 @@ input[type="radio"] {
   border-color: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
   font-style: italic;
-  font-size: 11px;
+  font-size: 12px;
+  padding: 3.5px 9px;
 }
 
 /* ==========================================================================
