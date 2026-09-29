@@ -852,7 +852,15 @@ function generateSalesPdf() {
     return true;
   });
   const totalExpenses = expensesInPeriod.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-  const totalCashOnHand = netCashCollected + totalSales;
+  const totalSpotCash = dailySpotCash
+    .filter((item) => {
+      if (!item.businessDate) return false;
+      if (dateFrom && item.businessDate < dateFrom) return false;
+      if (dateTo && item.businessDate > dateTo) return false;
+      return true;
+    })
+    .reduce((sum, item) => sum + Number(item.openingCash || 0), 0);
+  const totalCashOnHand = netCashCollected + totalSpotCash;
   const netSales = Math.max(totalSales - totalRefunds - totalExpenses, 0);
   const netIncome = netSales * 0.20;
   const returnedUnits = returnItemsInPeriod.reduce((sum, item) => sum + Number(item.qty || 0), 0);
@@ -992,9 +1000,9 @@ function generateSalesPdf() {
             <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
           </div>
           <div class="report-kpi-card">
-            <span class="kpi-label">Net Sales</span>
-            <strong class="kpi-val text-success">${money(netSales)}</strong>
-            <span class="kpi-sub">Gross sales less refunds & exp</span>
+            <span class="kpi-label">Spot Cash</span>
+            <strong class="kpi-val text-success">${money(totalSpotCash)}</strong>
+            <span class="kpi-sub">Recorded opening cash</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Returned Units</span>
@@ -1009,7 +1017,7 @@ function generateSalesPdf() {
           <div class="report-kpi-card">
             <span class="kpi-label">Cash on Hand</span>
             <strong class="kpi-val text-cyan">${money(totalCashOnHand)}</strong>
-            <span class="kpi-sub">Cash collected + sales</span>
+            <span class="kpi-sub">Net cash collected + spot cash</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Operating Expenses</span>
@@ -1225,8 +1233,8 @@ function generateSalesPdf() {
               </div>
             ` : ''}
             <div class="final-row final-grand-total net-sales-row">
-              <span>Net Sales:</span>
-              <strong class="grand-total-val">${money(netSales)}</strong>
+              <span>Spot Cash:</span>
+              <strong class="grand-total-val">${money(totalSpotCash)}</strong>
             </div>
             <div class="final-row final-grand-total net-income-row">
               <span>Net Income:</span>
