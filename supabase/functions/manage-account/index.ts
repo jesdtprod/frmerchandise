@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const allowedPermissions = new Set(['pos', 'products', 'inventory', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports']);
+const allowedPermissions = new Set(['pos', 'products', 'inventory', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'dailySpotCash']);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 const fail = (message: string, status = 400) => json({ error: message }, status);
 

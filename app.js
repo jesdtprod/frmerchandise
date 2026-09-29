@@ -23,6 +23,7 @@ let inventoryQuarantineCases = [];
 let inventoryQuarantineItems = [];
 let inventoryReportData = {};
 let stockInHistory = [];
+let dailySpotCash = [];
 let sellingPriceBatches = [];
 let bundleComponents = [];
 let bundleAvailability = {};
@@ -1555,9 +1556,10 @@ async function getAppData_(branchId) {
     client.from('inventory_return_lots').select('*').eq('branch_id', branchId),
     client.from('inventory_quarantine_cases').select('*').eq('branch_id', branchId),
     client.from('inventory_quarantine_items').select('*'),
+    client.from('daily_spot_cash').select('*').eq('branch_id', branchId).is('deleted_at', null).order('business_date', { ascending: false }),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows, quarantineCaseRows, quarantineItemRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows, quarantineCaseRows, quarantineItemRows, dailySpotCashRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -1641,6 +1643,7 @@ async function getAppData_(branchId) {
     })),
     inventoryQuarantineCases: quarantineCaseRows.map((row) => ({ id: row.case_id, branchId: row.branch_id, sourceType: row.source_type, reference: row.source_reference, sourceBranchId: row.source_branch_id || '', sourceBranchName: branchMap[row.source_branch_id]?.name || '', supplierReference: row.supplier_reference || '', reason: row.reason || '', status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at || null })),
     inventoryQuarantineItems: quarantineItemRows.map((row) => ({ id: row.quarantine_item_id, caseId: row.case_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || 'unit', qty: Number(row.qty || 0), sellingPrice: row.selling_price === null ? null : Number(row.selling_price), resolution: row.resolution || 'quarantine', resolvedAt: row.resolved_at || null })),
+    dailySpotCash: dailySpotCashRows.map((row) => ({ id: row.spot_cash_id, branchId: row.branch_id, businessDate: row.business_date, openingCash: Number(row.opening_cash || 0), notes: row.notes || '', createdAt: row.created_at, updatedAt: row.updated_at })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
       id: row.stock_in_id,
@@ -3126,6 +3129,7 @@ const STAFF_MENU_DEFS = {
     fullName: 'Inventory Reports',
     icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>'
   }
+  ,dailySpotCash: { key: 'dailySpotCash', label: 'Spot Cash', fullName: 'Daily Spot Cash', icon: '<svg class="menu-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v12H3z"/><path d="M7 7V5a5 5 0 0 1 10 0v2"/></svg>' }
 };
 
 function renderStaffPermissions(permissions = []) {
@@ -3851,6 +3855,10 @@ function renderInventory() {
   }
   if (activeView === 'sales') {
     renderSalesHistory();
+    return;
+  }
+  if (activeView === 'dailySpotCash') {
+    renderDailySpotCash();
     return;
   }
   if (activeView === 'staffAccounts') { renderStaffAccounts(); return; }
@@ -4771,6 +4779,25 @@ function renderCreditPayments() {
       `;
     }).join('') || '<div class="empty-state"><p>No credit sales found</p><small>Credit sales for the selected branch will appear here.</small></div>'}
   `;
+}
+
+function renderDailySpotCash() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const branchName = branches.find((branch) => branch.id === activeBranchId)?.name || activeBranchId;
+  table.innerHTML = `<div class="section-toolbar"><div><strong>Daily Spot Cash</strong><span class="product-meta">Opening cash float for ${escapeHtml(branchName)}</span></div><button class="button" id="addDailySpotCash">Add Daily Spot Cash</button></div><div class="table-row table-header"><span>Business Date</span><span>Opening Cash</span><span>Notes</span><span>Updated</span><span>Action</span></div>${dailySpotCash.map((item) => `<div class="table-row"><span>${escapeHtml(item.businessDate)}</span><strong class="price-text">${money(item.openingCash)}</strong><span>${escapeHtml(item.notes || '—')}</span><span>${escapeHtml(item.updatedAt ? new Date(item.updatedAt).toLocaleString('en-PH') : '')}</span><span class="table-actions"><button class="icon-button" data-edit-spot-cash="${item.id}" title="Edit Daily Spot Cash">Edit</button><button class="icon-button danger-icon" data-delete-spot-cash="${item.id}" title="Delete Daily Spot Cash">Delete</button></span></div>`).join('') || '<div class="empty-state"><p>No Daily Spot Cash recorded</p><small>Record the opening cash before branch operations begin.</small></div>'}`;
+  const save = async (item = null) => {
+    const businessDate = prompt('Business date (YYYY-MM-DD):', item?.businessDate || today); if (!businessDate) return;
+    const openingCash = prompt('Opening cash:', item?.openingCash ?? '0'); if (openingCash === null) return;
+    const notes = prompt('Notes (optional):', item?.notes || ''); if (notes === null) return;
+    const client = requireSupabase_();
+    const { error } = item ? await client.rpc('update_daily_spot_cash', { target_spot_cash_id: item.id, target_business_date: businessDate, opening_cash_input: Number(openingCash), notes_input: notes }) : await client.rpc('create_daily_spot_cash', { target_branch_id: activeBranchId, target_business_date: businessDate, opening_cash_input: Number(openingCash), notes_input: notes });
+    if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Spot Cash saved.', 'success');
+  };
+  table.querySelector('#addDailySpotCash')?.addEventListener('click', () => save());
+  table.querySelectorAll('[data-edit-spot-cash]').forEach((button) => button.addEventListener('click', () => save(dailySpotCash.find((item) => item.id === button.dataset.editSpotCash))));
+  table.querySelectorAll('[data-delete-spot-cash]').forEach((button) => button.addEventListener('click', async () => { if (!confirm('Delete this Daily Spot Cash record?')) return; const { error } = await requireSupabase_().rpc('delete_daily_spot_cash', { target_spot_cash_id: button.dataset.deleteSpotCash }); if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Spot Cash deleted.', 'success'); }));
 }
 
 function renderSalesHistory() {
@@ -5926,6 +5953,7 @@ async function refresh(showSkeleton = true) {
     inventoryReturnLots = data.inventoryReturnLots || [];
     inventoryQuarantineCases = data.inventoryQuarantineCases || [];
     inventoryQuarantineItems = data.inventoryQuarantineItems || [];
+    dailySpotCash = data.dailySpotCash || [];
     openingCreditAccounts = data.openingCreditAccounts || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
@@ -6683,8 +6711,10 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'dailySpotCash', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
+  const dailySpotCashNav = document.querySelector('[data-view="dailySpotCash"]');
+  if (dailySpotCashNav) dailySpotCashNav.hidden = !permissions.includes('*') && !permissions.includes('dailySpotCash');
   const requiredPermission = ['quarantine', 'quarantineReport'].includes(view) ? 'inventory' : view;
   if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(requiredPermission)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
@@ -6703,6 +6733,7 @@ function setView(view, preserveSidebarOpen = false) {
     sales: ['REPORTING', 'Sales History', 'SALES LEDGER', 'Branch Sales History'],
     inventoryReports: ['REPORTING', 'Inventory Reports', 'INVENTORY REPORT', 'Active Branch Stock Report'],
     transfers: ['BRANCH OPERATIONS', 'Stock Transfers', 'TRANSFER TRACKING', 'Outgoing and Incoming Branch Stock'],
+    dailySpotCash: ['BRANCH OPERATIONS', 'Daily Spot Cash', 'OPENING CASH', 'Daily Branch Opening Float'],
     staffAccounts: ['ADMINISTRATION', 'Staff Accounts', 'STAFF ACCOUNTS', 'Manage Staff Access'],
     adminAccount: ['ADMINISTRATION', 'Admin Account', 'ADMINISTRATION', 'Administrator Accounts'],
   }[view] || ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'];

@@ -18,6 +18,7 @@ const files = {
   sameItemReplacements: await readFile(new URL('../supabase/migrations/20260918008000_same_item_replacements.sql', import.meta.url), 'utf8'),
   bundleReturnComponents: await readFile(new URL('../supabase/migrations/20260918009000_resolve_bundle_return_components.sql', import.meta.url), 'utf8'),
   refundReplacementOnly: await readFile(new URL('../supabase/migrations/20260918010000_refund_replacement_sales_returns.sql', import.meta.url), 'utf8'),
+  dailySpotCash: await readFile(new URL('../supabase/migrations/20260929100000_daily_spot_cash.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -53,6 +54,7 @@ const checks = [
   ['sales history shows the separate return-history action only for recorded returns', /hasReturnHistory = saleReturns\.some[\s\S]*data-view-sale-returns[\s\S]*openSaleReturnHistoryDialog/.test(files.app) && /saleReturnHistoryDialog[\s\S]*saleReturnHistoryExisting/.test(files.index)],
   ['sales report separates gross sales, refunds, and net sales', /Refunds Completed[\s\S]*Net Sales[\s\S]*totalRefunds/.test(files.app)],
   ['sales report calculates and displays net income at 20% of net sales', /const netIncome = netSales \* 0\.20;/.test(files.app) && /Net Sales:[\s\S]*Net Income:[\s\S]*money\(netIncome\)/.test(files.app)],
+  ['daily spot cash protects branch opening floats and staff access', /dailySpotCash/.test(files.app) && /daily_spot_cash/.test(files.app) && /daily_spot_cash/.test(files.dailySpotCash) && /can_access_branch\(target_branch_id\)/.test(files.dailySpotCash) && /has_permission\('dailySpotCash'\)/.test(files.dailySpotCash) && /deleted_at/.test(files.dailySpotCash)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],
   ['a sale return accepts only refund or same-item replacement actions', /action_value not in \('refund', 'replacement'\)/.test(files.refundReplacementOnly) && /option value="refund">Refund[\s\S]*option value="replacement">Replace/.test(files.app) && !/option value="return">Return Only/.test(files.app)],
