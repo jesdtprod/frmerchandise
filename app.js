@@ -58,6 +58,7 @@ function backgroundRefresh() {
 
 const PRODUCT_CATEGORIES = ['LPG', 'Others', 'Softdrinks'];
 const PRODUCT_UNITS = ['bag', 'bottle', 'box', 'can', 'case', 'drum', 'g', 'gallon', 'kg', 'L', 'mL', 'pack', 'pc', 'sack', 'tray'];
+const DAILY_EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Salaries & Wages', 'Transportation', 'Fuel', 'Supplies', 'Repairs & Maintenance', 'Marketing & Advertising', 'Delivery & Freight', 'Government Fees & Taxes', 'Professional Fees', 'Food & Refreshments', 'Miscellaneous'];
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `PHP ${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
