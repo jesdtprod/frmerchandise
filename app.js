@@ -860,7 +860,7 @@ function generateSalesPdf() {
       return true;
     })
     .reduce((sum, item) => sum + Number(item.openingCash || 0), 0);
-  const totalCashOnHand = netCashCollected + totalSpotCash;
+  const totalCashOnHand = netCashCollected + totalSpotCash - totalExpenses;
   const netSales = Math.max(totalSales - totalRefunds - totalExpenses, 0);
   const netIncome = netSales * 0.20;
   const returnedUnits = returnItemsInPeriod.reduce((sum, item) => sum + Number(item.qty || 0), 0);
@@ -1000,9 +1000,9 @@ function generateSalesPdf() {
             <span class="kpi-sub">${completedRefunds.length} completed refund${completedRefunds.length === 1 ? '' : 's'}</span>
           </div>
           <div class="report-kpi-card">
-            <span class="kpi-label">Spot Cash</span>
-            <strong class="kpi-val text-success">${money(totalSpotCash)}</strong>
-            <span class="kpi-sub">Recorded opening cash</span>
+            <span class="kpi-label">Net Sales</span>
+            <strong class="kpi-val text-success">${money(netSales)}</strong>
+            <span class="kpi-sub">Gross sales less refunds &amp; expenses</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Returned Units</span>
@@ -1017,7 +1017,7 @@ function generateSalesPdf() {
           <div class="report-kpi-card">
             <span class="kpi-label">Cash on Hand</span>
             <strong class="kpi-val text-cyan">${money(totalCashOnHand)}</strong>
-            <span class="kpi-sub">Net cash collected + spot cash</span>
+            <span class="kpi-sub">Net cash collected + spot cash - expenses</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Operating Expenses</span>
@@ -1233,8 +1233,8 @@ function generateSalesPdf() {
               </div>
             ` : ''}
             <div class="final-row final-grand-total net-sales-row">
-              <span>Spot Cash:</span>
-              <strong class="grand-total-val">${money(totalSpotCash)}</strong>
+              <span>Net Sales:</span>
+              <strong class="grand-total-val">${money(netSales)}</strong>
             </div>
             <div class="final-row final-grand-total net-income-row">
               <span>Net Income:</span>
