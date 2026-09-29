@@ -20,6 +20,7 @@ const files = {
   refundReplacementOnly: await readFile(new URL('../supabase/migrations/20260918010000_refund_replacement_sales_returns.sql', import.meta.url), 'utf8'),
   dailySpotCash: await readFile(new URL('../supabase/migrations/20260929100000_daily_spot_cash.sql', import.meta.url), 'utf8'),
   dailyExpenses: await readFile(new URL('../supabase/migrations/20260929110000_daily_expenses.sql', import.meta.url), 'utf8'),
+  dailyOperationsBackup: await readFile(new URL('../supabase/migrations/20260929120000_backup_daily_operations.sql', import.meta.url), 'utf8').catch(() => ''),
 };
 
 const checks = [
@@ -40,6 +41,8 @@ const checks = [
   ['customer migration balances use a separate audited credit account', /customer_credit_accounts[\s\S]*opening_balance[\s\S]*create_customer_with_opening_balance/.test(files.openingCreditBalances)],
   ['opening balance payments cannot be mistaken for sales', /credit_payments_one_credit_source[\s\S]*record_credit_payment/.test(files.openingCreditBalances)],
   ['operational backups include opening credit accounts', /customerCreditAccounts/.test(files.accountFunction)],
+  ['operational backups include daily spot cash and daily expenses', /from\('daily_spot_cash'\)[\s\S]*from\('daily_expenses'\)/.test(files.accountFunction) && /dailySpotCash: rows\[20\][\s\S]*dailyExpenses: rows\[21\]/.test(files.accountFunction)],
+  ['operational restore restores supplied daily spot cash and expenses transactionally', /restore_pos_backup_daily_operations/.test(files.dailyOperationsBackup) && /delete from public\.daily_spot_cash[\s\S]*insert into public\.daily_spot_cash/.test(files.dailyOperationsBackup) && /delete from public\.daily_expenses[\s\S]*insert into public\.daily_expenses/.test(files.dailyOperationsBackup)],
   ['bundle recipes accept only individual component products', /Bundle components must be active individual products/.test(files.bundles)],
   ['bundle availability is calculated from component stock', /get_branch_bundle_availability[\s\S]*floor\(coalesce\(inventory\.qty/.test(files.bundles)],
   ['product form saves bundle price and component recipes', /save_bundle_components[\s\S]*bundleComponents/.test(files.app)],
@@ -58,7 +61,8 @@ const checks = [
   ['daily spot cash protects branch opening floats and staff access', /dailySpotCash/.test(files.app) && /daily_spot_cash/.test(files.app) && /daily_spot_cash/.test(files.dailySpotCash) && /can_access_branch\(target_branch_id\)/.test(files.dailySpotCash) && /has_permission\('dailySpotCash'\)/.test(files.dailySpotCash) && /deleted_at/.test(files.dailySpotCash)],
   ['daily expenses can be granted to staff and saved per branch', /dailyExpenses:\s*\{\s*key:\s*'dailyExpenses'/.test(files.app) && /dailyExpenses/.test(files.accountFunction) && /daily_expenses/.test(files.dailyExpenses) && /create_daily_expense/.test(files.app) && /can_access_branch\(target_branch_id\)/.test(files.dailyExpenses) && /has_permission\('dailyExpenses'\)/.test(files.dailyExpenses)],
   ['staff add and edit forms offer both branch-operation permissions', /\['dailySpotCash', 'Daily Spot Cash'\]/.test(files.app) && /\['dailyExpenses', 'Daily Expenses'\]/.test(files.app)],
-  ['daily expenses loads the current click handler bundle', /app\.js\?v=daily-expenses-3/.test(files.index) && /addDailyExpenseButton'\)\?\.addEventListener\('click', \(\) => openForm\('dailyExpenses'\)\)/.test(files.app)],
+  ['staff permission cards follow the sidebar order', /\['transfers', 'Stock Transfers'\],[\s\S]*\['dailySpotCash', 'Daily Spot Cash'\],[\s\S]*\['dailyExpenses', 'Daily Expenses'\],[\s\S]*\['customers', 'Customers'\]/.test(files.app)],
+  ['daily expenses loads the current click handler bundle', /app\.js\?v=daily-expenses-4/.test(files.index) && /addDailyExpenseButton'\)\?\.addEventListener\('click', \(\) => openForm\('dailyExpenses'\)\)/.test(files.app)],
   ['daily expense modal has its category list before rendering', /const DAILY_EXPENSE_CATEGORIES = \[/.test(files.app) && /DAILY_EXPENSE_CATEGORIES\.map\(/.test(files.app)],
   ['sales report includes return and replacement activity', /Return & Replacement Activity[\s\S]*returnOutcomes/.test(files.app)],
   ['sales return report itemizes each returned line', /returnsInPeriod\.flatMap[\s\S]*Returned Item[\s\S]*line\.actionType[\s\S]*line\.condition/.test(files.app)],
