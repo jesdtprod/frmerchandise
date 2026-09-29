@@ -483,6 +483,7 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
     .report-kpi-card .kpi-val.text-success { color: #059669; }
     .report-kpi-card .kpi-val.text-amber { color: #d97706; }
     .report-kpi-card .kpi-val.text-discount { color: #dc2626; }
+    .report-kpi-card .kpi-val.text-cyan { color: #0284c7; }
     .report-kpi-card .kpi-sub { font-size: 8.5px; color: #94a3b8; line-height: 1.1; }
     .report-section-title-wrap {
       display: flex;
@@ -844,7 +845,15 @@ function generateSalesPdf() {
   const cashRefunds = completedRefunds.filter((record) => salesHistory.find((sale) => sale.saleId === record.saleId)?.paymentType === 'cash').reduce((sum, record) => sum + Number(record.refundAmount || 0), 0);
   const creditRefunds = totalRefunds - cashRefunds;
   const netCashCollected = totalCash - cashRefunds;
-  const netSales = totalSales - totalRefunds;
+  const expensesInPeriod = dailyExpenses.filter((e) => {
+    if (!e.businessDate) return false;
+    if (dateFrom && e.businessDate < dateFrom) return false;
+    if (dateTo && e.businessDate > dateTo) return false;
+    return true;
+  });
+  const totalExpenses = expensesInPeriod.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const totalCashOnHand = netCashCollected + totalSales;
+  const netSales = Math.max(totalSales - totalRefunds - totalExpenses, 0);
   const netIncome = netSales * 0.20;
   const returnedUnits = returnItemsInPeriod.reduce((sum, item) => sum + Number(item.qty || 0), 0);
   const replacementUnits = releasedReplacements.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id)).reduce((sum, item) => sum + Number(item.replacementQty || 0), 0);
@@ -862,13 +871,13 @@ function generateSalesPdf() {
   const generatedTime = new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 
   // Long Bond Paper (8.5in x 13in) pagination calculation
-  const summaryBlockHeight = (returnsInPeriod.length ? (110 + returnItemsInPeriod.length * 32) : 55) + 245;
+  const summaryBlockHeight = (returnsInPeriod.length ? (110 + returnItemsInPeriod.length * 32) : 55) + 265;
   const salesPages = [];
   let currentSaleIdx = 0;
   let isFirst = true;
 
   while (currentSaleIdx < sales.length || salesPages.length === 0) {
-    const pageCapacity = isFirst ? 820 : 980;
+    const pageCapacity = isFirst ? 760 : 980;
     let usedHeight = 0;
     const chunk = [];
 
@@ -985,7 +994,7 @@ function generateSalesPdf() {
           <div class="report-kpi-card">
             <span class="kpi-label">Net Sales</span>
             <strong class="kpi-val text-success">${money(netSales)}</strong>
-            <span class="kpi-sub">Gross sales less refunds</span>
+            <span class="kpi-sub">Gross sales less refunds & exp</span>
           </div>
           <div class="report-kpi-card">
             <span class="kpi-label">Returned Units</span>
@@ -996,6 +1005,26 @@ function generateSalesPdf() {
             <span class="kpi-label">Replacement Units</span>
             <strong class="kpi-val">${replacementUnits.toLocaleString('en-PH')}</strong>
             <span class="kpi-sub">${releasedReplacements.length} replacement release${releasedReplacements.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Cash on Hand</span>
+            <strong class="kpi-val text-cyan">${money(totalCashOnHand)}</strong>
+            <span class="kpi-sub">Cash collected + sales</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Operating Expenses</span>
+            <strong class="kpi-val text-discount">-${money(totalExpenses)}</strong>
+            <span class="kpi-sub">${expensesInPeriod.length} recorded expense${expensesInPeriod.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Net Income</span>
+            <strong class="kpi-val text-success">${money(netIncome)}</strong>
+            <span class="kpi-sub">20% of net sales</span>
+          </div>
+          <div class="report-kpi-card">
+            <span class="kpi-label">Discounts Granted</span>
+            <strong class="kpi-val text-discount">-${money(totalDiscounts)}</strong>
+            <span class="kpi-sub">Total price markdowns</span>
           </div>
         </section>
       `;
@@ -1189,6 +1218,12 @@ function generateSalesPdf() {
               <span>Less: Completed Refunds:</span>
               <strong>-${money(totalRefunds)}</strong>
             </div>
+            ${totalExpenses > 0 ? `
+              <div class="final-row text-discount">
+                <span>Less: Operating Expenses:</span>
+                <strong>-${money(totalExpenses)}</strong>
+              </div>
+            ` : ''}
             <div class="final-row final-grand-total net-sales-row">
               <span>Net Sales:</span>
               <strong class="grand-total-val">${money(netSales)}</strong>
@@ -3456,7 +3491,20 @@ function renderDashboard() {
   const todaySalesRecords = completedSales.filter((sale) => saleDateKey(sale.date) === todayKey);
   const todaySales = todaySalesRecords.reduce((total, sale) => total + Number(sale.total || 0), 0);
   const todayCashCollected = todaySalesRecords.filter((sale) => sale.paymentType === 'cash').reduce((total, sale) => total + Number(sale.total || 0), 0);
+  const todayDiscount = todaySalesRecords.reduce((total, sale) => total + Number(sale.discount || 0), 0);
+  const todayCreditSales = todaySalesRecords.filter((sale) => sale.paymentType === 'credit').reduce((total, sale) => total + Number(sale.total || 0), 0);
   const creditOutstanding = creditAccounts.reduce((total, account) => total + Number(account.balance || 0), 0);
+
+  const todayExpenses = dailyExpenses
+    .filter((item) => item.businessDate === todayKey)
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const todayExpenseRecords = dailyExpenses.filter((item) => item.businessDate === todayKey);
+  const todaySpotCash = dailySpotCash
+    .filter((item) => item.businessDate === todayKey)
+    .reduce((sum, item) => sum + Number(item.openingCash || 0), 0);
+  const todayCashOnHand = todayCashCollected + todaySpotCash;
+  const todayNetSales = Math.max(todaySales - todayExpenses, 0);
+  const todayNetIncome = todayNetSales * 0.20;
 
   const sevenDayTotal = days.reduce((sum, d) => sum + d.total, 0);
   const sevenDayAvg = Math.round(sevenDayTotal / 7);
@@ -3538,7 +3586,7 @@ function renderDashboard() {
           <strong class="kpi-value text-glow-blue">${money(todaySales)}</strong>
         </div>
         <div class="kpi-foot">
-          <span class="kpi-foot-sub">Avg order: <b>${money(todayAvgTicket)}</b></span>
+          <span class="kpi-foot-sub">Today's Discount: <b>${money(todayDiscount)}</b></span>
           <span class="kpi-foot-link">Ledger &rarr;</span>
         </div>
       </article>
@@ -3555,7 +3603,7 @@ function renderDashboard() {
           <strong class="kpi-value text-success">${money(todayCashCollected)}</strong>
         </div>
         <div class="kpi-foot">
-          <span class="kpi-foot-sub">Completed cash sales</span>
+          <span class="kpi-foot-sub">Today's Credit: <b>${money(todayCreditSales)}</b></span>
           <span class="kpi-foot-link">Details &rarr;</span>
         </div>
       </article>
@@ -3597,6 +3645,74 @@ function renderDashboard() {
           </div>
         </article>
       ` : ''}
+
+      <article class="dashboard-kpi-card kpi-cashonhand" data-dashboard-view="dailySpotCash" role="button" tabindex="0" title="Click to view spot cash operations">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-cyan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7h20v14H2z"/><path d="M16 14a4 4 0 0 1-8 0"/><path d="M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/></svg>
+          </div>
+          <span class="kpi-badge badge-cyan">Liquid Cash</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Cash Collected + Today's Spot Cash</span>
+          <strong class="kpi-value text-cyan">${money(todayCashOnHand)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Cash collected + opening float</span>
+          <span class="kpi-foot-link">Float &rarr;</span>
+        </div>
+      </article>
+
+      <article class="dashboard-kpi-card kpi-expense" data-dashboard-view="dailyExpenses" role="button" tabindex="0" title="Click to view daily expenses">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-rose">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v12"/></svg>
+          </div>
+          <span class="kpi-badge badge-rose">${todayExpenseRecords.length} record${todayExpenseRecords.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Today's Expenses</span>
+          <strong class="kpi-value text-danger">${money(todayExpenses)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Operational spend</span>
+          <span class="kpi-foot-link">Manage &rarr;</span>
+        </div>
+      </article>
+
+      <article class="dashboard-kpi-card kpi-netsales" data-dashboard-view="dailySpotCash" role="button" tabindex="0" title="Click to view spot cash operations">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-purple">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          </div>
+          <span class="kpi-badge badge-purple">Opening Float</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Today's Spot Cash</span>
+          <strong class="kpi-value text-purple">${money(todaySpotCash)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Opening cash before operations</span>
+          <span class="kpi-foot-link">Float &rarr;</span>
+        </div>
+      </article>
+
+      <article class="dashboard-kpi-card kpi-income" data-dashboard-view="inventoryReports" role="button" tabindex="0" title="Click to view financial & sales reports">
+        <div class="kpi-head">
+          <div class="kpi-icon-wrap icon-teal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v12"/></svg>
+          </div>
+          <span class="kpi-badge badge-teal">20% Margin</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-label">Today's Income</span>
+          <strong class="kpi-value text-teal">${money(todayNetIncome)}</strong>
+        </div>
+        <div class="kpi-foot">
+          <span class="kpi-foot-sub">Net sales &times; 20%</span>
+          <span class="kpi-foot-link">Report &rarr;</span>
+        </div>
+      </article>
     </div>
 
     <div class="dashboard-main-grid">
@@ -3831,7 +3947,7 @@ function renderDashboardSkeleton() {
         <div class="skeleton-shimmer dashboard-skeleton-sub"></div>
       </div>
       <div class="dashboard-summary-grid">
-        ${Array.from({ length: 4 }).map(() => `
+        ${Array.from({ length: 8 }).map(() => `
           <div class="dashboard-skeleton-card">
             <div class="skeleton-shimmer dashboard-skeleton-icon"></div>
             <div class="skeleton-shimmer dashboard-skeleton-val"></div>
