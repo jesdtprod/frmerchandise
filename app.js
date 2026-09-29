@@ -24,6 +24,7 @@ let inventoryQuarantineItems = [];
 let inventoryReportData = {};
 let stockInHistory = [];
 let dailySpotCash = [];
+let dailyExpenses = [];
 let sellingPriceBatches = [];
 let bundleComponents = [];
 let bundleAvailability = {};
@@ -1557,9 +1558,10 @@ async function getAppData_(branchId) {
     client.from('inventory_quarantine_cases').select('*').eq('branch_id', branchId),
     client.from('inventory_quarantine_items').select('*'),
     client.from('daily_spot_cash').select('*').eq('branch_id', branchId).is('deleted_at', null).order('business_date', { ascending: false }),
+    client.from('daily_expenses').select('*').eq('branch_id', branchId).is('deleted_at', null).order('business_date', { ascending: false }),
   ]);
   results.forEach((result) => throwIfError_(result.error));
-  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows, quarantineCaseRows, quarantineItemRows, dailySpotCashRows] = results.map((result) => result.data || []);
+  const [branchRows, productRows, branchProductRows, inventoryRows, customerRows, transferRows, saleRows, saleItemRows, paymentRows, openingCreditRows, stockInRows, sellingPriceBatchRows, bundleComponentRows, bundleAvailabilityRows, saleReturnRows, saleReturnItemRows, returnLotRows, quarantineCaseRows, quarantineItemRows, dailySpotCashRows, dailyExpenseRows] = results.map((result) => result.data || []);
   const branchMap = Object.fromEntries(branchRows.map((row) => [row.branch_id, row]));
   const productMap = Object.fromEntries(productRows.map((row) => [row.product_id, row]));
   const customerMap = Object.fromEntries(customerRows.map((row) => [row.customer_id, row]));
@@ -1644,6 +1646,7 @@ async function getAppData_(branchId) {
     inventoryQuarantineCases: quarantineCaseRows.map((row) => ({ id: row.case_id, branchId: row.branch_id, sourceType: row.source_type, reference: row.source_reference, sourceBranchId: row.source_branch_id || '', sourceBranchName: branchMap[row.source_branch_id]?.name || '', supplierReference: row.supplier_reference || '', reason: row.reason || '', status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at || null })),
     inventoryQuarantineItems: quarantineItemRows.map((row) => ({ id: row.quarantine_item_id, caseId: row.case_id, productId: row.product_id, productName: productMap[row.product_id]?.name || row.product_id, unit: productMap[row.product_id]?.unit || 'unit', qty: Number(row.qty || 0), sellingPrice: row.selling_price === null ? null : Number(row.selling_price), resolution: row.resolution || 'quarantine', resolvedAt: row.resolved_at || null })),
     dailySpotCash: dailySpotCashRows.map((row) => ({ id: row.spot_cash_id, branchId: row.branch_id, businessDate: row.business_date, openingCash: Number(row.opening_cash || 0), notes: row.notes || '', createdAt: row.created_at, updatedAt: row.updated_at })),
+    dailyExpenses: dailyExpenseRows.map((row) => ({ id: row.expense_id, businessDate: row.business_date, category: row.category, description: row.description, amount: Number(row.amount), receiptReference: row.receipt_reference || '', updatedAt: row.updated_at })),
     inventoryReport,
     stockInHistory: stockInRows.map((row) => ({
       id: row.stock_in_id,
@@ -3908,6 +3911,7 @@ function renderInventory() {
     renderDailySpotCash();
     return;
   }
+  if (activeView === 'dailyExpenses') { renderDailyExpenses(); return; }
   if (activeView === 'staffAccounts') { renderStaffAccounts(); return; }
   if (activeView === 'adminAccount') { renderAdminAccount(); return; }
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
@@ -4884,6 +4888,23 @@ function renderDailySpotCash() {
   table.querySelectorAll('[data-delete-spot-cash]').forEach((button) => {
     button.addEventListener('click', () => deleteDailySpotCash(button.dataset.deleteSpotCash));
   });
+}
+
+const DAILY_EXPENSE_CATEGORIES = ['Inventory / Merchandise Purchase','Freight / Delivery','Fuel','Transportation','Electricity','Water','Internet / Phone','Rent','Staff Wages / Allowances','Staff Meals','Office / Store Supplies','Cleaning Supplies','Repairs & Maintenance','Equipment / Tools','Marketing / Advertising','Permits / Licenses','Taxes / Government Fees','Bank / Payment Charges','Security','Miscellaneous / Other'];
+function renderDailyExpenses() {
+  const table = $('#inventoryTable'); if (!table) return;
+  const save = async (item = null) => {
+    const businessDate = prompt('Business date (YYYY-MM-DD):', item?.businessDate || new Date().toISOString().slice(0,10)); if (!businessDate) return;
+    const category = prompt(`Expense category:\n${DAILY_EXPENSE_CATEGORIES.join('\n')}`, item?.category || ''); if (!category) return;
+    const amount = prompt('Cash amount:', item?.amount ?? ''); if (amount === null) return;
+    const description = prompt('Description:', item?.description || ''); if (description === null) return;
+    const receipt = prompt('Receipt / reference (optional):', item?.receiptReference || ''); if (receipt === null) return;
+    const args = { target_business_date: businessDate, target_category: category, target_description: description, target_amount: Number(amount), target_receipt_reference: receipt };
+    const client = requireSupabase_(); const { error } = item ? await client.rpc('update_daily_expense', { ...args, target_expense_id: item.id }) : await client.rpc('create_daily_expense', { ...args, target_branch_id: activeBranchId });
+    if (error) return showToast(error.message, 'error'); await refresh(); showToast('Daily Expense saved.', 'success');
+  };
+  table.innerHTML = `<div class="section-toolbar"><strong>Cash-only Daily Expenses</strong><button class="button" id="addDailyExpense">Add Daily Expense</button></div><div class="table-row table-header"><span>Date</span><span>Category</span><span>Amount</span><span>Description</span><span>Action</span></div>${dailyExpenses.map((item)=>`<div class="table-row"><span>${escapeHtml(item.businessDate)}</span><span>${escapeHtml(item.category)}</span><strong class="price-text">${money(item.amount)}</strong><span>${escapeHtml(item.description || '—')}</span><span class="table-actions"><button class="icon-button" data-edit-expense="${item.id}">Edit</button><button class="icon-button danger-icon" data-delete-expense="${item.id}">Delete</button></span></div>`).join('') || '<div class="empty-state"><p>No Daily Expenses recorded</p></div>'}`;
+  table.querySelector('#addDailyExpense')?.addEventListener('click',()=>save()); table.querySelectorAll('[data-edit-expense]').forEach(b=>b.addEventListener('click',()=>save(dailyExpenses.find(x=>x.id===b.dataset.editExpense)))); table.querySelectorAll('[data-delete-expense]').forEach(b=>b.addEventListener('click',async()=>{if(!await askConfirmation({title:'Delete Daily Expense',confirmText:'Delete Record',confirmType:'danger'}))return;const {error}=await requireSupabase_().rpc('delete_daily_expense',{target_expense_id:b.dataset.deleteExpense});if(error)return showToast(error.message,'error');await refresh();}));
 }
 
 async function deleteDailySpotCash(id) {
@@ -6066,6 +6087,7 @@ async function refresh(showSkeleton = true) {
     inventoryQuarantineCases = data.inventoryQuarantineCases || [];
     inventoryQuarantineItems = data.inventoryQuarantineItems || [];
     dailySpotCash = data.dailySpotCash || [];
+    dailyExpenses = data.dailyExpenses || [];
     openingCreditAccounts = data.openingCreditAccounts || [];
     creditAccounts = calculateOutstandingCreditAccounts(salesHistory, creditPayments, openingCreditAccounts);
     inventoryReportData = data.inventoryReport || {};
@@ -6861,10 +6883,12 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'dailySpotCash', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'dailySpotCash', 'dailyExpenses', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
   const dailySpotCashNav = document.querySelector('[data-view="dailySpotCash"]');
   if (dailySpotCashNav) dailySpotCashNav.hidden = !permissions.includes('*') && !permissions.includes('dailySpotCash');
+  const dailyExpensesNav = document.querySelector('[data-view="dailyExpenses"]');
+  if (dailyExpensesNav) dailyExpensesNav.hidden = !permissions.includes('*') && !permissions.includes('dailyExpenses');
   const requiredPermission = ['quarantine', 'quarantineReport'].includes(view) ? 'inventory' : view;
   if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(requiredPermission)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
