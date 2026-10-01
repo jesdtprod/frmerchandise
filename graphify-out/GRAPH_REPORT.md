@@ -1,23 +1,22 @@
 # Graph Report - frmerchandise  (2026-10-01)
 
 ## Corpus Check
-- 64 files · ~89,426 words
+- 64 files · ~89,612 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .css 3, .graphify-bak 1)
 
 ## Summary
-- 283 nodes · 625 edges · 28 communities (20 shown, 8 thin omitted)
+- 283 nodes · 628 edges · 27 communities (19 shown, 8 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 22 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `49db5b9a`
+- Built from commit: `c673090e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - app.js
-- renderCart
 - closeDropdown
 - generateSalesPdf
 - showToast
@@ -49,7 +48,7 @@
 2. `renderInventory()` - 34 edges
 3. `showToast()` - 27 edges
 4. `api()` - 26 edges
-5. `money()` - 24 edges
+5. `money()` - 25 edges
 6. `refresh()` - 21 edges
 7. `askConfirmation()` - 16 edges
 8. `renderCart()` - 16 edges
@@ -74,15 +73,11 @@
 ## Hyperedges (group relationships)
 - **FIFO Auditability Workflow** — readme_fifo_selling_price_batches, tasks_bundle_sales, docs_operations_backup_and_restore [INFERRED 0.75]
 
-## Communities (28 total, 8 thin omitted)
+## Communities (27 total, 8 thin omitted)
 
 ### Community 0 - "app.js"
 Cohesion: 0.04
 Nodes (52): actionConfirmDialog, actionConfirmSubmitBtn, adminAccounts, allProducts, appShell, backdrop, branches, bundleAvailability (+44 more)
-
-### Community 1 - "renderCart"
-Cohesion: 0.27
-Nodes (10): addToCart(), cartItemTotal(), displayedSellingPrice(), getCartPriceBreakdown(), hasSellingPriceOverride(), openProductPriceOverride(), renderCart(), saleSubtotal() (+2 more)
 
 ### Community 2 - "closeDropdown"
 Cohesion: 0.25
@@ -109,8 +104,8 @@ Cohesion: 0.08
 Nodes (24): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+16 more)
 
 ### Community 8 - "initCustomDropdowns"
-Cohesion: 0.47
-Nodes (6): initCustomDropdowns(), openSaleCheckout(), sortSelectOptionsAtoZ_(), syncSaleCustomerOptions(), updateCustomDropdown(), updateSaleCheckoutValues()
+Cohesion: 0.32
+Nodes (8): cartItemTotal(), initCustomDropdowns(), openSaleCheckout(), saleSubtotal(), sortSelectOptionsAtoZ_(), syncSaleCustomerOptions(), updateCustomDropdown(), updateSaleCheckoutValues()
 
 ### Community 9 - "index.ts"
 Cohesion: 0.40
@@ -125,8 +120,8 @@ Cohesion: 0.50
 Nodes (4): handleMenuToggle(), handleSidebarCollapse(), initSidebarState(), isMobileScreen()
 
 ### Community 14 - "escapeHtml"
-Cohesion: 0.22
-Nodes (28): calculateOutstandingCreditAccounts(), deleteCreditPayment(), deleteDailyExpense(), deleteDailySpotCash(), displayCustomerName(), escapeHtml(), formatDateTime(), money() (+20 more)
+Cohesion: 0.17
+Nodes (36): addToCart(), calculateOutstandingCreditAccounts(), deleteCreditPayment(), deleteDailyExpense(), deleteDailySpotCash(), displayCustomerName(), displayedSellingPrice(), escapeHtml() (+28 more)
 
 ### Community 17 - "graphify reference: extra exports and benchmark"
 Cohesion: 0.22
