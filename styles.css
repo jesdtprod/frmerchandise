@@ -1329,6 +1329,7 @@ body::after {
 }
 
 .workspace[data-view="products"],
+.workspace[data-view="bundleMonitoring"],
 .workspace[data-view="inventory"],
 .workspace[data-view="quarantine"],
 .workspace[data-view="quarantineReport"],
@@ -1348,6 +1349,7 @@ body::after {
 }
 
 .workspace[data-view="products"] .cart,
+.workspace[data-view="bundleMonitoring"] .cart,
 .workspace[data-view="inventory"] .cart,
 .workspace[data-view="quarantine"] .cart,
 .workspace[data-view="quarantineReport"] .cart,
@@ -3362,6 +3364,16 @@ body::after {
 .workspace[data-view="products"] .table-row {
   grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 140px;
 }
+
+.workspace[data-view="bundleMonitoring"] .table-row { grid-template-columns: minmax(210px, 0.9fr) minmax(280px, 1.5fr) minmax(150px, 0.65fr) minmax(190px, 0.8fr); }
+.bundle-monitor-components { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-primary); font-size: 13px; }
+.bundle-component-separator { color: var(--text-muted); }
+.bundle-monitor-count { display: inline-flex; align-items: center; gap: 7px; color: #60a5fa; font-size: 12px; white-space: nowrap; }
+.bundle-monitor-count.is-empty { color: #cbd5e1; }
+.bundle-monitor-count strong { color: var(--text-pure); font-size: 18px; }
+.bundle-monitor-tank { width: 23px; height: 23px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.bundle-monitor-tank.is-solid { fill: currentColor; }
+.bundle-monitor-tank.is-solid path:nth-child(n+2) { fill: none; stroke: var(--bg-obsidian); }
 
 .workspace[data-view="products"] .table-header span:last-child {
   justify-content: center;

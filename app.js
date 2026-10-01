@@ -4046,6 +4046,7 @@ function renderDashboardSkeleton() {
 
 function renderInventory() {
   if (activeView === 'dashboard') { renderDashboard(); return; }
+  if (activeView === 'bundleMonitoring') { renderBundleMonitoring(); return; }
   if (activeView === 'quarantine') { renderQuarantinedItems(); return; }
   if (activeView === 'quarantineReport') { renderQuarantineReport(); return; }
   if (activeView === 'inventoryReports') {
@@ -4198,6 +4199,24 @@ function renderInventory() {
   table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => openForm('edit', button.dataset.edit)));
   table.querySelectorAll('[data-product-price-override]').forEach((button) => button.addEventListener('click', () => openProductPriceOverride(button.dataset.productPriceOverride)));
   table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
+}
+
+function renderBundleMonitoring() {
+  const table = $('#inventoryTable');
+  if (!table) return;
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const componentName = (component) => allProducts.find((product) => product.id === component.productId)?.name || component.productId;
+  const bundles = sortByName_(products.filter((product) => product.productType === 'bundle' && `${product.name} ${product.components.map(componentName).join(' ')}`.toLowerCase().includes(term)));
+  const tankIcon = (filled) => `<svg class="bundle-monitor-tank ${filled ? 'is-solid' : 'is-outline'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/></svg>`;
+  table.innerHTML = `
+    <div class="table-row table-header"><span>Bundle</span><span>Components</span><span>Sets producible</span><span>Empty shells remaining</span></div>
+    ${bundles.map((bundle) => {
+      const components = bundle.components.map((component) => `${escapeHtml(componentName(component))} <b>&times;${component.qty}</b>`).join('<span class="bundle-component-separator">&bull;</span>') || 'No components configured';
+      const sets = Number(bundleAvailability[bundle.id] ?? bundle.qty ?? 0);
+      const emptyShells = Number(bundle.tankInventory?.empty || 0);
+      return `<div class="table-row bundle-monitor-row"><div class="product-cell"><strong class="product-name">${escapeHtml(bundle.name)}</strong><span class="product-meta">${escapeHtml(bundle.sku || bundle.id)} &bull; Bundle / Set</span></div><div class="bundle-monitor-components">${components}</div><div class="bundle-monitor-count" title="Sets that can be produced">${tankIcon(true)}<strong>${sets}</strong><span>sets</span></div><div class="bundle-monitor-count is-empty" title="Empty shells remaining">${tankIcon(false)}<strong>${emptyShells}</strong><span>empty</span></div></div>`;
+    }).join('') || '<div class="empty-state"><p>No bundles found</p><small>Create a Bundle / Set in Product Registration to monitor it here.</small></div>'}
+  `;
 }
 
 function renderQuarantinedItems() {
@@ -7205,7 +7224,7 @@ async function deleteProduct(productId) {
    NAVIGATION & VIEWS
    ========================================================================== */
 function setView(view, preserveSidebarOpen = false) {
-  const validViews = ['dashboard', 'pos', 'products', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'dailySpotCash', 'dailyExpenses', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
+  const validViews = ['dashboard', 'pos', 'products', 'bundleMonitoring', 'inventory', 'quarantine', 'quarantineReport', 'branches', 'transfers', 'dailySpotCash', 'dailyExpenses', 'customers', 'credits', 'sales', 'inventoryReports', 'staffAccounts', 'adminAccount'];
   const permissions = currentSession?.account?.permissions || ['*'];
   const dailySpotCashNav = document.querySelector('[data-view="dailySpotCash"]');
   if (dailySpotCashNav) dailySpotCashNav.hidden = !permissions.includes('*') && !permissions.includes('dailySpotCash');
@@ -7220,6 +7239,7 @@ function setView(view, preserveSidebarOpen = false) {
     dashboard: ['WORKSPACE', 'Dashboard', 'BRANCH OVERVIEW', 'Operational Snapshot'],
     pos: ['WORKSPACE', 'Point of Sale', 'INVENTORY', 'Available Products'],
     products: ['CATALOG', 'Product Registration', 'PRODUCT CATALOG', 'Registered Products'],
+    bundleMonitoring: ['CATALOG', 'Bundles Monitoring', 'BUNDLE INVENTORY', 'Production and Empty Shell Availability'],
     inventory: ['BRANCH INVENTORY', 'Inventory Stock', 'STOCK CONTROL', 'Main Branch Stock'],
     quarantine: ['INVENTORY CONTROL', 'Quarantined Items', 'INSPECTION HOLDING AREA', 'Items Awaiting Disposition'],
     quarantineReport: ['REPORTING', 'Quarantine Report', 'QUARANTINE REPORT', 'Branch Quarantine Report'],
@@ -7263,6 +7283,8 @@ function setView(view, preserveSidebarOpen = false) {
       ? 'Search date, notes, or opening cash...'
       : view === 'dailyExpenses'
       ? 'Search date, category, description, or receipt...'
+      : view === 'bundleMonitoring'
+      ? 'Search bundle or component...'
       : 'Search product name, SKU, or category...';
   }
 
@@ -7270,6 +7292,7 @@ function setView(view, preserveSidebarOpen = false) {
     dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>`,
     pos: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
     products: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/></svg>`,
+    bundleMonitoring: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/></svg>`,
     inventory: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>`,
     quarantine: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`,
     quarantineReport: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M14 2v4h4"/><path d="m9 15 2 2 4-4"/><path d="M9 11h6"/></svg>`,
@@ -7302,7 +7325,7 @@ function setView(view, preserveSidebarOpen = false) {
     cartSection.style.display = isPos ? '' : 'none';
   }
   const sectionActions = $('#sectionActions');
-  if (sectionActions) sectionActions.style.display = isPos || view === 'credits' || view === 'sales' || view === 'inventoryReports' || view === 'quarantine' || view === 'quarantineReport' ? 'none' : 'flex';
+  if (sectionActions) sectionActions.style.display = isPos || view === 'bundleMonitoring' || view === 'credits' || view === 'sales' || view === 'inventoryReports' || view === 'quarantine' || view === 'quarantineReport' ? 'none' : 'flex';
   const addBtn = $('#addProductButton');
   if (addBtn) addBtn.hidden = view !== 'products';
   const addExistingProductBtn = $('#addExistingProductButton');
