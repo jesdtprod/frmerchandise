@@ -611,6 +611,35 @@
       </form>
     </dialog>
 
+    <!-- Cart Selling Price Override Dialog -->
+    <dialog id="cartPriceOverrideDialog" class="pepsi-dialog cart-price-override-dialog">
+      <form id="cartPriceOverrideForm" novalidate>
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <div class="modal-icon-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div class="modal-title-content">
+              <span class="modal-eyebrow">POINT OF SALE</span>
+              <h2>Override price</h2>
+              <p class="modal-subtitle" id="cartPriceOverrideProduct"></p>
+            </div>
+          </div>
+          <button class="icon-button close-dialog-btn" type="button" data-close="cartPriceOverrideDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="form-field-group full-field">
+          <label for="cartPriceOverrideInput"><span class="label-text">Selling Price (PHP)</span></label>
+          <div class="input-with-prefix"><span class="input-prefix">PHP</span><input id="cartPriceOverrideInput" type="number" min="0" step="0.01" required aria-describedby="cartPriceOverrideHint" /></div>
+          <small id="cartPriceOverrideHint" class="cart-price-override-hint"></small>
+        </div>
+        <p class="form-error" id="cartPriceOverrideError" role="alert"></p>
+        <div class="modal-actions">
+          <button class="button modal-cancel-btn" type="button" data-close="cartPriceOverrideDialog">Cancel</button>
+          <button class="button modal-save-btn" type="submit"><span class="button-text">Save price</span></button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Credit Payment Dialog -->
     <dialog id="creditPaymentDialog" class="pepsi-dialog">
       <form id="creditPaymentForm" novalidate>

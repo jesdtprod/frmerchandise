@@ -22,6 +22,7 @@ const files = {
   dailySpotCash: await readFile(new URL('../supabase/migrations/20260929100000_daily_spot_cash.sql', import.meta.url), 'utf8'),
   dailyExpenses: await readFile(new URL('../supabase/migrations/20260929110000_daily_expenses.sql', import.meta.url), 'utf8'),
   dailyOperationsBackup: await readFile(new URL('../supabase/migrations/20260929120000_backup_daily_operations.sql', import.meta.url), 'utf8').catch(() => ''),
+  salePriceOverrides: await readFile(new URL('../supabase/migrations/20261001000000_sale_price_overrides.sql', import.meta.url), 'utf8'),
 };
 
 const checks = [
@@ -36,6 +37,8 @@ const checks = [
   ['stock-in selling prices are stored as FIFO batches', /selling_price_input[\s\S]*inventory_cost_batches/.test(files.fifoSellingPrices)],
   ['checkout allocates each sale to FIFO batch prices', /sale_item_price_allocations[\s\S]*qty_remaining/.test(files.fifoSellingPrices)],
   ['cart renders mixed FIFO batch prices', /getCartPriceBreakdown[\s\S]*Batch Selling Price/.test(files.app)],
+  ['cart price overrides are editable and sent to checkout', /openCartPriceOverride[\s\S]*overridePrice[\s\S]*items: cart\.map[\s\S]*price: Number\(item\.overridePrice\)/.test(files.app) && /cartPriceOverrideDialog/.test(files.index)],
+  ['database records optional cart price overrides as the sale allocation price', /requested_price := case when line \? 'price'[\s\S]*coalesce\(requested_price, batch_row\.selling_price\)[\s\S]*sale_item_price_allocations/.test(files.salePriceOverrides)],
   ['catalog price follows the cart batch currently reached', /displayedSellingPrice[\s\S]*breakdown\[breakdown\.length - 1\]/.test(files.app)],
   ['used products are archived instead of deleting historical stock-ins', /stock_ins[\s\S]*Archived product/.test(files.safeArchiving)],
   ['transfers preserve each FIFO selling-price batch', /transfer_batch_allocations[\s\S]*selling_price[\s\S]*Received FIFO selling-price transfer/.test(files.transferSellingPrices)],
