@@ -1624,7 +1624,7 @@ async function getAppData_(branchId) {
   const branchProducts = Object.fromEntries(branchProductRows.map((row) => [row.product_id, row]));
   const quantities = Object.fromEntries(inventoryRows.map((row) => [row.product_id, Number(row.qty || 0)]));
   const bundleComponentsByProduct = bundleComponentRows.reduce((groups, row) => {
-    (groups[row.bundle_product_id] ||= []).push({ productId: row.component_product_id, qty: Number(row.qty || 0) });
+    (groups[row.bundle_product_id] ||= []).push({ productId: row.component_product_id, qty: Number(row.qty || 0), inventoryRole: row.inventory_role || 'standard' });
     return groups;
   }, {});
   const availableBundles = Object.fromEntries(bundleAvailabilityRows.map((row) => [row.product_id, Number(row.qty_available || 0)]));
@@ -1647,6 +1647,11 @@ async function getAppData_(branchId) {
       lowStockLevel: branchProduct.low_stock_level === null ? product.lowStockLevel : Number(branchProduct.low_stock_level),
       status: branchProduct.status || product.status,
       qty: product.productType === 'bundle' ? (availableBundles[product.id] || 0) : (quantities[product.id] || 0),
+      tankInventory: product.productType === 'bundle' && product.category === 'LPG' && product.components.length >= 2 ? (() => {
+        const filled = product.components.find((item) => item.inventoryRole === 'filled') || product.components[0];
+        const empty = product.components.find((item) => item.inventoryRole === 'empty') || product.components.find((item) => item.productId !== filled.productId);
+        return empty ? { filled: Number(quantities[filled.productId] || 0), empty: Number(quantities[empty.productId] || 0) } : null;
+      })() : null,
     };
   });
   const paidBySale = paymentRows.reduce((totals, row) => {
@@ -1797,6 +1802,7 @@ async function api(action, payload = {}) {
       sale_lines: payload.items.map((item) => ({
         productId: item.productId,
         qty: Number(item.qty),
+        ...(item.emptyReturn ? { emptyReturn: true } : {}),
         ...(Number.isFinite(Number(item.price)) ? { price: Number(item.price) } : {}),
       })),
       payment_type_input: payload.paymentType,
@@ -4112,11 +4118,15 @@ function renderInventory() {
     `;
 
     const categoryCell = `<span class="category-badge">${escapeHtml(product.category || 'General')}</span>`;
-    const priceCell = hasSellingPriceOverride(product.sellingPriceOverride)
+    const priceValue = hasSellingPriceOverride(product.sellingPriceOverride)
       ? `<span class="price-text">${money(product.sellingPriceOverride)}</span>`
       : product.qty > 0
       ? `<span class="price-text">${money(displayedSellingPrice(product))}</span>`
       : '<span class="price-text price-unset">Stock In required</span>';
+    const tankInventory = product.tankInventory
+      ? `<span class="bundle-tank-inventory" aria-label="Tank inventory"><span class="bundle-tank-count">Filled <b>${product.tankInventory.filled}</b></span><span class="bundle-tank-count is-empty">Empty <b>${product.tankInventory.empty}</b></span></span>`
+      : '';
+    const priceCell = `<span class="product-price-stack">${priceValue}${tankInventory}</span>`;
     const quantityCell = `<span class="stock-pill stock-quantity">${product.qty} ${escapeHtml(product.unit || 'unit')}</span>`;
 
     const productRow = `
@@ -6222,6 +6232,7 @@ function renderCart() {
           <div class="cart-item-info">
             <strong class="cart-item-title">${escapeHtml(item.name)}</strong>
             <span class="cart-item-meta">${escapeHtml(item.unit || 'unit')} &bull; FIFO price: ${money(getCartPriceBreakdown(item)[0]?.sellingPrice || item.price)}</span>
+            ${item.tankInventory ? '<span class="refill-exchange-note">Refill exchange: empty tank returned</span>' : ''}
           </div>
           <button class="remove cart-remove-btn" aria-label="Remove ${escapeHtml(item.name)}" data-remove="${item.id}" title="Remove item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
@@ -8353,6 +8364,7 @@ $('#saleForm').addEventListener('submit', async (event) => {
       items: cart.map((item) => ({
         productId: item.id,
         qty: item.qty,
+        ...(item.tankInventory ? { emptyReturn: true } : {}),
         ...(hasSellingPriceOverride(item.sellingPriceOverride) ? { price: Number(item.sellingPriceOverride) } : {}),
       })),
     });

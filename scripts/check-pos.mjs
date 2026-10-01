@@ -68,7 +68,7 @@ const checks = [
   ['daily expenses can be granted to staff and saved per branch', /dailyExpenses:\s*\{\s*key:\s*'dailyExpenses'/.test(files.app) && /dailyExpenses/.test(files.accountFunction) && /daily_expenses/.test(files.dailyExpenses) && /create_daily_expense/.test(files.app) && /can_access_branch\(target_branch_id\)/.test(files.dailyExpenses) && /has_permission\('dailyExpenses'\)/.test(files.dailyExpenses)],
   ['staff add and edit forms offer both branch-operation permissions', /\['dailySpotCash', 'Daily Spot Cash'\]/.test(files.app) && /\['dailyExpenses', 'Daily Expenses'\]/.test(files.app)],
   ['staff permission cards follow the sidebar order', /\['transfers', 'Stock Transfers'\],[\s\S]*\['dailySpotCash', 'Daily Spot Cash'\],[\s\S]*\['dailyExpenses', 'Daily Expenses'\],[\s\S]*\['customers', 'Customers'\]/.test(files.app)],
-  ['daily expenses loads the current click handler bundle', /app\.js\?v=daily-expenses-9/.test(files.index) && /addDailyExpenseButton'\)\?\.addEventListener\('click', \(\) => openForm\('dailyExpenses'\)\)/.test(files.app)],
+  ['daily expenses loads the current click handler bundle', /app\.js\?v=lpg-refill-inventory-1/.test(files.index) && /addDailyExpenseButton'\)\?\.addEventListener\('click', \(\) => openForm\('dailyExpenses'\)\)/.test(files.app)],
   ['dashboard KPI ordering loads the current stylesheet', /kpi-order\.css\?v=1/.test(files.index)],
   ['daily expense modal has its category list before rendering', /const DAILY_EXPENSE_CATEGORIES = \[/.test(files.app) && /DAILY_EXPENSE_CATEGORIES\.map\(/.test(files.app)],
   ['dashboard combines cash collected and today spot cash less expenses', /const todaySpotCash = dailySpotCash[\s\S]*businessDate === todayKey[\s\S]*openingCash/.test(files.app) && /const todayCashOnHand = todayCashCollected \+ todaySpotCash - todayExpenses;/.test(files.app) && /Cash Collected \+ Today\'s Spot Cash - Expenses/.test(files.app) && /Today\'s Spot Cash[\s\S]*money\(todaySpotCash\)/.test(files.app)],
@@ -84,6 +84,8 @@ const checks = [
   ['quarantine disposition actions are labeled buttons', /resolve-btn-text">Restock[\s\S]*resolve-btn-text">Supplier Return[\s\S]*resolve-btn-text">Dispose/.test(files.app)],
   ['bundle returns resolve their quarantined components independently', /resolve_bundle_return_component[\s\S]*target_product_id[\s\S]*inventory_return_lots/.test(files.bundleReturnComponents) && /inventoryReturnLots[\s\S]*data-resolve-bundle-return-component[\s\S]*resolveBundleReturnComponent_/.test(files.app)],
   ['dashboard operational lists are limited to five ordered records', /topProducts[\s\S]*slice\(0, 5\)[\s\S]*attentionStock[\s\S]*slice\(0, 5\)[\s\S]*pendingTransfers[\s\S]*slice\(0, 5\)[\s\S]*recentSales[\s\S]*slice\(0, 5\)/.test(files.app)],
+  ['LPG bundle rows show filled and empty tank counts', /inventoryRole[\s\S]*tankInventory[\s\S]*bundle-tank-inventory[\s\S]*Filled[\s\S]*Empty/.test(files.app)],
+  ['LPG bundle checkouts flag the automatic empty-tank return', /item\.tankInventory \? \{ emptyReturn: true \}/.test(files.app)],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name);

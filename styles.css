@@ -57,6 +57,12 @@
   --dialog-shadow: 0 25px 65px -10px rgba(0, 3, 10, 0.85), 0 0 32px rgba(0, 102, 245, 0.2);
 }
 
+.product-price-stack { display: inline-flex; flex-direction: column; gap: 5px; }
+.bundle-tank-inventory { display: inline-flex; gap: 10px; color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.bundle-tank-count { color: #38bdf8; }
+.bundle-tank-count.is-empty { color: #94a3b8; }
+.refill-exchange-note { display: inline-flex; margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
+
 /* Base Reset & Typography */
 * {
   box-sizing: border-box;
