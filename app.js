@@ -4209,12 +4209,11 @@ function renderBundleMonitoring() {
   const bundles = sortByName_(products.filter((product) => product.productType === 'bundle' && `${product.name} ${product.components.map(componentName).join(' ')}`.toLowerCase().includes(term)));
   const tankIcon = (filled) => `<svg class="bundle-monitor-tank ${filled ? 'is-solid' : 'is-outline'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/></svg>`;
   table.innerHTML = `
-    <div class="table-row table-header"><span>Bundle</span><span>Components</span><span>Sets producible</span><span>Empty shells remaining</span></div>
     ${bundles.map((bundle) => {
       const components = bundle.components.map((component) => `${escapeHtml(componentName(component))} <b>&times;${component.qty}</b>`).join('<span class="bundle-component-separator">&bull;</span>') || 'No components configured';
       const sets = Number(bundleAvailability[bundle.id] ?? bundle.qty ?? 0);
-      const emptyShells = Number(bundle.tankInventory?.empty || 0);
-      return `<div class="table-row bundle-monitor-row"><div class="product-cell"><strong class="product-name">${escapeHtml(bundle.name)}</strong><span class="product-meta">${escapeHtml(bundle.sku || bundle.id)} &bull; Bundle / Set</span></div><div class="bundle-monitor-components">${components}</div><div class="bundle-monitor-count" title="Sets that can be produced">${tankIcon(true)}<strong>${sets}</strong><span>sets</span></div><div class="bundle-monitor-count is-empty" title="Empty shells remaining">${tankIcon(false)}<strong>${emptyShells}</strong><span>empty</span></div></div>`;
+      const emptyShells = Math.max(0, Number(bundle.tankInventory?.empty || 0) - sets);
+      return `<article class="bundle-monitor-card"><div class="bundle-monitor-card-header"><div class="product-cell"><strong class="product-name">${escapeHtml(bundle.name)}</strong><span class="product-meta">${escapeHtml(bundle.sku || bundle.id)} &bull; Bundle / Set</span></div></div><div class="bundle-monitor-components">${components}</div><div class="bundle-monitor-metrics"><div class="bundle-monitor-count" title="Sets that can be produced">${tankIcon(true)}<strong>${sets}</strong><span>sets producible</span></div><div class="bundle-monitor-count is-empty" title="Empty shells remaining after producible sets are reserved">${tankIcon(false)}<strong>${emptyShells}</strong><span>empty shells remaining</span></div></div></article>`;
     }).join('') || '<div class="empty-state"><p>No bundles found</p><small>Create a Bundle / Set in Product Registration to monitor it here.</small></div>'}
   `;
 }

@@ -3365,9 +3365,13 @@ body::after {
   grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 140px;
 }
 
-.workspace[data-view="bundleMonitoring"] .table-row { grid-template-columns: minmax(210px, 0.9fr) minmax(280px, 1.5fr) minmax(150px, 0.65fr) minmax(190px, 0.8fr); }
+.workspace[data-view="bundleMonitoring"] .grid-table { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+.bundle-monitor-card { padding: 16px; border: 1px solid var(--border-subtle); border-radius: 10px; background: rgba(255, 255, 255, 0.025); }
+.bundle-monitor-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .bundle-monitor-components { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-primary); font-size: 13px; }
+.bundle-monitor-card .bundle-monitor-components { margin-top: 12px; }
 .bundle-component-separator { color: var(--text-muted); }
+.bundle-monitor-metrics { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
 .bundle-monitor-count { display: inline-flex; align-items: center; gap: 7px; color: #60a5fa; font-size: 12px; white-space: nowrap; }
 .bundle-monitor-count.is-empty { color: #cbd5e1; }
 .bundle-monitor-count strong { color: var(--text-pure); font-size: 18px; }
