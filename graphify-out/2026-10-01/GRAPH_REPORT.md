@@ -1,7 +1,7 @@
 # Graph Report - frmerchandise  (2026-10-01)
 
 ## Corpus Check
-- 64 files · ~89,193 words
+- 64 files · ~89,199 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .css 3, .graphify-bak 1)
 

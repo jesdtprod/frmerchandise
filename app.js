@@ -2054,32 +2054,44 @@ function renderSkeletonTable() {
     table.innerHTML = Array.from({ length: 6 }).map(() => `
       <div class="bundle-monitor-card bundle-skeleton-card">
         <div class="bundle-monitor-card-header">
-          <div class="skeleton-shimmer bundle-skeleton-icon"></div>
-          <div class="bundle-skeleton-title-col">
-            <div class="skeleton-shimmer bundle-skeleton-line title"></div>
-            <div class="skeleton-shimmer bundle-skeleton-line meta"></div>
+          <div class="bundle-monitor-header-left">
+            <div class="skeleton-shimmer bundle-skeleton-icon"></div>
+            <div class="bundle-skeleton-title-col">
+              <div class="skeleton-shimmer bundle-skeleton-line title"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line meta"></div>
+            </div>
+          </div>
+          <div class="bundle-monitor-price-box" style="border-color: rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+            <div class="skeleton-shimmer bundle-skeleton-line" style="width: 58px; height: 14px;"></div>
+            <div class="skeleton-shimmer bundle-skeleton-line" style="width: 32px; height: 8px; margin-top: 2px;"></div>
           </div>
         </div>
         <div class="bundle-monitor-body">
-          <div class="skeleton-shimmer bundle-skeleton-line label" style="width: 80px; height: 11px; margin-bottom: 8px;"></div>
-          <div class="bundle-skeleton-chips">
-            <div class="skeleton-shimmer bundle-skeleton-chip" style="width: 130px;"></div>
-            <div class="skeleton-shimmer bundle-skeleton-chip" style="width: 105px;"></div>
+          <div class="skeleton-shimmer bundle-skeleton-line label" style="width: 80px; height: 10px; margin-bottom: 6px;"></div>
+          <div class="bundle-skeleton-rows">
+            <div class="bundle-skeleton-row">
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 55%; height: 12px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 54px; height: 12px;"></div>
+            </div>
+            <div class="bundle-skeleton-row">
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 48%; height: 12px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 58px; height: 12px;"></div>
+            </div>
           </div>
         </div>
         <div class="bundle-monitor-metrics">
           <div class="bundle-skeleton-stat">
             <div class="skeleton-shimmer bundle-skeleton-stat-icon"></div>
             <div class="bundle-skeleton-stat-text">
-              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 32px; height: 18px;"></div>
-              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 70px; height: 10px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 28px; height: 15px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 60px; height: 9px;"></div>
             </div>
           </div>
           <div class="bundle-skeleton-stat">
             <div class="skeleton-shimmer bundle-skeleton-stat-icon"></div>
             <div class="bundle-skeleton-stat-text">
-              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 32px; height: 18px;"></div>
-              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 75px; height: 10px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 28px; height: 15px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 65px; height: 9px;"></div>
             </div>
           </div>
         </div>
@@ -4249,29 +4261,56 @@ function renderBundleMonitoring() {
   const tankIcon = (filled) => `<svg class="bundle-monitor-tank ${filled ? 'is-solid' : 'is-outline'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/></svg>`;
   table.innerHTML = `
     ${bundles.map((bundle) => {
-      const components = (bundle.components || []).map((component) => `
-        <span class="bundle-component-item">
-          <span class="bundle-component-name">${escapeHtml(componentName(component))}</span>
-          <span class="bundle-component-qty">&times;${component.qty}</span>
-        </span>
-      `).join('') || '<span class="bundle-no-components">No components configured</span>';
+      const bundlePrice = hasSellingPriceOverride(bundle.sellingPriceOverride)
+        ? Number(bundle.sellingPriceOverride)
+        : (Number(bundle.qty || 0) > 0 || bundle.price ? displayedSellingPrice(bundle) : Number(bundle.price || 0));
+
+      const components = (bundle.components || []).map((component) => {
+        const compProduct = products.find((p) => p.id === component.productId) || allProducts.find((p) => p.id === component.productId);
+        const compName = compProduct?.name || component.productId;
+        const compStock = Number(compProduct?.qty ?? 0);
+        const isOut = compStock <= 0;
+        const isLow = !isOut && compStock <= Number(compProduct?.lowStockLevel || 5);
+        const stockStatusClass = isOut ? 'is-out' : (isLow ? 'is-low' : 'is-good');
+        const stockText = isOut ? '0 in stock' : `${compStock.toLocaleString('en-PH')} in stock`;
+
+        return `
+          <div class="bundle-component-row">
+            <div class="bundle-comp-main">
+              <span class="bundle-comp-dot"></span>
+              <strong class="bundle-comp-name" title="${escapeHtml(compName)}">${escapeHtml(compName)}</strong>
+              <span class="bundle-component-qty" title="Recipe requirement">&times;${component.qty}</span>
+            </div>
+            <span class="bundle-comp-stock ${stockStatusClass}" title="Current stock in this branch">
+              <span class="bundle-comp-stock-dot"></span>
+              <span>${stockText}</span>
+            </span>
+          </div>
+        `;
+      }).join('') || '<span class="bundle-no-components">No components configured</span>';
       const sets = Number(bundleAvailability[bundle.id] ?? bundle.qty ?? 0);
       const emptyShells = Math.max(0, Number(bundle.tankInventory?.empty || 0) - sets);
       const isZeroSets = sets === 0;
       return `
         <article class="bundle-monitor-card ${isZeroSets ? 'has-zero-sets' : ''}">
           <div class="bundle-monitor-card-header">
-            <div class="bundle-monitor-icon-badge" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/>
-              </svg>
-            </div>
-            <div class="bundle-monitor-title-block">
-              <strong class="bundle-monitor-name" title="${escapeHtml(bundle.name)}">${escapeHtml(bundle.name)}</strong>
-              <div class="bundle-monitor-meta">
-                <span class="bundle-sku-tag">${escapeHtml(bundle.sku || bundle.id)}</span>
-                <span class="bundle-type-pill">Bundle / Set</span>
+            <div class="bundle-monitor-header-left">
+              <div class="bundle-monitor-icon-badge" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/>
+                </svg>
               </div>
+              <div class="bundle-monitor-title-block">
+                <strong class="bundle-monitor-name" title="${escapeHtml(bundle.name)}">${escapeHtml(bundle.name)}</strong>
+                <div class="bundle-monitor-meta">
+                  <span class="bundle-sku-tag">${escapeHtml(bundle.sku || bundle.id)}</span>
+                  <span class="bundle-type-pill">Bundle / Set</span>
+                </div>
+              </div>
+            </div>
+            <div class="bundle-monitor-price-box" title="Bundle set selling price">
+              <span class="bundle-price-val">${money(bundlePrice)}</span>
+              <span class="bundle-price-lbl">per set</span>
             </div>
           </div>
           <div class="bundle-monitor-body">
