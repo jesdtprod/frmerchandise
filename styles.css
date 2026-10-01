@@ -3354,7 +3354,7 @@ body::after {
 }
 
 .workspace[data-view="products"] .table-row {
-  grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 120px;
+  grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 140px;
 }
 
 .workspace[data-view="products"] .table-header span:last-child {
