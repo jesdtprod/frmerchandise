@@ -3337,8 +3337,8 @@ body::after {
 }
 
 .grid-table {
+  width: 100%;
   min-width: 100%;
-  width: max-content;
   box-sizing: border-box;
 }
 
@@ -3354,7 +3354,30 @@ body::after {
 }
 
 .workspace[data-view="products"] .table-row {
-  grid-template-columns: minmax(220px, 2.2fr) minmax(110px, 1fr) 120px 125px 105px 90px 85px;
+  grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 120px;
+}
+
+.workspace[data-view="products"] .table-header span:last-child {
+  justify-content: center;
+  text-align: center;
+}
+
+.workspace[data-view="products"] .row-action-cell .table-actions,
+.workspace[data-view="products"] .table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.workspace[data-view="products"] .table-actions .icon-button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  flex-shrink: 0 !important;
 }
 
 .stock-quantity {
@@ -4502,7 +4525,7 @@ dialog.credit-history-dialog {
 }
 
 .workspace[data-view="products"] .skeleton-row {
-  grid-template-columns: minmax(220px, 2.2fr) minmax(110px, 1fr) 120px 125px 105px 90px 85px;
+  grid-template-columns: minmax(240px, 1fr) 120px 140px 145px 105px 95px 120px;
 }
 
 .workspace[data-view="pos"] .skeleton-row {
