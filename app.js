@@ -2049,6 +2049,45 @@ function showToast(message, type = 'info') {
 function renderSkeletonTable() {
   const table = $('#inventoryTable');
   if (!table) return;
+
+  if (activeView === 'bundleMonitoring') {
+    table.innerHTML = Array.from({ length: 6 }).map(() => `
+      <div class="bundle-monitor-card bundle-skeleton-card">
+        <div class="bundle-monitor-card-header">
+          <div class="skeleton-shimmer bundle-skeleton-icon"></div>
+          <div class="bundle-skeleton-title-col">
+            <div class="skeleton-shimmer bundle-skeleton-line title"></div>
+            <div class="skeleton-shimmer bundle-skeleton-line meta"></div>
+          </div>
+        </div>
+        <div class="bundle-monitor-body">
+          <div class="skeleton-shimmer bundle-skeleton-line label" style="width: 80px; height: 11px; margin-bottom: 8px;"></div>
+          <div class="bundle-skeleton-chips">
+            <div class="skeleton-shimmer bundle-skeleton-chip" style="width: 130px;"></div>
+            <div class="skeleton-shimmer bundle-skeleton-chip" style="width: 105px;"></div>
+          </div>
+        </div>
+        <div class="bundle-monitor-metrics">
+          <div class="bundle-skeleton-stat">
+            <div class="skeleton-shimmer bundle-skeleton-stat-icon"></div>
+            <div class="bundle-skeleton-stat-text">
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 32px; height: 18px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 70px; height: 10px;"></div>
+            </div>
+          </div>
+          <div class="bundle-skeleton-stat">
+            <div class="skeleton-shimmer bundle-skeleton-stat-icon"></div>
+            <div class="bundle-skeleton-stat-text">
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 32px; height: 18px;"></div>
+              <div class="skeleton-shimmer bundle-skeleton-line" style="width: 75px; height: 10px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    return;
+  }
+
   const headers = activeView === 'products'
     ? ['Product', 'Category', 'Selling price', 'Quantity in stock', 'Low stock', 'Status', 'Action']
     : activeView === 'inventory'
@@ -4206,14 +4245,61 @@ function renderBundleMonitoring() {
   if (!table) return;
   const term = ($('#searchInput')?.value || '').trim().toLowerCase();
   const componentName = (component) => allProducts.find((product) => product.id === component.productId)?.name || component.productId;
-  const bundles = sortByName_(products.filter((product) => product.productType === 'bundle' && `${product.name} ${product.components.map(componentName).join(' ')}`.toLowerCase().includes(term)));
+  const bundles = sortByName_(products.filter((product) => product.productType === 'bundle' && `${product.name} ${product.components?.map(componentName).join(' ') || ''} ${product.sku || ''}`.toLowerCase().includes(term)));
   const tankIcon = (filled) => `<svg class="bundle-monitor-tank ${filled ? 'is-solid' : 'is-outline'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/></svg>`;
   table.innerHTML = `
     ${bundles.map((bundle) => {
-      const components = bundle.components.map((component) => `${escapeHtml(componentName(component))} <b>&times;${component.qty}</b>`).join('<span class="bundle-component-separator">&bull;</span>') || 'No components configured';
+      const components = (bundle.components || []).map((component) => `
+        <span class="bundle-component-item">
+          <span class="bundle-component-name">${escapeHtml(componentName(component))}</span>
+          <span class="bundle-component-qty">&times;${component.qty}</span>
+        </span>
+      `).join('') || '<span class="bundle-no-components">No components configured</span>';
       const sets = Number(bundleAvailability[bundle.id] ?? bundle.qty ?? 0);
       const emptyShells = Math.max(0, Number(bundle.tankInventory?.empty || 0) - sets);
-      return `<article class="bundle-monitor-card"><div class="bundle-monitor-card-header"><div class="product-cell"><strong class="product-name">${escapeHtml(bundle.name)}</strong><span class="product-meta">${escapeHtml(bundle.sku || bundle.id)} &bull; Bundle / Set</span></div></div><div class="bundle-monitor-components">${components}</div><div class="bundle-monitor-metrics"><div class="bundle-monitor-count" title="Sets that can be produced">${tankIcon(true)}<strong>${sets}</strong><span>sets producible</span></div><div class="bundle-monitor-count is-empty" title="Empty shells remaining after producible sets are reserved">${tankIcon(false)}<strong>${emptyShells}</strong><span>empty shells remaining</span></div></div></article>`;
+      const isZeroSets = sets === 0;
+      return `
+        <article class="bundle-monitor-card ${isZeroSets ? 'has-zero-sets' : ''}">
+          <div class="bundle-monitor-card-header">
+            <div class="bundle-monitor-icon-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 3h10l2 4-2 14H7L5 7l2-4Z"/><path d="M5 7h14M9 3v4m6-4v4"/><path d="M9 12h6M9 16h6"/>
+              </svg>
+            </div>
+            <div class="bundle-monitor-title-block">
+              <strong class="bundle-monitor-name" title="${escapeHtml(bundle.name)}">${escapeHtml(bundle.name)}</strong>
+              <div class="bundle-monitor-meta">
+                <span class="bundle-sku-tag">${escapeHtml(bundle.sku || bundle.id)}</span>
+                <span class="bundle-type-pill">Bundle / Set</span>
+              </div>
+            </div>
+          </div>
+          <div class="bundle-monitor-body">
+            <div class="bundle-components-label">Components (${bundle.components?.length || 0})</div>
+            <div class="bundle-monitor-components">${components}</div>
+          </div>
+          <div class="bundle-monitor-metrics">
+            <div class="bundle-monitor-stat stat-producible ${isZeroSets ? 'is-empty' : ''}" title="Sets that can be produced">
+              <div class="bundle-stat-icon-wrap">
+                ${tankIcon(true)}
+              </div>
+              <div class="bundle-stat-info">
+                <strong class="bundle-stat-val">${sets.toLocaleString('en-PH')}</strong>
+                <span class="bundle-stat-lbl">sets producible</span>
+              </div>
+            </div>
+            <div class="bundle-monitor-stat stat-empty ${emptyShells === 0 ? 'is-zero' : ''}" title="Empty shells remaining after producible sets are reserved">
+              <div class="bundle-stat-icon-wrap">
+                ${tankIcon(false)}
+              </div>
+              <div class="bundle-stat-info">
+                <strong class="bundle-stat-val">${emptyShells.toLocaleString('en-PH')}</strong>
+                <span class="bundle-stat-lbl">empty shells left</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
     }).join('') || '<div class="empty-state"><p>No bundles found</p><small>Create a Bundle / Set in Product Registration to monitor it here.</small></div>'}
   `;
 }

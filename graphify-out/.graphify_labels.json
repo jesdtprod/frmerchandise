@@ -2,7 +2,7 @@
   "0": "app.js",
   "1": "renderCart",
   "2": "closeDropdown",
-  "3": "renderInventoryReports",
+  "3": "generateSalesPdf",
   "4": "showToast",
   "5": "FR Merchandise POS",
   "6": "Review Focus",
@@ -26,5 +26,5 @@
   "24": "graphify reference: transcribe video and audio",
   "25": "extraction-spec.md",
   "26": "renderStockInHistoryTable",
-  "27": "loadSupabaseSession_"
+  "27": "renderBranchSelector"
 }
