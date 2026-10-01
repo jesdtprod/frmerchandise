@@ -1643,6 +1643,7 @@ async function getAppData_(branchId) {
     return {
       ...product,
       price: product.productType === 'bundle' ? Number(product.bundlePrice || 0) : (batchesByProduct[product.id]?.[0]?.sellingPrice ?? (branchProduct.price_override === null ? product.price : Number(branchProduct.price_override))),
+      sellingPriceOverride: branchProduct.selling_price_override === null ? null : Number(branchProduct.selling_price_override),
       lowStockLevel: branchProduct.low_stock_level === null ? product.lowStockLevel : Number(branchProduct.low_stock_level),
       status: branchProduct.status || product.status,
       qty: product.productType === 'bundle' ? (availableBundles[product.id] || 0) : (quantities[product.id] || 0),
@@ -1956,6 +1957,13 @@ async function api(action, payload = {}) {
     const { data, error } = await client.from('branch_products').update({ low_stock_level: Number(payload.lowStockLevel), status: payload.status || 'Active' }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
     throwIfError_(error);
     return { id: payload.productId, name: String(payload.name).trim(), category: payload.category, unit: payload.unit, price: productType === 'bundle' ? bundlePrice : Number(data.price_override || 0), lowStockLevel: Number(data.low_stock_level), status: data.status, productType, bundlePrice, components: payload.bundleComponents || [] };
+  }
+  if (action === 'setProductSellingPriceOverride') {
+    const price = payload.price === '' || payload.price === undefined ? null : Number(payload.price);
+    if (price !== null && (!Number.isFinite(price) || price < 0)) throw new Error('Enter a valid selling price.');
+    const { data, error } = await client.from('branch_products').update({ selling_price_override: price }).eq('branch_id', payload.branchId).eq('product_id', payload.productId).select().single();
+    throwIfError_(error);
+    return { id: payload.productId, sellingPriceOverride: data.selling_price_override === null ? null : Number(data.selling_price_override) };
   }
   if (action === 'deleteProduct') {
     const { data, error } = await client.rpc('delete_product', { target_product_id: payload.productId });
@@ -4104,7 +4112,9 @@ function renderInventory() {
     `;
 
     const categoryCell = `<span class="category-badge">${escapeHtml(product.category || 'General')}</span>`;
-    const priceCell = product.qty > 0
+    const priceCell = hasSellingPriceOverride(product.sellingPriceOverride)
+      ? `<span class="price-text">${money(product.sellingPriceOverride)}</span>`
+      : product.qty > 0
       ? `<span class="price-text">${money(displayedSellingPrice(product))}</span>`
       : '<span class="price-text price-unset">Stock In required</span>';
     const quantityCell = `<span class="stock-pill stock-quantity">${product.qty} ${escapeHtml(product.unit || 'unit')}</span>`;
@@ -4121,6 +4131,7 @@ function renderInventory() {
       <div class="row-action-cell">
         <span class="table-actions">
           <button class="icon-button" data-edit="${product.id}" aria-label="Edit ${escapeHtml(product.name)}" title="Edit product"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+          <button class="icon-button" data-product-price-override="${product.id}" aria-label="Override selling price for ${escapeHtml(product.name)}" title="Override selling price"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>
           ${currentSession?.account?.role !== 'staff' ? `<button class="icon-button danger-icon" data-delete="${product.id}" aria-label="Delete ${escapeHtml(product.name)}" title="Delete product"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button>` : ''}
         </span>
       </div>
@@ -4175,6 +4186,7 @@ function renderInventory() {
     });
   });
   table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => openForm('edit', button.dataset.edit)));
+  table.querySelectorAll('[data-product-price-override]').forEach((button) => button.addEventListener('click', () => openProductPriceOverride(button.dataset.productPriceOverride)));
   table.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteProduct(button.dataset.delete)));
 }
 
@@ -6147,8 +6159,12 @@ function updateReceiptScrollFade() {
   container.classList.toggle('can-scroll-up', canScrollUp);
 }
 
+function hasSellingPriceOverride(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
 function getCartPriceBreakdown(item) {
-  const overridePrice = Number(item.overridePrice);
+  const overridePrice = hasSellingPriceOverride(item.overridePrice) ? Number(item.overridePrice) : (hasSellingPriceOverride(item.sellingPriceOverride) ? Number(item.sellingPriceOverride) : NaN);
   if (Number.isFinite(overridePrice) && overridePrice >= 0) {
     const qty = Number(item.qty) || 0;
     return [{ qty, sellingPrice: overridePrice, total: qty * overridePrice }];
@@ -6219,10 +6235,8 @@ function renderCart() {
             </div>
           </div>
           <div class="cart-control-col price-col cart-batch-prices">
-            <span class="cart-control-label">${Number.isFinite(Number(item.overridePrice)) ? 'Override Price' : 'Batch Selling Price'}</span>
+            <span class="cart-control-label">${hasSellingPriceOverride(item.overridePrice) || hasSellingPriceOverride(item.sellingPriceOverride) ? 'Override Price' : 'Batch Selling Price'}</span>
             ${getCartPriceBreakdown(item).map((line) => `<span class="cart-batch-price">${line.qty} &times; ${money(line.sellingPrice)}</span>`).join('')}
-            <button class="button button-secondary cart-override-price-btn" type="button" data-override-price="${item.id}">Override price</button>
-            ${Number.isFinite(Number(item.overridePrice)) ? `<button class="cart-clear-override-btn" type="button" data-clear-override-price="${item.id}">Use batch price</button>` : ''}
           </div>
           <div class="cart-subtotal-col">
             <span class="cart-control-label">Subtotal</span>
@@ -6240,14 +6254,6 @@ function renderCart() {
     cart = cart.filter((item) => item.id !== button.dataset.remove);
     renderCart();
     renderInventory();
-  }));
-  container.querySelectorAll('[data-override-price]').forEach((button) => button.addEventListener('click', () => openCartPriceOverride(button.dataset.overridePrice)));
-  container.querySelectorAll('[data-clear-override-price]').forEach((button) => button.addEventListener('click', () => {
-    const item = cart.find((entry) => entry.id === button.dataset.clearOverridePrice);
-    if (!item) return;
-    delete item.overridePrice;
-    renderCart();
-    showToast('Batch selling price restored.', 'info');
   }));
   container.querySelectorAll('[data-step-qty]').forEach((button) => button.addEventListener('click', () => {
     const item = cart.find((entry) => entry.id === button.dataset.stepQty);
@@ -6295,17 +6301,18 @@ function updateQty(id, value) {
   renderInventory();
 }
 
-function openCartPriceOverride(id) {
-  const item = cart.find((entry) => entry.id === id);
-  const dialog = $('#cartPriceOverrideDialog');
+function openProductPriceOverride(id) {
+  const item = products.find((entry) => entry.id === id);
+  const dialog = $('#productPriceOverrideDialog');
   const input = $('#cartPriceOverrideInput');
   if (!item || !dialog || !input) return;
-  const currentPrice = Number(item.overridePrice);
-  const standardTotal = getCartPriceBreakdown({ ...item, overridePrice: undefined }).reduce((total, line) => total + line.total, 0);
+  const currentPrice = hasSellingPriceOverride(item.sellingPriceOverride) ? Number(item.sellingPriceOverride) : NaN;
+  const standardTotal = getCartPriceBreakdown({ ...item, sellingPriceOverride: undefined, overridePrice: undefined }).reduce((total, line) => total + line.total, 0);
   $('#cartPriceOverrideProduct').textContent = item.name;
   $('#cartPriceOverrideHint').textContent = `Current batch price: ${money(standardTotal / item.qty)} per ${item.unit || 'unit'}.`;
   input.value = Number.isFinite(currentPrice) ? currentPrice.toFixed(2) : (standardTotal / item.qty).toFixed(2);
   $('#cartPriceOverrideError').textContent = '';
+  $('#productPriceOverrideClear').hidden = !Number.isFinite(currentPrice);
   dialog.dataset.productId = item.id;
   dialog.showModal();
   requestAnimationFrame(() => input.focus());
@@ -7496,20 +7503,44 @@ if (actionConfirmSubmitBtn) {
   });
 }
 
-$('#cartPriceOverrideForm')?.addEventListener('submit', (event) => {
+$('#productPriceOverrideForm')?.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const dialog = $('#cartPriceOverrideDialog');
-  const item = cart.find((entry) => entry.id === dialog?.dataset.productId);
+  const dialog = $('#productPriceOverrideDialog');
+  const item = products.find((entry) => entry.id === dialog?.dataset.productId);
   const input = $('#cartPriceOverrideInput');
   const price = Number(input?.value);
   if (!item || !Number.isFinite(price) || price < 0) {
     $('#cartPriceOverrideError').textContent = 'Enter a valid selling price.';
     return;
   }
-  item.overridePrice = price;
-  dialog.close();
-  renderCart();
-  showToast(`Selling price overridden for ${item.name}.`, 'success');
+  try {
+    const result = await api('setProductSellingPriceOverride', { productId: item.id, price, branchId: activeBranchId });
+    products = products.map((product) => product.id === item.id ? { ...product, ...result } : product);
+    cart = cart.map((cartItem) => cartItem.id === item.id ? { ...cartItem, ...result } : cartItem);
+    dialog.close();
+    renderInventory();
+    renderCart();
+    showToast(`Selling price overridden for ${item.name}.`, 'success');
+  } catch (error) {
+    $('#cartPriceOverrideError').textContent = error.message || 'Unable to save the selling-price override.';
+  }
+});
+
+$('#productPriceOverrideClear')?.addEventListener('click', async () => {
+  const dialog = $('#productPriceOverrideDialog');
+  const item = products.find((entry) => entry.id === dialog?.dataset.productId);
+  if (!item) return;
+  try {
+    const result = await api('setProductSellingPriceOverride', { productId: item.id, price: '', branchId: activeBranchId });
+    products = products.map((product) => product.id === item.id ? { ...product, ...result } : product);
+    cart = cart.map((cartItem) => cartItem.id === item.id ? { ...cartItem, ...result } : cartItem);
+    dialog.close();
+    renderInventory();
+    renderCart();
+    showToast('FIFO batch selling price restored.', 'info');
+  } catch (error) {
+    $('#cartPriceOverrideError').textContent = error.message || 'Unable to clear the selling-price override.';
+  }
 });
 
 // Settings Form submission with loading spinner
@@ -8322,7 +8353,7 @@ $('#saleForm').addEventListener('submit', async (event) => {
       items: cart.map((item) => ({
         productId: item.id,
         qty: item.qty,
-        ...(Number.isFinite(Number(item.overridePrice)) ? { price: Number(item.overridePrice) } : {}),
+        ...(hasSellingPriceOverride(item.sellingPriceOverride) ? { price: Number(item.sellingPriceOverride) } : {}),
       })),
     });
     $('#saleDialog').close();

@@ -611,9 +611,9 @@
       </form>
     </dialog>
 
-    <!-- Cart Selling Price Override Dialog -->
-    <dialog id="cartPriceOverrideDialog" class="pepsi-dialog cart-price-override-dialog">
-      <form id="cartPriceOverrideForm" novalidate>
+    <!-- Registered Product Selling Price Override Dialog -->
+    <dialog id="productPriceOverrideDialog" class="pepsi-dialog cart-price-override-dialog">
+      <form id="productPriceOverrideForm" novalidate>
         <div class="modal-head">
           <div class="modal-title-wrap">
             <div class="modal-icon-badge">
@@ -625,7 +625,7 @@
               <p class="modal-subtitle" id="cartPriceOverrideProduct"></p>
             </div>
           </div>
-          <button class="icon-button close-dialog-btn" type="button" data-close="cartPriceOverrideDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          <button class="icon-button close-dialog-btn" type="button" data-close="productPriceOverrideDialog" aria-label="Close dialog" title="Close dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div class="form-field-group full-field">
           <label for="cartPriceOverrideInput"><span class="label-text">Selling Price (PHP)</span></label>
@@ -634,7 +634,8 @@
         </div>
         <p class="form-error" id="cartPriceOverrideError" role="alert"></p>
         <div class="modal-actions">
-          <button class="button modal-cancel-btn" type="button" data-close="cartPriceOverrideDialog">Cancel</button>
+          <button class="button modal-cancel-btn" type="button" id="productPriceOverrideClear" hidden>Use batch price</button>
+          <button class="button modal-cancel-btn" type="button" data-close="productPriceOverrideDialog">Cancel</button>
           <button class="button modal-save-btn" type="submit"><span class="button-text">Save price</span></button>
         </div>
       </form>
