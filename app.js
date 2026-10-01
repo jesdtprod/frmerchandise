@@ -7315,7 +7315,7 @@ function setView(view, preserveSidebarOpen = false) {
   if (dailySpotCashNav) dailySpotCashNav.hidden = !permissions.includes('*') && !permissions.includes('dailySpotCash');
   const dailyExpensesNav = document.querySelector('[data-view="dailyExpenses"]');
   if (dailyExpensesNav) dailyExpensesNav.hidden = !permissions.includes('*') && !permissions.includes('dailyExpenses');
-  const requiredPermission = ['quarantine', 'quarantineReport'].includes(view) ? 'inventory' : view;
+  const requiredPermission = ['quarantine', 'quarantineReport'].includes(view) ? 'inventory' : view === 'bundleMonitoring' ? 'products' : view;
   if (view !== 'dashboard' && !permissions.includes('*') && !permissions.includes(requiredPermission)) view = permissions[0] || 'pos';
   if (!validViews.includes(view)) view = 'pos';
   activeView = view;
@@ -8523,7 +8523,7 @@ function applySession(session, useRoleDefaultView = false) {
   const account = session.account;
   const permittedViews = account.permissions || [];
   document.querySelectorAll('[data-view]').forEach((item) => {
-    const requiredPermission = ['quarantine', 'quarantineReport'].includes(item.dataset.view) ? 'inventory' : item.dataset.view;
+    const requiredPermission = ['quarantine', 'quarantineReport'].includes(item.dataset.view) ? 'inventory' : item.dataset.view === 'bundleMonitoring' ? 'products' : item.dataset.view;
     const allowed = item.dataset.view === 'dashboard' || permittedViews.includes('*') || permittedViews.includes(requiredPermission);
     item.hidden = !allowed;
   });
