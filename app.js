@@ -225,8 +225,8 @@ function updateQuarantinePrintPeriod() {
   period.textContent = `Period: ${formatDate(dateFrom)} to ${formatDate(dateTo)}`;
 }
 
-function openReportInNewPage_(htmlContent, title = 'Report') {
-  const documentHtml = `<!DOCTYPE html>
+function getReportDocumentHtml_(htmlContent, title = 'Report', isExport = false) {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -246,13 +246,42 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
     html, body {
       margin: 0;
       padding: 0;
-      background: #08111e;
+      background: #ffffff;
       color: #0f172a;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+    ${isExport ? `
+      html, body {
+        width: 816px !important;
+        min-width: 816px !important;
+        max-width: 816px !important;
+        background: #ffffff !important;
+      }
+      .report-page {
+        width: 816px !important;
+        min-width: 816px !important;
+        max-width: 816px !important;
+        height: 1248px !important;
+        min-height: 1248px !important;
+        max-height: 1248px !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        padding: 10mm 14mm !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+      }
+    ` : `
     @media screen {
+      html {
+        background: #08111e;
+      }
       body {
         padding: 28px 16px;
         display: flex;
@@ -278,22 +307,30 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
         overflow: hidden;
       }
     }
+    `}
     @media print {
       @page {
         size: 8.5in 13in;
-        margin: 10mm 12mm 10mm 12mm;
+        margin: 8mm 12mm 8mm 12mm;
       }
-      body {
+      html, body {
         background: #ffffff !important;
-        padding: 0 !important;
+        background-color: #ffffff !important;
+        background-image: none !important;
+        color: #0f172a !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
         margin: 0 !important;
+        padding: 0 !important;
         display: block !important;
+        overflow: visible !important;
       }
       .report-page {
         width: 100% !important;
-        height: 100% !important;
-        min-height: 100% !important;
-        max-height: 100% !important;
+        height: auto !important;
+        min-height: calc(13in - 16mm) !important;
+        max-height: none !important;
         box-shadow: none !important;
         padding: 0 !important;
         margin: 0 !important;
@@ -307,9 +344,15 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
         justify-content: space-between !important;
         box-sizing: border-box !important;
       }
-      .report-page:last-child {
+      .report-page:last-child,
+      .report-page:last-of-type {
+        page-break-after: auto !important;
+        break-after: auto !important;
         page-break-after: avoid !important;
         break-after: avoid !important;
+        min-height: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
       }
     }
     .report-page-content {
@@ -751,6 +794,10 @@ function openReportInNewPage_(htmlContent, title = 'Report') {
   ${htmlContent}
 </body>
 </html>`;
+}
+
+function openReportInNewPage_(htmlContent, title = 'Report') {
+  const documentHtml = getReportDocumentHtml_(htmlContent, title);
 
   const reportId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const reportStorageKey = `fr-pos-report-${reportId}`;
@@ -814,7 +861,7 @@ function renderReportRunningHeader(branchName, periodText, reportTitle = 'Branch
   `;
 }
 
-function generateSalesPdf() {
+function buildSalesPdfReport_() {
   ensureSalesDateDefaults();
   updateSalesPrintPeriod();
 
@@ -843,8 +890,6 @@ function generateSalesPdf() {
   const completedRefunds = saleReturns.filter((record) => saleReturnItems.some((item) => item.returnId === record.id && item.actionType === 'refund') && record.refundResolvedAt && returnMatchesTerm(record) && eventInPeriod(record.refundResolvedAt));
   const releasedReplacements = saleReturns.filter((record) => saleReturnItems.some((item) => item.returnId === record.id && item.actionType === 'replacement') && record.replacementReleasedAt && returnMatchesTerm(record) && eventInPeriod(record.replacementReleasedAt));
   const returnItemsInPeriod = returnsInPeriod.flatMap((record) => saleReturnItems.filter((item) => item.returnId === record.id));
-
-  const printDoc = $('#salesPrintDocument');
 
   const totalSales = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
   const totalItemsCount = sales.reduce((sum, s) => sum + (s.items || []).reduce((iSum, i) => iSum + Number(i.qty || 1), 0), 0);
@@ -1284,71 +1329,123 @@ function generateSalesPdf() {
     `;
   }).join('');
 
-  printDoc.innerHTML = renderedPagesHtml;
-  openReportInNewPage_(printDoc ? printDoc.innerHTML : '', `Branch Sales Report - ${periodText}`);
+  return {
+    renderedPagesHtml,
+    periodText,
+    dateFrom,
+    dateTo,
+    branch
+  };
 }
 
-function exportSalesPdf() {
-  ensureSalesDateDefaults();
+function generateSalesPdf() {
+  const { renderedPagesHtml, periodText } = buildSalesPdfReport_();
+  const printDoc = $('#salesPrintDocument');
+  if (printDoc) printDoc.innerHTML = renderedPagesHtml;
+  openReportInNewPage_(renderedPagesHtml, `Branch Sales Report - ${periodText}`);
+}
 
-  const JsPdf = window.jspdf?.jsPDF;
-  if (!JsPdf) {
-    showToast('PDF export is still loading. Please try again.', 'error');
-    return;
+function loadHtml2PdfLibrary_() {
+  if (window.html2pdf) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load PDF export library.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function exportSalesPdf() {
+  const exportBtn = $('#exportSalesPdfButton');
+  const originalHtml = exportBtn ? exportBtn.innerHTML : '';
+  if (exportBtn) {
+    exportBtn.disabled = true;
+    exportBtn.innerHTML = '<span class="btn-spinner"></span><span>Exporting PDF...</span>';
   }
 
-  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
-  const dateFrom = $('#salesDateFrom')?.value || '';
-  const dateTo = $('#salesDateTo')?.value || '';
-  const branch = branches.find((item) => item.id === activeBranchId) || { name: 'Main Branch' };
-  const sales = salesHistory.filter((sale) => {
-    const matchesTerm = `${sale.saleId} ${sale.customerName} ${sale.paymentType}`.toLowerCase().includes(term);
-    const saleDate = saleDateKey(sale.date);
-    return matchesTerm && (!dateFrom || saleDate >= dateFrom) && (!dateTo || saleDate <= dateTo);
-  });
-  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-  const totalItems = sales.reduce((sum, sale) => sum + (sale.items || []).reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0), 0);
-  const formatDate = (value) => value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-    : 'All dates';
-  const period = `${formatDate(dateFrom)} to ${formatDate(dateTo)}`;
-  const pdf = new JsPdf({ orientation: 'landscape', unit: 'mm', format: 'legal' });
+  try {
+    const { renderedPagesHtml, periodText, dateFrom, dateTo } = buildSalesPdfReport_();
+    await loadHtml2PdfLibrary_();
 
-  pdf.setProperties({ title: `Branch Sales History - ${period}`, subject: 'Branch Sales History' });
-  pdf.setFontSize(18);
-  pdf.text('FR Merchandise - Branch Sales History', 14, 16);
-  pdf.setFontSize(10);
-  pdf.setTextColor(75);
-  pdf.text(`Branch: ${branch.name || 'Main Branch'} | Period: ${period}`, 14, 23);
-  pdf.text(`Exported: ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`, 14, 29);
+    const filenamePeriod = `${dateFrom || 'all'}_to_${dateTo || 'all'}`.replace(/[^a-z0-9_-]/gi, '-');
+    const filename = `branch-sales-report_${filenamePeriod}.pdf`;
+    const fullHtml = getReportDocumentHtml_(renderedPagesHtml, `Branch Sales Report - ${periodText}`, true);
 
-  pdf.autoTable({
-    startY: 35,
-    head: [['Receipt', 'Date & Time', 'Customer', 'Items', 'Payment', 'Total']],
-    body: sales.map((sale) => [
-      sale.saleId,
-      new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }),
-      displayCustomerName(sale.customerName),
-      (sale.items || []).map((item) => `${item.name || item.productName || 'Item'} x${item.qty || 0}`).join(', '),
-      String(sale.paymentType || 'cash').replace(/^./, (letter) => letter.toUpperCase()),
-      money(sale.total || 0)
-    ]),
-    foot: [['', '', '', `Transactions: ${sales.length} | Units: ${totalItems}`, '', money(totalSales)]],
-    theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-    headStyles: { fillColor: [0, 102, 245], textColor: 255, fontStyle: 'bold' },
-    footStyles: { fillColor: [8, 19, 38], textColor: 255, fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 34 }, 1: { cellWidth: 32 }, 2: { cellWidth: 42 }, 3: { cellWidth: 90 }, 4: { cellWidth: 25 }, 5: { cellWidth: 30, halign: 'right' } },
-    didDrawPage: () => {
-      pdf.setFontSize(8);
-      pdf.setTextColor(100);
-      pdf.text(`Page ${pdf.internal.getNumberOfPages()}`, pdf.internal.pageSize.getWidth() - 14, pdf.internal.pageSize.getHeight() - 8, { align: 'right' });
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.left = '0';
+    iframe.style.top = '0';
+    iframe.style.width = '816px';
+    iframe.style.height = '1248px';
+    iframe.style.border = 'none';
+    iframe.style.opacity = '0.01';
+    iframe.style.zIndex = '-9999';
+    iframe.style.pointerEvents = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(fullHtml);
+    doc.close();
+
+    try {
+      // Wait for the report's actual layout before rasterizing it into the PDF.
+      await Promise.all([
+        doc.fonts?.ready || Promise.resolve(),
+        new Promise((resolve) => setTimeout(resolve, 450))
+      ]);
+
+      const html2canvasLib = window.html2canvas || (await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = () => res(window.html2canvas);
+        s.onerror = () => rej(new Error('Failed to load html2canvas'));
+        document.head.appendChild(s);
+      }));
+
+      const JsPdf = window.jspdf?.jsPDF || window.jsPDF;
+      const pdf = new JsPdf({
+        unit: 'in',
+        format: [8.5, 13],
+        orientation: 'portrait',
+        compress: true
+      });
+
+      const pages = Array.from(doc.querySelectorAll('.report-page'));
+      if (!pages.length) throw new Error('The sales report has no content to export.');
+
+      for (let i = 0; i < pages.length; i++) {
+        if (i > 0) pdf.addPage([8.5, 13], 'portrait');
+
+        const canvas = await html2canvasLib(pages[i], {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          width: 816,
+          height: 1248,
+          windowWidth: 816,
+          windowHeight: 1248,
+          backgroundColor: '#ffffff'
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(imgData, 'JPEG', 0, 0, 8.5, 13, undefined, 'FAST');
+      }
+
+      pdf.save(filename);
+      showToast('Sales Audit Report PDF downloaded.', 'success');
+    } finally {
+      iframe.remove();
     }
-  });
-
-  const filenamePeriod = `${dateFrom || 'all'}_to_${dateTo || 'all'}`.replace(/[^a-z0-9_-]/gi, '-');
-  pdf.save(`branch-sales-history_${filenamePeriod}.pdf`);
-  showToast('Sales History PDF downloaded.', 'success');
+  } catch (error) {
+    showToast(error.message || 'Failed to download PDF export.', 'error');
+  } finally {
+    if (exportBtn) {
+      exportBtn.disabled = false;
+      exportBtn.innerHTML = originalHtml;
+    }
+  }
 }
 
 function generateInventoryReportPdf() {

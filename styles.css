@@ -14448,13 +14448,27 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
 @media print {
   @page {
     size: 8.5in 13in;
-    margin: 8mm 12mm 10mm 12mm;
+    margin: 8mm 12mm 8mm 12mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #0f172a !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
   }
   .report-page {
     width: 100% !important;
-    height: 100% !important;
-    min-height: 100% !important;
-    max-height: 100% !important;
+    height: auto !important;
+    min-height: calc(13in - 16mm) !important;
+    max-height: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -14468,8 +14482,12 @@ dialog .return-item-group .sale-return-resolution-actions .resolve-btn {
     justify-content: space-between !important;
     box-sizing: border-box !important;
   }
-  .report-page:last-child {
+  .report-page:last-child,
+  .report-page:last-of-type {
     page-break-after: avoid !important;
     break-after: avoid !important;
+    min-height: 0 !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
   }
 }
