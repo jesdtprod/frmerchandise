@@ -4042,7 +4042,7 @@ body::after {
 
 .sales-date-range {
   display: grid;
-  grid-template-columns: 164px 164px max-content;
+  grid-template-columns: 164px 164px max-content max-content;
   align-items: end;
   gap: 10px;
   margin-top: 10px;

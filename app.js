@@ -1288,6 +1288,69 @@ function generateSalesPdf() {
   openReportInNewPage_(printDoc ? printDoc.innerHTML : '', `Branch Sales Report - ${periodText}`);
 }
 
+function exportSalesPdf() {
+  ensureSalesDateDefaults();
+
+  const JsPdf = window.jspdf?.jsPDF;
+  if (!JsPdf) {
+    showToast('PDF export is still loading. Please try again.', 'error');
+    return;
+  }
+
+  const term = ($('#searchInput')?.value || '').trim().toLowerCase();
+  const dateFrom = $('#salesDateFrom')?.value || '';
+  const dateTo = $('#salesDateTo')?.value || '';
+  const branch = branches.find((item) => item.id === activeBranchId) || { name: 'Main Branch' };
+  const sales = salesHistory.filter((sale) => {
+    const matchesTerm = `${sale.saleId} ${sale.customerName} ${sale.paymentType}`.toLowerCase().includes(term);
+    const saleDate = saleDateKey(sale.date);
+    return matchesTerm && (!dateFrom || saleDate >= dateFrom) && (!dateTo || saleDate <= dateTo);
+  });
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+  const totalItems = sales.reduce((sum, sale) => sum + (sale.items || []).reduce((itemTotal, item) => itemTotal + Number(item.qty || 0), 0), 0);
+  const formatDate = (value) => value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'All dates';
+  const period = `${formatDate(dateFrom)} to ${formatDate(dateTo)}`;
+  const pdf = new JsPdf({ orientation: 'landscape', unit: 'mm', format: 'legal' });
+
+  pdf.setProperties({ title: `Branch Sales History - ${period}`, subject: 'Branch Sales History' });
+  pdf.setFontSize(18);
+  pdf.text('FR Merchandise - Branch Sales History', 14, 16);
+  pdf.setFontSize(10);
+  pdf.setTextColor(75);
+  pdf.text(`Branch: ${branch.name || 'Main Branch'} | Period: ${period}`, 14, 23);
+  pdf.text(`Exported: ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`, 14, 29);
+
+  pdf.autoTable({
+    startY: 35,
+    head: [['Receipt', 'Date & Time', 'Customer', 'Items', 'Payment', 'Total']],
+    body: sales.map((sale) => [
+      sale.saleId,
+      new Date(sale.date).toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }),
+      displayCustomerName(sale.customerName),
+      (sale.items || []).map((item) => `${item.name || item.productName || 'Item'} x${item.qty || 0}`).join(', '),
+      String(sale.paymentType || 'cash').replace(/^./, (letter) => letter.toUpperCase()),
+      money(sale.total || 0)
+    ]),
+    foot: [['', '', '', `Transactions: ${sales.length} | Units: ${totalItems}`, '', money(totalSales)]],
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+    headStyles: { fillColor: [0, 102, 245], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [8, 19, 38], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 34 }, 1: { cellWidth: 32 }, 2: { cellWidth: 42 }, 3: { cellWidth: 90 }, 4: { cellWidth: 25 }, 5: { cellWidth: 30, halign: 'right' } },
+    didDrawPage: () => {
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(`Page ${pdf.internal.getNumberOfPages()}`, pdf.internal.pageSize.getWidth() - 14, pdf.internal.pageSize.getHeight() - 8, { align: 'right' });
+    }
+  });
+
+  const filenamePeriod = `${dateFrom || 'all'}_to_${dateTo || 'all'}`.replace(/[^a-z0-9_-]/gi, '-');
+  pdf.save(`branch-sales-history_${filenamePeriod}.pdf`);
+  showToast('Sales History PDF downloaded.', 'success');
+}
+
 function generateInventoryReportPdf() {
   const printDoc = $('#salesPrintDocument');
   if (!printDoc) return;
@@ -8126,6 +8189,7 @@ $('#salesDateTo').addEventListener('change', () => {
   renderInventory();
 });
 $('#generateSalesPdfButton').addEventListener('click', generateSalesPdf);
+$('#exportSalesPdfButton').addEventListener('click', exportSalesPdf);
 
 const quarantineDateFrom = $('#quarantineDateFrom');
 if (quarantineDateFrom) {
