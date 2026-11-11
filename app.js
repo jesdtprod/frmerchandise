@@ -1827,6 +1827,21 @@ async function loadSupabaseSession_() {
   return profileToAccount_(profile, session.access_token);
 }
 
+async function fetchAllRows_(createQuery) {
+  const rows = [];
+  const pageSize = 500;
+  let offset = 0;
+  while (true) {
+    const result = await createQuery().range(offset, offset + pageSize - 1);
+    if (result.error) return result;
+    const page = result.data || [];
+    rows.push(...page);
+    if (page.length === 0) return { data: rows, error: null };
+    // Advance by the actual response size even if the API caps pages below our requested size.
+    offset += page.length;
+  }
+}
+
 async function getAppData_(branchId) {
   const client = requireSupabase_();
   const results = await Promise.all([
@@ -1836,8 +1851,8 @@ async function getAppData_(branchId) {
     client.from('inventory').select('*').eq('branch_id', branchId),
     client.from('customers').select('*').eq('branch_id', branchId),
     client.from('stock_transfers').select('*').or(`source_branch_id.eq.${branchId},destination_branch_id.eq.${branchId}`),
-    client.from('sales').select('*').eq('branch_id', branchId),
-    client.from('sale_items').select('*'),
+    fetchAllRows_(() => client.from('sales').select('*').eq('branch_id', branchId).order('sale_id')),
+    fetchAllRows_(() => client.from('sale_items').select('*, sales!inner(branch_id)').eq('sales.branch_id', branchId).order('sale_item_id')),
     client.from('credit_payments').select('*').eq('branch_id', branchId),
     client.from('customer_credit_accounts').select('*').eq('branch_id', branchId),
     client.from('stock_ins').select('*').eq('branch_id', branchId),
